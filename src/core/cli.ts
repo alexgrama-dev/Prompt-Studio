@@ -2080,13 +2080,13 @@ function humanRecord(record: PromptRecord): string {
   return [
     `# ${record.title}`,
     "",
-    record.body,
-    "",
     `ID: ${record.id}`,
     `Target: ${record.target}`,
     `Tags: ${record.tags.join(", ") || "(none)"}`,
     `Updated: ${record.updatedAt}`,
     `Archived: ${record.archivedAt ?? "no"}`,
+    "",
+    record.body,
   ].join("\n");
 }
 

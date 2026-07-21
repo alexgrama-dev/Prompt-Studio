@@ -558,14 +558,14 @@ async function getTool(
   const text = [
     `# ${String(data.title)}`,
     "",
-    body,
-    "",
     `Prompt ID: ${record.id}`,
     `Target: ${record.target}`,
     `Tags: ${record.tags.join(", ") || "(none)"}`,
     truncated
       ? `Body truncated at ${maxBodyCharacters} of ${record.body.length} characters.`
       : "",
+    "",
+    body,
   ]
     .filter((line) => line !== "")
     .join("\n");
