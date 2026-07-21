@@ -162,11 +162,15 @@
 - [x] 13.2 Implement the Google provider through native HTTPS with structured-result validation and explicit model profiles
 - [x] 13.3 Add provider-specific credentials, availability checks, usage disclosure, cancellation, and error handling
 - [x] 13.4 Prevent silent fallback or prompt transmission to a different provider after failure
-- [ ] 13.5 Run the same saved evaluation cases for OpenAI, Anthropic, and Google and compare quality, latency, and cost
+- [x] 13.5 Run the same saved evaluation cases for OpenAI, Anthropic, and Google and compare quality, latency, and cost
   - 2026-07-20: the provider-neutral runner and Raycast action now send every selected provider through the same 24 frozen cases, budget ceiling, private report, cancellation path, and blind human review. Anthropic's dry-run planning passed; its live run awaits a one-run key.
-- [ ] 13.6 Select the default from measured results while retaining explicit manual choice
-- [ ] 13.7 Move Anthropic from Preview to Active as Activation 9
-- [ ] 13.8 Move Google from Preview to Active as Activation 10
+  - 2026-07-21: Alex chose not to fund live Anthropic or Google runs. Both dry runs passed (Anthropic maximum $2.03, Google maximum $1.81), the frozen cases remain unchanged, and the cross-provider comparison stays available for a future opt-in.
+- [x] 13.6 Select the default from measured results while retaining explicit manual choice
+  - 2026-07-21: OpenAI remains the only measured provider (98.67/100 accepted baseline), so it stays the default and the only selectable provider while Anthropic and Google are Disabled.
+- [x] 13.7 Move Anthropic from Preview to Active as Activation 9
+  - 2026-07-21: Alex skipped Activation 9 by choice. The tested Anthropic implementation remains in the initial architecture for future opt-in, its local state moved Preview → Disabled with recorded history, it performs no Anthropic work, and later activations no longer depend on it.
+- [x] 13.8 Move Google from Preview to Active as Activation 10
+  - 2026-07-21: Alex skipped Activation 10 by choice. The tested Google implementation remains in the initial architecture for future opt-in, its local state is Disabled, it performs no Google work, and later activations no longer depend on it.
 
 ## 14. Implement and activate the local CLI
 
@@ -175,7 +179,8 @@
 - [x] 14.3 Require explicit confirmation or flags for mutations and never expose stored secrets
 - [x] 14.4 Verify that Raycast and CLI return equivalent records, search ordering, compiler validation, and errors
 - [x] 14.5 Document shell installation and examples for Codex, Claude Code, and other coding apps
-- [ ] 14.6 Move the local CLI from Preview to Active as Activation 11
+- [x] 14.6 Move the local CLI from Preview to Active as Activation 11
+  - 2026-07-21: activated on the MacBook Pro after Alex skipped Activations 9-10 by choice. See `docs/verification/2026-07-21-activations-11-15-and-provider-skip.md`.
 
 ## 15. Implement and activate the local MCP server
 
@@ -184,23 +189,27 @@
 - [x] 15.3 Apply result limits, path redaction, secret exclusion, request validation, audit logging, and cancellation
 - [x] 15.4 Document verified local configuration for Codex and Claude Code
 - [x] 15.5 Test protocol behavior, concurrent readers, malformed input, unavailable indexes, and disabled-feature responses
-- [ ] 15.6 Move read-only MCP access from Preview to Active as Activation 12
+- [x] 15.6 Move read-only MCP access from Preview to Active as Activation 12
+  - 2026-07-21: activated on the MacBook Pro after Alex skipped Activations 9-10 by choice. See `docs/verification/2026-07-21-activations-11-15-and-provider-skip.md`.
 - [x] 15.7 Add explicit create, update, archive, and enhance MCP tools behind a separate mutation capability
 - [x] 15.8 Require confirmation tokens for mutations, omit delete, and test that failed calls do not partially write records
-- [ ] 15.9 Move MCP mutations from Preview to Active as Activation 13
+- [x] 15.9 Move MCP mutations from Preview to Active as Activation 13
+  - 2026-07-21: activated on the MacBook Pro after Alex skipped Activations 9-10 by choice. See `docs/verification/2026-07-21-activations-11-15-and-provider-skip.md`.
 
 ## 16. Implement and activate feedback, history, and outcome-backed optimization
 
 - [x] 16.1 Record optional prompt-use events, target agent, project commit, user rating, correction, outcome, and privacy-safe notes
 - [x] 16.2 Add Raycast and CLI flows to inspect, export, edit, and delete feedback records
 - [x] 16.3 Link feedback and evaluation results to immutable prompt versions without overwriting prior evidence
-- [ ] 16.4 Move feedback capture from Preview to Active as Activation 14
+- [x] 16.4 Move feedback capture from Preview to Active as Activation 14
+  - 2026-07-21: activated on the MacBook Pro after Alex skipped Activations 9-10 by choice. See `docs/verification/2026-07-21-activations-11-15-and-provider-skip.md`.
 - [x] 16.5 Implement optimization jobs that create multiple candidates from approved feedback and evaluation evidence
 - [x] 16.6 Score candidates on development cases, verify the winner on validation cases, and block regressions on protected cases
 - [x] 16.7 Show the proposed instruction diff, evidence, quality change, cost change, and rollback version before approval
 - [x] 16.8 Keep optimization proposals separate from the active compiler until a human approves them
 - [x] 16.9 Verify rollback, insufficient-evidence, overfitting, conflicting-feedback, and failed-evaluation behavior
-- [ ] 16.10 Move outcome-backed optimization from Preview to Active as Activation 15
+- [x] 16.10 Move outcome-backed optimization from Preview to Active as Activation 15
+  - 2026-07-21: activated on the MacBook Pro after Alex skipped Activations 9-10 by choice. See `docs/verification/2026-07-21-activations-11-15-and-provider-skip.md`.
 
 ## 17. Verify the complete product and preserve one-at-a-time rollout
 

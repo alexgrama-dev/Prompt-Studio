@@ -139,14 +139,18 @@ export const FEATURES: readonly FeatureDefinition[] = [
   feature(
     "anthropic-provider",
     "Anthropic Provider",
-    "Enhance prompts with an explicitly selected Anthropic model.",
+    "Skipped by user choice. Anthropic enhancement stays Disabled.",
     9,
+    "disabled",
+    false,
   ),
   feature(
     "google-provider",
     "Google Provider",
-    "Enhance prompts with an explicitly selected Google model.",
+    "Skipped by user choice. Google enhancement stays Disabled.",
     10,
+    "disabled",
+    false,
   ),
   feature(
     "local-cli",
