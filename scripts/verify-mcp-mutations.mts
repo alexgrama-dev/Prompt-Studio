@@ -53,7 +53,8 @@ await writeFile(
           { state: "active", verification },
         ]),
       ),
-      "mcp-write": { state: "preview" },
+      "mcp-write": { state: "active", verification },
+      feedback: { state: "preview" },
     },
     null,
     2,
@@ -135,6 +136,7 @@ try {
     "prompt_studio_update",
     "prompt_studio_archive",
     "prompt_studio_enhance",
+    "prompt_studio_record_feedback",
   ]);
   assert.equal(
     names.some((name) => /delete/i.test(name)),
@@ -200,6 +202,44 @@ try {
     1,
   );
 
+  const promptId = (
+    (toolResult(created).structuredContent as {
+      data: { id: string };
+    }) ?? { data: { id: "" } }
+  ).data.id;
+  const feedbackRecorded = await request(6, "tools/call", {
+    name: "prompt_studio_record_feedback",
+    arguments: {
+      id: promptId,
+      verdict: "useful",
+      outcomeStatus: "succeeded",
+      targetAgent: "claude-code",
+      note: "Bundle probe outcome check.",
+    },
+  });
+  assert.notEqual(toolResult(feedbackRecorded).isError, true);
+  const feedbackFiles = (await readdir(join(library, ".feedback"))).filter(
+    (name) => name.endsWith(".json"),
+  );
+  assert.equal(feedbackFiles.length, 1);
+
+  const feedbackRejected = await request(7, "tools/call", {
+    name: "prompt_studio_record_feedback",
+    arguments: {
+      id: promptId,
+      verdict: "amazing",
+      outcomeStatus: "succeeded",
+      targetAgent: "claude-code",
+    },
+  });
+  assert.equal(toolResult(feedbackRejected).isError, true);
+  assert.equal(
+    (await readdir(join(library, ".feedback"))).filter((name) =>
+      name.endsWith(".json"),
+    ).length,
+    1,
+  );
+
   const auditText = await readFile(audit, "utf8");
   assert.equal(auditText.includes(createArguments.title), false);
   assert.equal(auditText.includes(createArguments.body), false);
@@ -219,6 +259,8 @@ try {
         exactRequestAuthorized: true,
         tokenReused: false,
         promptCount: 1,
+        agentFeedbackRecorded: true,
+        invalidFeedbackRejected: true,
         privacySafeAudit: true,
       },
       null,
@@ -257,10 +299,12 @@ function notify(method: string, params: Record<string, unknown>): void {
 function toolResult(response: JsonRpcResponse): {
   isError?: boolean;
   content?: unknown;
+  structuredContent?: unknown;
 } {
   return (response.result ?? {}) as {
     isError?: boolean;
     content?: unknown;
+    structuredContent?: unknown;
   };
 }
 

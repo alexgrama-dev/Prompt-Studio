@@ -534,6 +534,7 @@ enabled_tools = [
   "prompt_studio_list",
   "prompt_studio_search",
   "prompt_studio_get",
+  "prompt_studio_record_feedback",
 ]
 ```
 
@@ -569,6 +570,28 @@ Activations 12 and 13 are currently **Disabled**. If configured early, the
 server can only report status; list, search, and get stop before reading prompt
 files, indexes, credentials, or an audit log, and mutation tools are not
 registered at all.
+
+### Agent-recorded feedback
+
+While the feedback capability is Active, the server also registers
+`prompt_studio_record_feedback`. It appends one validated outcome record for
+an existing active prompt (verdict, outcome status, target agent, optional
+note) without a confirmation token: it cannot create, change, or delete
+prompts, it rejects notes that look like secrets, it caps note size and
+per-process rate, and every call is audit-logged. Codex users must add the
+tool name to `enabled_tools`.
+
+### Agent auto-recall
+
+The following paragraph is installed in `~/.claude/CLAUDE.md` and
+`~/.codex/AGENTS.md` so agents pull prompts and close the loop themselves:
+
+> Before starting a substantive coding task, search the local Prompt Studio
+> MCP (`prompt_studio_search`) for a matching saved prompt. If one clearly
+> fits, fetch it with `prompt_studio_get`, fill any `{{placeholders}}`, and
+> follow it. If the server is unavailable or nothing fits, continue normally
+> without mentioning it. After finishing a task where a saved prompt was
+> used, record the outcome with `prompt_studio_record_feedback`.
 
 Inspect the frozen evaluation without making a model request:
 

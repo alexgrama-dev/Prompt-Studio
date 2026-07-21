@@ -32,6 +32,8 @@ const loadStatuses = () => loadFeatureStatuses(featurePath);
 const initialStatuses = await loadStatuses();
 const mutationEnabled =
   getFeatureStatus(initialStatuses, "mcp-write").effectiveState !== "disabled";
+const feedbackEnabled =
+  getFeatureStatus(initialStatuses, "feedback").effectiveState !== "disabled";
 const server = createPromptStudioMcpServer(
   {
     directory,
@@ -55,6 +57,7 @@ const server = createPromptStudioMcpServer(
         env: process.env,
       }
     : undefined,
+  feedbackEnabled ? { directory, loadStatuses, audit } : undefined,
 );
 
 const transport = new StdioServerTransport();

@@ -67,8 +67,11 @@ import {
   recordPromptUse,
   searchPrompts,
   type SearchFilters,
+  loadPromptUsage,
   type SearchResult,
 } from "./search-index.ts";
+import { buildFreshnessWarning } from "./build-freshness.ts";
+import { extractPlaceholders } from "./placeholders.ts";
 import {
   approveOptimizationCandidate,
   createOptimizationProposal,
@@ -194,6 +197,7 @@ const COMMAND_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   get: new Set(["body-only"]),
   copy: new Set(),
+  stats: new Set(),
   create: new Set([
     "yes",
     "input",
@@ -360,6 +364,8 @@ async function runEnabledCommand(
       return feedbackCommand(context);
     case "optimization":
       return optimizationCommand(context);
+    case "stats":
+      return statsCommand(context);
     case "enhance":
       return enhanceCommand(context);
     default:
@@ -395,6 +401,7 @@ async function statusCommand(context: CommandContext): Promise<CommandOutcome> {
 
   const library = await listPrompts(context.directory);
   const index = inspectSearchIndex(context.searchIndexPath, library.records);
+  const staleBuild = buildFreshnessWarning(process.argv[1], "pnpm build:cli");
   return {
     data: {
       ...base,
@@ -403,6 +410,7 @@ async function statusCommand(context: CommandContext): Promise<CommandOutcome> {
         invalidCount: library.invalid.length,
       },
       exactSearch: index,
+      ...(staleBuild ? { staleBuild } : {}),
     },
     human: [
       `Local CLI: ${title(localCli.effectiveState)}`,
@@ -410,7 +418,10 @@ async function statusCommand(context: CommandContext): Promise<CommandOutcome> {
       `Prompts: ${library.records.length}`,
       `Invalid files: ${library.invalid.length}`,
       `Exact search: ${index.status}${index.needsRebuild ? " (rebuild needed)" : ""}`,
-    ].join("\n"),
+      staleBuild ? `Warning: ${staleBuild}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
 }
 
@@ -497,7 +508,7 @@ async function getCommand(context: CommandContext): Promise<CommandOutcome> {
   assertPositionals(context.parsed, 1, 1);
   const record = await selectedRecord(context);
   return {
-    data: record,
+    data: { ...record, placeholders: extractPlaceholders(record.body) },
     human: context.parsed.options.has("body-only")
       ? record.body
       : humanRecord(record),
@@ -520,10 +531,97 @@ async function copyCommand(context: CommandContext): Promise<CommandOutcome> {
   } catch {
     // Copy remains successful when the disposable usage index is unavailable.
   }
+  const placeholders = extractPlaceholders(record.body);
   return {
-    data: { id: record.id, copied: true },
-    human: `Copied "${record.title}" to the clipboard.`,
+    data: { id: record.id, copied: true, placeholders },
+    human: [
+      `Copied "${record.title}" to the clipboard.`,
+      placeholders.length
+        ? `Warning: unfilled placeholders remain: ${placeholders.map((name) => `{{${name}}}`).join(", ")}.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
+}
+
+async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
+  assertPositionals(context.parsed, 0, 0);
+  const library = await listPrompts(context.directory);
+  const active = library.records.filter((record) => !record.archivedAt);
+  const usage = loadPromptUsage(context.searchIndexPath);
+  const usageAvailable = usage.size > 0 || activeIndexReadable(context);
+  const feedback = await listPromptUseFeedback(context.directory);
+
+  const ranked = active
+    .map((record) => ({
+      id: record.id,
+      title: record.title,
+      useCount: usage.get(record.id)?.useCount ?? 0,
+      lastUsedAt: usage.get(record.id)?.lastUsedAt,
+    }))
+    .sort(
+      (left, right) =>
+        right.useCount - left.useCount ||
+        (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? ""),
+    );
+  const unused = ranked.filter((entry) => entry.useCount === 0);
+  const verdicts: Record<string, number> = {};
+  const outcomes: Record<string, number> = {};
+  for (const record of feedback.records) {
+    verdicts[record.verdict] = (verdicts[record.verdict] ?? 0) + 1;
+    const status = record.outcome?.status ?? "unrecorded";
+    outcomes[status] = (outcomes[status] ?? 0) + 1;
+  }
+
+  const tally = (counts: Record<string, number>) =>
+    Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .map(([key, count]) => `${key} ${count}`)
+      .join(", ") || "(none)";
+
+  return {
+    data: {
+      prompts: {
+        total: library.records.length,
+        active: active.length,
+        archived: library.records.length - active.length,
+      },
+      usageAvailable,
+      usage: ranked,
+      zeroUse: unused.map((entry) => entry.id),
+      feedback: {
+        total: feedback.records.length,
+        verdicts,
+        outcomes,
+      },
+    },
+    human: [
+      `Prompts: ${active.length} active, ${library.records.length - active.length} archived`,
+      usageAvailable
+        ? `Used: ${ranked.filter((entry) => entry.useCount > 0).length} of ${active.length}`
+        : "Usage: index unavailable, counts show zero",
+      ...ranked
+        .filter((entry) => entry.useCount > 0)
+        .slice(0, 10)
+        .map(
+          (entry) =>
+            `  ${entry.useCount}x  ${entry.title}  (last ${entry.lastUsedAt ?? "unknown"})`,
+        ),
+      `Zero use: ${unused.length ? unused.map((entry) => entry.title).join(", ") : "(none)"}`,
+      `Feedback: ${feedback.records.length} records`,
+      `  Verdicts: ${tally(verdicts)}`,
+      `  Outcomes: ${tally(outcomes)}`,
+    ].join("\n"),
+  };
+}
+
+function activeIndexReadable(context: CommandContext): boolean {
+  try {
+    return inspectSearchIndex(context.searchIndexPath).status !== "missing";
+  } catch {
+    return false;
+  }
 }
 
 async function createCommand(context: CommandContext): Promise<CommandOutcome> {
@@ -2077,12 +2175,16 @@ function humanRecordLine(record: PromptRecord): string {
 }
 
 function humanRecord(record: PromptRecord): string {
+  const placeholders = extractPlaceholders(record.body);
   return [
     `# ${record.title}`,
     "",
     `ID: ${record.id}`,
     `Target: ${record.target}`,
     `Tags: ${record.tags.join(", ") || "(none)"}`,
+    ...(placeholders.length
+      ? [`Placeholders: ${placeholders.join(", ")}`]
+      : []),
     `Updated: ${record.updatedAt}`,
     `Archived: ${record.archivedAt ?? "no"}`,
     "",
@@ -2145,6 +2247,7 @@ Commands:
                                Issue a five-minute one-time mutation token
   feedback <operation>         Add, list, get, update, delete, or export feedback
   optimization <operation>     Generate, evaluate, inspect, approve, or roll back proposals
+  stats                        Show use counts, feedback tallies, and zero-use prompts
   enhance                      Enhance rough thoughts; requires --yes
 
 Global options:

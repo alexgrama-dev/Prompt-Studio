@@ -16,6 +16,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -107,6 +108,8 @@ import {
   extractPlaceholders,
   fillPlaceholders,
 } from "../src/core/placeholders.ts";
+import { buildFreshnessWarning } from "../src/core/build-freshness.ts";
+import { executePromptStudioFeedbackTool } from "../src/core/mcp-feedback.ts";
 import {
   fusePromptSearch,
   inspectQmd,
@@ -5816,6 +5819,280 @@ test("usage statistics rank used prompts first and placeholders fill safely", as
       older.body,
       "Blank values leave tokens visible instead of deleting content.",
     );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("agent feedback tool is capability-gated, validated, capped, and append-only", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-agentfb-"));
+  try {
+    const prompt = await createPrompt(directory, {
+      title: "Reviewed Prompt",
+      body: "Review the change and report evidence.",
+      target: "claude-code",
+    });
+    const archived = await createPrompt(directory, {
+      title: "Retired Prompt",
+      body: "Old workflow.",
+      target: "generic",
+    });
+    await updatePrompt(directory, archived.id, {
+      title: archived.title,
+      summary: archived.summary,
+      body: archived.body,
+      target: archived.target,
+      tags: archived.tags,
+      aliases: archived.aliases,
+      searchTerms: archived.searchTerms,
+      archived: true,
+    });
+
+    const verification = {
+      status: "passed" as const,
+      checkedAt: "2026-07-21T12:00:00.000Z",
+      command: "pnpm check",
+    };
+    const activeStatuses = resolveFeatureStatuses(
+      Object.fromEntries(
+        FEATURES.filter((feature) => feature.activationOrder > 0).map(
+          (feature) => [feature.id, { state: "active", verification }],
+        ),
+      ) as Parameters<typeof resolveFeatureStatuses>[0],
+    );
+    const audits: string[] = [];
+    const options = {
+      directory,
+      loadStatuses: async () => activeStatuses,
+      audit: async (event: { outcome: string }) => {
+        audits.push(event.outcome);
+      },
+      recordsPerHour: 2,
+    };
+
+    const disabled = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "claude-code",
+      },
+      { ...options, loadStatuses: async () => resolveFeatureStatuses() },
+    );
+    assert.equal(disabled.ok, false);
+    assert.equal(disabled.code, "FEATURE_DISABLED");
+    assert.equal((await listPromptUseFeedback(directory)).records.length, 0);
+
+    const recorded = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "claude-code",
+        note: "Followed the prompt and the fix landed cleanly.",
+      },
+      options,
+    );
+    assert.equal(recorded.ok, true);
+    const stored = await listPromptUseFeedback(directory);
+    assert.equal(stored.records.length, 1);
+    assert.equal(stored.records[0]?.verdict, "useful");
+    assert.equal(stored.records[0]?.outcome?.status, "succeeded");
+
+    const badVerdict = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "amazing",
+        outcomeStatus: "succeeded",
+        targetAgent: "claude-code",
+      },
+      options,
+    );
+    assert.equal(badVerdict.ok, false);
+    assert.equal(badVerdict.code, "INVALID_ARGUMENTS");
+
+    const secretNote = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "claude-code",
+        note: "Worked after exporting OPENAI_API_KEY=sk-abc123def456ghi789jkl012",
+      },
+      options,
+    );
+    assert.equal(secretNote.ok, false);
+    assert.equal(secretNote.code, "SENSITIVE_CONTENT");
+
+    const toArchived = await executePromptStudioFeedbackTool(
+      {
+        id: archived.id,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "generic",
+      },
+      options,
+    );
+    assert.equal(toArchived.ok, false);
+    assert.equal(toArchived.code, "PROMPT_ARCHIVED");
+
+    const second = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "not-useful",
+        outcomeStatus: "failed",
+        targetAgent: "codex",
+      },
+      options,
+    );
+    assert.equal(second.ok, true);
+    const capped = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "codex",
+      },
+      options,
+    );
+    assert.equal(capped.ok, false);
+    assert.equal(capped.code, "RATE_LIMITED");
+    assert.equal((await listPromptUseFeedback(directory)).records.length, 2);
+    assert.equal(audits.includes("success"), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("build freshness warns only when core sources are newer than the bundle", async () => {
+  const root = await mkdtemp(join(tmpdir(), "prompt-studio-fresh-"));
+  try {
+    await mkdir(join(root, "src", "core"), { recursive: true });
+    await mkdir(join(root, "dist-cli", "cli"), { recursive: true });
+    const bundle = join(root, "dist-cli", "cli", "prompt-studio.mjs");
+    await writeFile(bundle, "// bundle");
+    const past = new Date(Date.now() - 3_600_000);
+    await utimes(bundle, past, past);
+    await writeFile(join(root, "src", "core", "cli.ts"), "// newer source");
+    const warning = buildFreshnessWarning(bundle, "pnpm build:cli");
+    assert.ok(warning?.includes("pnpm build:cli"));
+
+    const future = new Date(Date.now() + 3_600_000);
+    await utimes(bundle, future, future);
+    assert.equal(buildFreshnessWarning(bundle, "pnpm build:cli"), undefined);
+    assert.equal(
+      buildFreshnessWarning(join(root, "missing.mjs"), "pnpm build:cli"),
+      undefined,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("stats reports usage, feedback tallies, zero-use prompts, and placeholder exposure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-stats-"));
+  const searchIndex = join(directory, "derived", "search.sqlite");
+  try {
+    const used = await createPrompt(directory, {
+      title: "Used Prompt",
+      body: "Investigate {{system}} for {{owner}}.",
+      target: "generic",
+    });
+    const idle = await createPrompt(directory, {
+      title: "Idle Prompt",
+      body: "No placeholders.",
+      target: "generic",
+    });
+    ensureSearchIndex([used, idle], searchIndex);
+    const verification = {
+      status: "passed" as const,
+      checkedAt: "2026-07-21T12:00:00.000Z",
+      command: "pnpm check",
+    };
+    const statuses = resolveFeatureStatuses(
+      Object.fromEntries(
+        FEATURES.filter((feature) => feature.activationOrder > 0).map(
+          (feature) => [feature.id, { state: "active", verification }],
+        ),
+      ) as Parameters<typeof resolveFeatureStatuses>[0],
+    );
+    let clipboard = "";
+    const common = {
+      featureStatuses: statuses,
+      writeClipboard: async (value: string) => {
+        clipboard = value;
+      },
+    };
+
+    const got = await executePromptStudioCli(
+      [
+        "get",
+        used.id,
+        "--json",
+        "--library",
+        directory,
+        "--search-index",
+        searchIndex,
+      ],
+      common,
+    );
+    assert.equal(got.exitCode, 0);
+    assert.deepEqual(
+      (JSON.parse(got.stdout) as { data: { placeholders: string[] } }).data
+        .placeholders,
+      ["system", "owner"],
+    );
+
+    const copied = await executePromptStudioCli(
+      ["copy", used.id, "--library", directory, "--search-index", searchIndex],
+      common,
+    );
+    assert.equal(copied.exitCode, 0);
+    assert.match(copied.stdout, /unfilled placeholders remain/);
+    assert.equal(clipboard, used.body);
+
+    await createPromptUseFeedback(directory, {
+      prompt: used,
+      targetAgent: "claude-code",
+      verdict: "useful",
+      outcomeStatus: "succeeded",
+    });
+
+    const stats = await executePromptStudioCli(
+      [
+        "stats",
+        "--json",
+        "--library",
+        directory,
+        "--search-index",
+        searchIndex,
+      ],
+      common,
+    );
+    assert.equal(stats.exitCode, 0);
+    const payload = (
+      JSON.parse(stats.stdout) as {
+        data: {
+          prompts: { active: number };
+          usage: Array<{ id: string; useCount: number }>;
+          zeroUse: string[];
+          feedback: {
+            total: number;
+            verdicts: Record<string, number>;
+            outcomes: Record<string, number>;
+          };
+        };
+      }
+    ).data;
+    assert.equal(payload.prompts.active, 2);
+    assert.equal(
+      payload.usage.find((entry) => entry.id === used.id)?.useCount,
+      1,
+    );
+    assert.deepEqual(payload.zeroUse, [idle.id]);
+    assert.equal(payload.feedback.total, 1);
+    assert.equal(payload.feedback.verdicts.useful, 1);
+    assert.equal(payload.feedback.outcomes.succeeded, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

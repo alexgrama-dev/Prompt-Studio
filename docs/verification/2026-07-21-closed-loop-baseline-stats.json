@@ -1,0 +1,99 @@
+{
+  "ok": true,
+  "command": "stats",
+  "data": {
+    "prompts": {
+      "total": 14,
+      "active": 13,
+      "archived": 1
+    },
+    "usageAvailable": true,
+    "usage": [
+      {
+        "id": "30c78c45-04dd-4b1d-bb78-ea29e13ce68b",
+        "title": "Disciplined Bug and Performance Diagnosis Loop",
+        "useCount": 0
+      },
+      {
+        "id": "bb57284d-8d43-41c4-8d27-48c7dd136f71",
+        "title": "Find Codebase Architecture Deepening Opportunities",
+        "useCount": 0
+      },
+      {
+        "id": "04d03ea5-0faf-4d40-a375-aff2d8b5f6bf",
+        "title": "Two-Axis Code Review Since a Fixed Point",
+        "useCount": 0
+      },
+      {
+        "id": "37e7bbc3-4155-4075-9897-e3e1cdc7dd3f",
+        "title": "Test-Driven Development Loop",
+        "useCount": 0
+      },
+      {
+        "id": "4cbc0d5b-eb25-43c3-8c2f-72d98e16706b",
+        "title": "Web Interface Guidelines Review",
+        "useCount": 0
+      },
+      {
+        "id": "8d45254f-5ef5-4099-b1ce-7a6c122f12c7",
+        "title": "Extract a Ubiquitous Language Glossary",
+        "useCount": 0
+      },
+      {
+        "id": "9e14510d-5975-4fff-828f-7850ed5279c4",
+        "title": "Triage Issues Through a Role State Machine",
+        "useCount": 0
+      },
+      {
+        "id": "0c41022f-33ea-4b90-95de-49a1421a1b31",
+        "title": "Capture Session Learnings",
+        "useCount": 0
+      },
+      {
+        "id": "a5b7d655-9aee-492a-9c36-8cff81178c19",
+        "title": "Plan a Refactor in Tiny Safe Commits",
+        "useCount": 0
+      },
+      {
+        "id": "80aada1b-92f5-4f03-bc1b-b0c3c07cacad",
+        "title": "Survey Coding-Agent Evaluation Methods and Design a Practical Framework",
+        "useCount": 0
+      },
+      {
+        "id": "8f95d819-f660-4072-bdaf-749d3758420b",
+        "title": "Assess Production Readiness of WebGPU",
+        "useCount": 0
+      },
+      {
+        "id": "4762a5f0-81ea-4add-9733-e47e2a47d448",
+        "title": "React 19.2 External-System Synchronization with useEffect",
+        "useCount": 0
+      },
+      {
+        "id": "207727d0-2762-4748-8f84-96146408a843",
+        "title": "Diagnose and Fix a Coding Bug with Evidence",
+        "useCount": 0
+      }
+    ],
+    "zeroUse": [
+      "30c78c45-04dd-4b1d-bb78-ea29e13ce68b",
+      "bb57284d-8d43-41c4-8d27-48c7dd136f71",
+      "04d03ea5-0faf-4d40-a375-aff2d8b5f6bf",
+      "37e7bbc3-4155-4075-9897-e3e1cdc7dd3f",
+      "4cbc0d5b-eb25-43c3-8c2f-72d98e16706b",
+      "8d45254f-5ef5-4099-b1ce-7a6c122f12c7",
+      "9e14510d-5975-4fff-828f-7850ed5279c4",
+      "0c41022f-33ea-4b90-95de-49a1421a1b31",
+      "a5b7d655-9aee-492a-9c36-8cff81178c19",
+      "80aada1b-92f5-4f03-bc1b-b0c3c07cacad",
+      "8f95d819-f660-4072-bdaf-749d3758420b",
+      "4762a5f0-81ea-4add-9733-e47e2a47d448",
+      "207727d0-2762-4748-8f84-96146408a843"
+    ],
+    "feedback": {
+      "total": 0,
+      "verdicts": {},
+      "outcomes": {}
+    }
+  }
+}

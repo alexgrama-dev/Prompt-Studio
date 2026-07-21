@@ -8,6 +8,8 @@ import {
   type PromptRecord,
   type PromptTarget,
 } from "./prompt-store.ts";
+import { buildFreshnessWarning } from "./build-freshness.ts";
+import { extractPlaceholders } from "./placeholders.ts";
 import { containsLikelySecret } from "./secrets.ts";
 import {
   inspectSearchIndex,
@@ -232,6 +234,7 @@ async function statusTool(
 ): Promise<McpReadSuccess> {
   assertStrictObject(rawArguments, []);
   const feature = getFeatureStatus(statuses, "mcp-read");
+  const staleBuild = buildFreshnessWarning(process.argv[1], "pnpm build:mcp");
   let libraryState: Record<string, unknown>;
   try {
     const library = await readLibrary(options.directory, signal);
@@ -276,6 +279,7 @@ async function statusTool(
           : []),
       ],
       library: libraryState,
+      ...(staleBuild ? { staleBuild } : {}),
     },
     [
       `Prompt Studio read-only MCP: ${title(feature.effectiveState)}`,
@@ -283,6 +287,7 @@ async function statusTool(
       libraryState.state === "ready"
         ? `Prompts: ${String(libraryState.promptCount)} · invalid files: ${String(libraryState.invalidCount)}`
         : `Library: ${String(libraryState.message)}`,
+      ...(staleBuild ? [`Warning: ${staleBuild}`] : []),
     ].join("\n"),
     0,
   );
@@ -518,6 +523,7 @@ async function getTool(
   }
   const body = redactLocalPaths(record.body).slice(0, maxBodyCharacters);
   const truncated = body.length < redactLocalPaths(record.body).length;
+  const placeholders = extractPlaceholders(record.body);
   const data: Record<string, unknown> = {
     id: record.id,
     title: redactLocalPaths(record.title),
@@ -525,6 +531,7 @@ async function getTool(
     body,
     bodyCharacters: record.body.length,
     truncated,
+    placeholders,
     target: record.target,
     tags: record.tags.map(redactLocalPaths),
     aliases: record.aliases.map(redactLocalPaths),
@@ -561,6 +568,9 @@ async function getTool(
     `Prompt ID: ${record.id}`,
     `Target: ${record.target}`,
     `Tags: ${record.tags.join(", ") || "(none)"}`,
+    placeholders.length
+      ? `Placeholders to fill before use: ${placeholders.join(", ")}`
+      : "",
     truncated
       ? `Body truncated at ${maxBodyCharacters} of ${record.body.length} characters.`
       : "",
