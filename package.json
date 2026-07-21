@@ -60,10 +60,24 @@
       "mode": "view"
     },
     {
+      "name": "menubar-prompts",
+      "title": "Most-Used Prompts",
+      "description": "Copy your most-used prompts from the macOS menubar",
+      "mode": "menu-bar"
+    },
+    {
       "name": "enhance-prompt",
       "title": "Enhance Prompt",
       "description": "Turn rough thoughts into a complete prompt when enhancement is activated",
       "mode": "view",
+      "arguments": [
+        {
+          "name": "thoughts",
+          "type": "text",
+          "placeholder": "Rough thoughts",
+          "required": false
+        }
+      ],
       "preferences": [
         {
           "name": "openaiApiKey",

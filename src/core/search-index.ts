@@ -203,6 +203,61 @@ export function recordPromptUse(
   }
 }
 
+export interface PromptUsage {
+  useCount: number;
+  lastUsedAt: string;
+}
+
+export function loadPromptUsage(
+  path = defaultSearchIndexPath(),
+): Map<string, PromptUsage> {
+  const usage = new Map<string, PromptUsage>();
+  let database: DatabaseSync;
+  try {
+    database = openHealthyDatabase(path);
+  } catch {
+    // ponytail: a missing or unhealthy index only loses ranking, never data.
+    return usage;
+  }
+  try {
+    const rows = database
+      .prepare(`SELECT prompt_id, use_count, last_used_at FROM usage`)
+      .all() as Array<{
+      prompt_id: string;
+      use_count: number;
+      last_used_at: string;
+    }>;
+    for (const row of rows) {
+      usage.set(row.prompt_id, {
+        useCount: Number(row.use_count),
+        lastUsedAt: String(row.last_used_at),
+      });
+    }
+  } finally {
+    database.close();
+  }
+  return usage;
+}
+
+export function rankRecordsByUsage<
+  T extends { id: string; updatedAt: string },
+>(records: readonly T[], usage: ReadonlyMap<string, PromptUsage>): T[] {
+  return [...records].sort((left, right) => {
+    const leftUse = usage.get(left.id);
+    const rightUse = usage.get(right.id);
+    if (leftUse && rightUse) {
+      return (
+        rightUse.lastUsedAt.localeCompare(leftUse.lastUsedAt) ||
+        rightUse.useCount - leftUse.useCount ||
+        right.updatedAt.localeCompare(left.updatedAt)
+      );
+    }
+    if (leftUse) return -1;
+    if (rightUse) return 1;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
 export function markSearchIndexForRebuild(
   reason: string,
   path = defaultSearchIndexPath(),

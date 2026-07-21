@@ -94,13 +94,19 @@ import { createPromptStudioMcpServer } from "../mcp/server.mts";
 import {
   ensureSearchIndex,
   inspectSearchIndex,
+  loadPromptUsage,
   promptLibraryFingerprint,
+  rankRecordsByUsage,
   recordPromptUse,
   rebuildSearchIndex,
   removeSearchRecord,
   searchPrompts,
   upsertSearchRecord,
 } from "../src/core/search-index.ts";
+import {
+  extractPlaceholders,
+  fillPlaceholders,
+} from "../src/core/placeholders.ts";
 import {
   fusePromptSearch,
   inspectQmd,
@@ -5760,3 +5766,57 @@ function optimizationRubric(total: number): OptimizationRubricScores {
   assert.equal(remaining, 0);
   return scores;
 }
+
+test("usage statistics rank used prompts first and placeholders fill safely", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-usage-"));
+  const databasePath = join(directory, "derived", "search.sqlite");
+  try {
+    const older = await createPrompt(directory, {
+      title: "Older But Used",
+      body: "Investigate {{system}} and report to {{owner}} about {{system}}.",
+      target: "generic",
+    });
+    const newer = await createPrompt(directory, {
+      title: "Newer Never Used",
+      body: "No placeholders here.",
+      target: "generic",
+    });
+    const library = await listPrompts(directory);
+    ensureSearchIndex(library.records, databasePath);
+
+    assert.equal(loadPromptUsage(databasePath).size, 0);
+    assert.equal(
+      rankRecordsByUsage(library.records, loadPromptUsage(databasePath))[0]?.id,
+      newer.id,
+      "Without usage the newest update leads.",
+    );
+
+    recordPromptUse(older.id, databasePath);
+    recordPromptUse(older.id, databasePath);
+    const usage = loadPromptUsage(databasePath);
+    assert.equal(usage.get(older.id)?.useCount, 2);
+    assert.equal(
+      rankRecordsByUsage(library.records, usage)[0]?.id,
+      older.id,
+      "A used prompt outranks a newer unused prompt.",
+    );
+
+    const missing = loadPromptUsage(join(directory, "missing", "none.sqlite"));
+    assert.equal(missing.size, 0, "A missing index falls back to no usage.");
+    assert.equal(rankRecordsByUsage(library.records, missing)[0]?.id, newer.id);
+
+    assert.deepEqual(extractPlaceholders(older.body), ["system", "owner"]);
+    assert.deepEqual(extractPlaceholders(newer.body), []);
+    assert.equal(
+      fillPlaceholders(older.body, { system: "the indexer", owner: "Alex" }),
+      "Investigate the indexer and report to Alex about the indexer.",
+    );
+    assert.equal(
+      fillPlaceholders(older.body, { system: "  " }),
+      older.body,
+      "Blank values leave tokens visible instead of deleting content.",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

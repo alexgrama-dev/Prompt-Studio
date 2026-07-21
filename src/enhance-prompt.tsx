@@ -141,7 +141,12 @@ interface EditorValues {
 
 const RECENT_PROJECTS_KEY = "prompt-studio.recent-projects.v1";
 
-export default function EnhancePrompt() {
+export default function EnhancePrompt(props: {
+  arguments?: { thoughts?: string };
+  fallbackText?: string;
+}) {
+  const initialThoughts =
+    props.arguments?.thoughts?.trim() || props.fallbackText?.trim() || "";
   const [state, setState] = useState<
     "checking" | "disabled" | "preview" | "active" | "error"
   >("checking");
@@ -198,6 +203,7 @@ export default function EnhancePrompt() {
     return (
       <EnhancementWorkspace
         state={state}
+        initialThoughts={initialThoughts}
         projectContextState={projectContextState}
         context7State={context7State}
         webState={webState}
@@ -226,6 +232,7 @@ function EnhancementWorkspace({
   githubState,
   anthropicState,
   googleState,
+  initialThoughts,
 }: {
   state: "preview" | "active";
   projectContextState: FeatureState;
@@ -235,6 +242,7 @@ function EnhancementWorkspace({
   githubState: FeatureState;
   anthropicState: FeatureState;
   googleState: FeatureState;
+  initialThoughts: string;
 }) {
   const preferences = getPreferenceValues<Preferences>();
   const { push } = useNavigation();
@@ -244,7 +252,7 @@ function EnhancementWorkspace({
     useState<EnhancementFormValues["profileId"]>("openai-standard-v1");
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
-  const [roughThoughts, setRoughThoughts] = useState("");
+  const [roughThoughts, setRoughThoughts] = useState(initialThoughts);
   const [projects, setProjects] = useState<DiscoveredProject[]>([]);
   const [recentProjectPaths, setRecentProjectPaths] = useState<string[]>([]);
   const [projectDiscoveryLoading, setProjectDiscoveryLoading] = useState(false);

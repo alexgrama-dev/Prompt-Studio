@@ -24,6 +24,8 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `browse-prompts` command */
   export type BrowsePrompts = ExtensionPreferences & {}
+  /** Preferences accessible in the `menubar-prompts` command */
+  export type MenubarPrompts = ExtensionPreferences & {}
   /** Preferences accessible in the `enhance-prompt` command */
   export type EnhancePrompt = ExtensionPreferences & {
   /** OpenAI API Key - Stored by Raycast in encrypted command-scoped storage; read only after enhancement enters Preview */
@@ -36,7 +38,12 @@ declare namespace Preferences {
 declare namespace Arguments {
   /** Arguments passed to the `browse-prompts` command */
   export type BrowsePrompts = {}
+  /** Arguments passed to the `menubar-prompts` command */
+  export type MenubarPrompts = {}
   /** Arguments passed to the `enhance-prompt` command */
-  export type EnhancePrompt = {}
+  export type EnhancePrompt = {
+  /** Rough thoughts */
+  "thoughts": string
+}
 }
 

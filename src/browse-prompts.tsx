@@ -3,13 +3,16 @@ import {
   ActionPanel,
   Alert,
   Clipboard,
+  closeMainWindow,
   Color,
   confirmAlert,
   Detail,
+  Form,
   getPreferenceValues,
   Icon,
   Keyboard,
   List,
+  showHUD,
   showToast,
   Toast,
   useNavigation,
@@ -35,11 +38,13 @@ import { currentProjectCommit } from "./core/project-context";
 import { ensureQmd, fusePromptSearch, searchQmd } from "./core/qmd-search";
 import {
   defaultSearchIndexPath,
+  loadPromptUsage,
   recordPromptUse,
   searchPrompts,
   type SearchFilters,
   type SearchResult,
 } from "./core/search-index";
+import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
 import {
   commaSeparated,
   PromptForm,
@@ -500,10 +505,30 @@ function PromptItem({
     await onReload();
   }
 
-  async function copyPrompt() {
-    await Clipboard.copy(record.body);
-    if (trackUsage) recordPromptUse(record.id);
-    await showToast(Toast.Style.Success, "Prompt Copied");
+  const placeholders = extractPlaceholders(record.body);
+
+  async function usePrompt(body: string, mode: "paste" | "copy") {
+    let useCount: number | undefined;
+    if (trackUsage) {
+      try {
+        recordPromptUse(record.id);
+        useCount = loadPromptUsage().get(record.id)?.useCount;
+      } catch {
+        // ponytail: a missing index only loses ranking, never the paste.
+      }
+    }
+    const nudge =
+      feedbackEnabled && useCount !== undefined && useCount % 5 === 0
+        ? ` · Used ${useCount} times — consider recording feedback`
+        : "";
+    if (mode === "paste") {
+      await closeMainWindow();
+      await Clipboard.paste(body);
+      await showHUD(`Prompt Pasted${nudge}`);
+    } else {
+      await Clipboard.copy(body);
+      await showToast(Toast.Style.Success, "Prompt Copied", nudge || undefined);
+    }
   }
 
   return (
@@ -524,11 +549,32 @@ function PromptItem({
       }
       actions={
         <ActionPanel>
-          <Action
-            title="Copy Prompt"
-            icon={Icon.Clipboard}
-            onAction={copyPrompt}
-          />
+          {placeholders.length > 0 ? (
+            <Action.Push
+              title="Fill Placeholders and Use"
+              icon={Icon.TextInput}
+              target={
+                <PlaceholderForm
+                  record={record}
+                  placeholders={placeholders}
+                  onUse={usePrompt}
+                />
+              }
+            />
+          ) : (
+            <>
+              <Action
+                title="Paste Prompt"
+                icon={Icon.ArrowRightCircle}
+                onAction={() => usePrompt(record.body, "paste")}
+              />
+              <Action
+                title="Copy Prompt"
+                icon={Icon.Clipboard}
+                onAction={() => usePrompt(record.body, "copy")}
+              />
+            </>
+          )}
           <Action.Push
             title="Edit Prompt"
             icon={Icon.Pencil}
@@ -704,6 +750,55 @@ function PromptDetail({
         matchReason,
       )}
     />
+  );
+}
+
+function PlaceholderForm({
+  record,
+  placeholders,
+  onUse,
+}: {
+  record: PromptRecord;
+  placeholders: string[];
+  onUse: (body: string, mode: "paste" | "copy") => Promise<void>;
+}) {
+  const { pop } = useNavigation();
+
+  async function submit(
+    values: Record<string, string>,
+    mode: "paste" | "copy",
+  ) {
+    pop();
+    await onUse(fillPlaceholders(record.body, values), mode);
+  }
+
+  return (
+    <Form
+      navigationTitle={`Fill ${record.title}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Paste Prompt"
+            icon={Icon.ArrowRightCircle}
+            onSubmit={(values) =>
+              submit(values as Record<string, string>, "paste")
+            }
+          />
+          <Action.SubmitForm
+            title="Copy Prompt"
+            icon={Icon.Clipboard}
+            onSubmit={(values) =>
+              submit(values as Record<string, string>, "copy")
+            }
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text="Blank values keep their {{placeholder}} visible so nothing is silently lost." />
+      {placeholders.map((name) => (
+        <Form.TextField key={name} id={name} title={name} />
+      ))}
+    </Form>
   );
 }
 
