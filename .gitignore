@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-cli/
+dist-mcp/
+.DS_Store
+*.log
+coverage/

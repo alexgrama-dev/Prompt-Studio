@@ -1,0 +1,124 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "prompt-studio",
+  "title": "Prompt Studio",
+  "type": "module",
+  "description": "Find, improve, and reuse prompts across coding tools",
+  "icon": "command-icon.png",
+  "author": "alexgrama",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools",
+    "Productivity"
+  ],
+  "license": "MIT",
+  "bin": {
+    "prompt-studio": "dist-cli/cli/prompt-studio.mjs",
+    "prompt-studio-mcp": "dist-mcp/prompt-studio.mjs"
+  },
+  "preferences": [
+    {
+      "name": "libraryDirectory",
+      "type": "textfield",
+      "required": false,
+      "title": "Prompt Directory",
+      "description": "Absolute path or ~/ path containing Prompt Studio Markdown files",
+      "default": "~/Library/Application Support/Prompt Studio/Prompts"
+    },
+    {
+      "name": "qmdExecutable",
+      "type": "textfield",
+      "required": false,
+      "title": "QMD Executable",
+      "description": "Optional absolute path to qmd; conventional macOS install paths are detected automatically",
+      "default": "~/.bun/bin/qmd"
+    },
+    {
+      "name": "projectRoots",
+      "type": "textfield",
+      "required": false,
+      "title": "Project Roots",
+      "description": "Folders Prompt Studio may scan for saved Git repositories; you can also choose one exact repo directly in Enhance Prompt",
+      "default": "~/Developer"
+    },
+    {
+      "name": "sshProjectRoot",
+      "type": "textfield",
+      "required": false,
+      "title": "Mac Mini Project Root",
+      "description": "Optional read-only SSH source in host:path form; leave blank to disable",
+      "default": "mini:~/Developer"
+    }
+  ],
+  "commands": [
+    {
+      "name": "browse-prompts",
+      "title": "Prompt Studio",
+      "description": "Find, preview, copy, and save prompts",
+      "mode": "view"
+    },
+    {
+      "name": "enhance-prompt",
+      "title": "Enhance Prompt",
+      "description": "Turn rough thoughts into a complete prompt when enhancement is activated",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "openaiApiKey",
+          "type": "password",
+          "required": false,
+          "title": "OpenAI API Key",
+          "description": "Stored by Raycast in encrypted command-scoped storage; read only after enhancement enters Preview"
+        },
+        {
+          "name": "context7ApiKey",
+          "type": "password",
+          "required": false,
+          "title": "Context7 API Key",
+          "description": "Stored by Raycast in encrypted command-scoped storage; used only after an exact documentation query is reviewed"
+        }
+      ]
+    }
+  ],
+  "scripts": {
+    "dev": "ray develop",
+    "build": "ray build -e dist",
+    "build:cli": "tsc -p tsconfig.cli.json && chmod +x dist-cli/cli/prompt-studio.mjs",
+    "build:mcp": "esbuild mcp/prompt-studio.mts --bundle --platform=node --format=esm --target=node22 --outfile=dist-mcp/prompt-studio.mjs && chmod +x dist-mcp/prompt-studio.mjs",
+    "lint": "eslint src test evals/*.mts cli/*.mts mcp/*.mts scripts/*.mts --max-warnings=0",
+    "lint:store": "ray lint",
+    "fix-lint": "eslint src test evals/*.mts cli/*.mts mcp/*.mts scripts/*.mts --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "PROMPT_STUDIO_DISABLE_INDEX_SYNC=1 node --experimental-strip-types --test test/*.test.mts",
+    "verify:mcp-bundle": "node --experimental-strip-types scripts/verify-mcp-bundle.mts",
+    "verify:mcp-mutations": "node --experimental-strip-types scripts/verify-mcp-mutations.mts",
+    "verify:mcp-runtime": "node --experimental-strip-types scripts/verify-mcp-runtime.mts",
+    "verify:feedback-cli": "node --experimental-strip-types scripts/verify-feedback-cli.mts",
+    "verify:optimization-cli": "node --experimental-strip-types scripts/verify-optimization-cli.mts",
+    "eval:dry": "node --experimental-strip-types evals/run-provider.mts",
+    "eval:openai": "node --experimental-strip-types evals/run-provider.mts --profile openai-standard-v1",
+    "eval:anthropic": "node --experimental-strip-types evals/run-provider.mts --profile anthropic-sonnet-5-v1",
+    "eval:google": "node --experimental-strip-types evals/run-provider.mts --profile google-gemini-3.5-flash-v1",
+    "check": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm build:cli && pnpm build:mcp && pnpm verify:mcp-runtime && pnpm verify:mcp-bundle && pnpm verify:mcp-mutations && pnpm verify:feedback-cli && pnpm verify:optimization-cli"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@raycast/api": "1.104.22",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "2.2.0",
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "esbuild": "0.28.1",
+    "eslint": "9.39.2",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=22.22.2"
+  }
+}

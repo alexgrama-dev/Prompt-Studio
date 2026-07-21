@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist-cli",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "."
+  },
+  "include": ["cli/**/*.mts", "src/core/**/*.ts"]
+}
