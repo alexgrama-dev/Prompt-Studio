@@ -96,6 +96,7 @@ import { mergeReviewedSources } from "./core/research-safety";
 import {
   createPrompt,
   resolvePromptDirectory,
+  updatePrompt,
   type PromptTarget,
 } from "./core/prompt-store";
 import {
@@ -144,9 +145,14 @@ const RECENT_PROJECTS_KEY = "prompt-studio.recent-projects.v1";
 export default function EnhancePrompt(props: {
   arguments?: { thoughts?: string };
   fallbackText?: string;
+  launchContext?: { thoughts?: string; revisionOfPromptId?: string };
 }) {
   const initialThoughts =
-    props.arguments?.thoughts?.trim() || props.fallbackText?.trim() || "";
+    props.launchContext?.thoughts?.trim() ||
+    props.arguments?.thoughts?.trim() ||
+    props.fallbackText?.trim() ||
+    "";
+  const revisionOfPromptId = props.launchContext?.revisionOfPromptId;
   const [state, setState] = useState<
     "checking" | "disabled" | "preview" | "active" | "error"
   >("checking");
@@ -204,6 +210,7 @@ export default function EnhancePrompt(props: {
       <EnhancementWorkspace
         state={state}
         initialThoughts={initialThoughts}
+        revisionOfPromptId={revisionOfPromptId}
         projectContextState={projectContextState}
         context7State={context7State}
         webState={webState}
@@ -233,6 +240,7 @@ function EnhancementWorkspace({
   anthropicState,
   googleState,
   initialThoughts,
+  revisionOfPromptId,
 }: {
   state: "preview" | "active";
   projectContextState: FeatureState;
@@ -243,6 +251,7 @@ function EnhancementWorkspace({
   anthropicState: FeatureState;
   googleState: FeatureState;
   initialThoughts: string;
+  revisionOfPromptId?: string | undefined;
 }) {
   const preferences = getPreferenceValues<Preferences>();
   const { push } = useNavigation();
@@ -884,6 +893,7 @@ function EnhancementWorkspace({
           request={effectiveRequest}
           run={run}
           directory={resolvePromptDirectory(preferences.libraryDirectory)}
+          revisionOfPromptId={revisionOfPromptId}
         />,
       );
     } catch (error) {
@@ -2961,10 +2971,12 @@ function EnhancementPreview({
   request,
   run,
   directory,
+  revisionOfPromptId,
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
   directory: string;
+  revisionOfPromptId?: string | undefined;
 }) {
   const result = run.result;
   const [isSaving, setIsSaving] = useState(false);
@@ -2984,11 +2996,14 @@ function EnhancementPreview({
     if (isSaving) return;
     setIsSaving(true);
     try {
-      await createPrompt(
-        directory,
-        enhancementResultToPromptDraft(run, request),
-      );
-      await showHUD("Prompt saved");
+      const draft = enhancementResultToPromptDraft(run, request);
+      if (revisionOfPromptId) {
+        await updatePrompt(directory, revisionOfPromptId, draft);
+        await showHUD("Prompt revision saved");
+      } else {
+        await createPrompt(directory, draft);
+        await showHUD("Prompt saved");
+      }
     } catch (error) {
       await showToast(
         Toast.Style.Failure,
@@ -3050,6 +3065,7 @@ function EnhancementPreview({
                 request={request}
                 run={run}
                 directory={directory}
+                revisionOfPromptId={revisionOfPromptId}
               />
             }
           />
@@ -3077,10 +3093,12 @@ function EnhancementEditor({
   request,
   run,
   directory,
+  revisionOfPromptId,
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
   directory: string;
+  revisionOfPromptId?: string | undefined;
 }) {
   async function save(values: EditorValues) {
     try {
@@ -3095,11 +3113,14 @@ function EnhancementEditor({
         request,
       );
       const approvedRun: EnhancementRun = { ...run, result: edited };
-      await createPrompt(
-        directory,
-        enhancementResultToPromptDraft(approvedRun, request),
-      );
-      await showHUD("Enhanced prompt saved");
+      const draft = enhancementResultToPromptDraft(approvedRun, request);
+      if (revisionOfPromptId) {
+        await updatePrompt(directory, revisionOfPromptId, draft);
+        await showHUD("Prompt revision saved");
+      } else {
+        await createPrompt(directory, draft);
+        await showHUD("Enhanced prompt saved");
+      }
     } catch (error) {
       await showToast(
         Toast.Style.Failure,

@@ -10,7 +10,9 @@ import {
   Form,
   Icon,
   Keyboard,
+  launchCommand,
   LaunchProps,
+  LaunchType,
   List,
   showHUD,
   showToast,
@@ -55,7 +57,14 @@ import {
   PromptForm,
   type PromptFormValues,
 } from "./prompt-form";
-import { createPromptUseFeedback } from "./core/feedback-store";
+import {
+  createPromptUseFeedback,
+  listPromptUseFeedback,
+} from "./core/feedback-store";
+import {
+  buildFeedbackRevisionThoughts,
+  feedbackRevisionCandidates,
+} from "./core/feedback-revision";
 import { FeedbackForm, feedbackDraftFromForm } from "./feedback-form";
 import FeatureStatus from "./feature-status";
 import PromptFeedback from "./prompt-feedback";
@@ -499,6 +508,35 @@ function PromptItem({
     await onReload();
   }
 
+  async function improveFromFeedback() {
+    try {
+      const feedback = await listPromptUseFeedback(directory);
+      const candidates = feedbackRevisionCandidates(feedback.records, record.id);
+      if (candidates.length === 0) {
+        await showToast(
+          Toast.Style.Failure,
+          "No Usable Feedback",
+          "Record a verdict, critique, correction, or outcome for this prompt first.",
+        );
+        return;
+      }
+      await launchCommand({
+        name: "enhance-prompt",
+        type: LaunchType.UserInitiated,
+        context: {
+          thoughts: buildFeedbackRevisionThoughts(record, candidates),
+          revisionOfPromptId: record.id,
+        },
+      });
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Start Feedback Revision",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   async function remove() {
     const confirmed = await confirmAlert({
       title: `Delete “${record.title}”?`,
@@ -615,6 +653,11 @@ function PromptItem({
                 title="Review Prompt Feedback"
                 icon={Icon.Eye}
                 target={<PromptFeedback />}
+              />
+              <Action
+                title="Improve from Feedback"
+                icon={Icon.Wand}
+                onAction={improveFromFeedback}
               />
             </>
           ) : null}

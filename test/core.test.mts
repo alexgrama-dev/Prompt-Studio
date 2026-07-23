@@ -8,6 +8,7 @@ import {
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFile,
   lstat,
   mkdir,
   mkdtemp,
@@ -39,6 +40,17 @@ import {
   updatePromptUseFeedback,
 } from "../src/core/feedback-store.ts";
 import { CLI_EXIT_CODES, executePromptStudioCli } from "../src/core/cli.ts";
+import {
+  buildFeedbackRevisionThoughts,
+  feedbackRevisionCandidates,
+} from "../src/core/feedback-revision.ts";
+import {
+  listMissedSearches,
+  missedSearchLogPath,
+  recordMissedSearch,
+  tallyMissedSearches,
+} from "../src/core/missed-searches.ts";
+import { findPromptOverlaps } from "../src/core/overlap.ts";
 import {
   executePromptStudioReadTool,
   type McpAuditEvent,
@@ -742,6 +754,21 @@ test("the research router is need-based and applies one source-priority rulebook
     }).routes,
     ["none"],
   );
+  const corroborated = planResearchRoutes({
+    roughThoughts: "Check the latest WebGPU browser support.",
+    researchLevel: "deep",
+    hasSelectedProject: false,
+  });
+  assert.deepEqual(corroborated.routes, ["web", "exa"]);
+  assert.match(String(corroborated.reasons.exa), /second retrieval engine/);
+  assert.deepEqual(
+    planResearchRoutes({
+      roughThoughts: "Check the latest WebGPU browser support.",
+      researchLevel: "auto",
+      hasSelectedProject: false,
+    }).routes,
+    ["web"],
+  );
   assert.deepEqual(
     RESEARCH_SOURCE_POLICY.map((policy) => policy.route),
     ["local-project", "context7", "github", "web", "exa"],
@@ -1320,13 +1347,13 @@ test("OpenAI web research is query-reviewed, bounded, stateless, and citation-ba
   assert.equal(plan.route, "web");
   assert.equal(plan.query, "latest official WebGPU browser support");
   assert.equal(plan.maximumCostUsd, maximumWebResearchCostUsd());
-  assert.equal(plan.maximumCostUsd, 0.37);
+  assert.equal(plan.maximumCostUsd, 0.45);
 
   const body = buildOpenAIWebResearchRequest(plan);
   assert.equal(body.model, "gpt-5.6-terra");
   assert.equal(body.store, false);
   assert.equal(body.tool_choice, "required");
-  assert.equal(body.max_tool_calls, 2);
+  assert.equal(body.max_tool_calls, 4);
   assert.deepEqual(body.include, ["web_search_call.action.sources"]);
   assert.match(String(body.instructions), /material disagreement/);
 
@@ -1568,6 +1595,10 @@ test("Exa research is Deep-only, query-reviewed, bounded, and cost-reported", as
   );
   assert.equal(
     planExaResearch("Check the latest official browser support.", "deep").route,
+    "exa",
+  );
+  assert.equal(
+    planExaResearch("Make the acceptance criteria explicit.", "deep").route,
     "none",
   );
   const plan = planExaResearch(
@@ -4747,6 +4778,18 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
       assert.equal(malformed.isError, true);
       assert.match(mcpText(malformed), /Invalid arguments/i);
 
+      const missedQuery = "kubernetes ingress debugging";
+      const missed = await callMcpTool(
+        connection.client,
+        "prompt_studio_search",
+        { query: missedQuery },
+      );
+      assert.notEqual(missed.isError, true);
+      assert.equal(mcpStructuredData(missed).count, 0);
+      const missedRecords = await listMissedSearches(directory);
+      assert.equal(missedRecords.length, 1);
+      assert.equal(missedRecords[0]?.query, missedQuery);
+
       const auditText = JSON.stringify(audits);
       assert.equal(auditText.includes("flaky cache"), false);
       assert.equal(auditText.includes(primary.id), false);
@@ -6117,5 +6160,184 @@ test("compiler 1.2.0 pins threshold preservation, conditional UI verification, a
       /only when the task itself can change rendered user-interface behavior/,
     );
     assert.match(composed, /omit UI verification entirely/);
+  }
+});
+
+test("missed searches are logged, tallied, and robust to malformed lines", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-missed-"));
+  try {
+    await recordMissedSearch(
+      directory,
+      "   ",
+      () => new Date("2026-07-23T10:00:00.000Z"),
+    );
+    await recordMissedSearch(
+      directory,
+      "terraform drift check",
+      () => new Date("2026-07-23T10:00:00.000Z"),
+    );
+    await recordMissedSearch(
+      directory,
+      "Terraform Drift Check",
+      () => new Date("2026-07-23T11:00:00.000Z"),
+    );
+    await recordMissedSearch(
+      directory,
+      "sql migration review",
+      () => new Date("2026-07-23T09:00:00.000Z"),
+    );
+    await appendFile(missedSearchLogPath(directory), "not json\n", "utf8");
+
+    const records = await listMissedSearches(directory);
+    assert.equal(records.length, 3);
+    const tallies = tallyMissedSearches(records);
+    assert.equal(tallies.length, 2);
+    assert.equal(tallies[0]?.query, "terraform drift check");
+    assert.equal(tallies[0]?.count, 2);
+    assert.equal(tallies[0]?.lastAt, "2026-07-23T11:00:00.000Z");
+    assert.equal(tallies[1]?.query, "sql migration review");
+    assert.deepEqual(await listMissedSearches(join(directory, "missing")), []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("overlap detection reports near-duplicate active prompts only", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-overlap-"));
+  try {
+    const first = await createPrompt(directory, {
+      title: "Review a Pull Request",
+      body: "Review the pull request for correctness, security, and regression risks before merge.",
+      target: "generic",
+    });
+    const second = await createPrompt(directory, {
+      title: "Review a Pull Request Thoroughly",
+      body: "Review the pull request for correctness, security, and regression risks before merge. Add test evidence.",
+      target: "generic",
+    });
+    await createPrompt(directory, {
+      title: "Write Release Notes",
+      body: "Summarize shipped changes into short release notes for end users.",
+      target: "generic",
+    });
+
+    const library = await listPrompts(directory);
+    const overlaps = findPromptOverlaps(library.records, 0.5);
+    assert.equal(overlaps.length, 1);
+    assert.deepEqual(
+      [overlaps[0]!.leftId, overlaps[0]!.rightId].sort(),
+      [first.id, second.id].sort(),
+    );
+    assert.ok(overlaps[0]!.similarity >= 0.5);
+
+    const withArchived = library.records.map((record) =>
+      record.id === second.id
+        ? { ...record, archivedAt: "2026-07-23T00:00:00.000Z" }
+        : record,
+    );
+    assert.equal(findPromptOverlaps(withArchived, 0.5).length, 0);
+    assert.throws(() => findPromptOverlaps(library.records, 0.1), /threshold/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("feedback revision candidates filter by prompt and signal, and thoughts distill the records", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-revision-"));
+  try {
+    const prompt = await createPrompt(directory, {
+      title: "Refactor Safely",
+      body: "Refactor the module without changing behavior.",
+      target: "codex",
+    });
+    const other = await createPrompt(directory, {
+      title: "Explain a Stack Trace",
+      body: "Explain the failing stack trace in plain language.",
+      target: "generic",
+    });
+    await createPromptUseFeedback(directory, {
+      prompt,
+      targetAgent: "codex",
+      verdict: "not-useful",
+      critique: "The prompt never asks for a test baseline.",
+      correction: "Add a failing-test-first step.",
+      outcomeStatus: "failed",
+      outcomeSummary: "The agent skipped verification.",
+    });
+    await createPromptUseFeedback(directory, {
+      prompt: other,
+      targetAgent: "codex",
+      verdict: "useful",
+    });
+    await createPromptUseFeedback(directory, {
+      prompt,
+      targetAgent: "claude-code",
+    });
+
+    const all = await listPromptUseFeedback(directory);
+    const candidates = feedbackRevisionCandidates(all.records, prompt.id);
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0]?.verdict, "not-useful");
+
+    const thoughts = buildFeedbackRevisionThoughts(prompt, candidates);
+    assert.match(thoughts, /Refactor Safely/);
+    assert.match(thoughts, /without changing behavior/);
+    assert.match(thoughts, /test baseline/);
+    assert.match(thoughts, /failing-test-first/);
+    assert.match(thoughts, /Outcome: failed/);
+    assert.throws(
+      () => buildFeedbackRevisionThoughts(prompt, []),
+      /at least one recorded feedback entry/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("prompt updates can carry revised sources and enhancement provenance", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-update-"));
+  try {
+    const created = await createPrompt(directory, {
+      title: "Check Baselines",
+      body: "Check the compatibility baselines.",
+      target: "generic",
+    });
+    const revisionFields = {
+      title: created.title,
+      summary: created.summary,
+      body: `${created.body} Cite current sources.`,
+      target: created.target,
+      tags: created.tags,
+      aliases: created.aliases,
+      searchTerms: created.searchTerms,
+    };
+    const updated = await updatePrompt(directory, created.id, {
+      ...revisionFields,
+      sources: [
+        {
+          title: "MDN Baseline",
+          url: "https://developer.mozilla.org/",
+          retrievedAt: "2026-07-23T00:00:00.000Z",
+        },
+      ],
+      enhancement: {
+        provider: "openai",
+        profileId: "openai-standard-v1",
+        model: "gpt-test",
+        reasoningEffort: "medium",
+        compilerVersion: "prompt-studio-compiler/1.2.0",
+        outputSchemaVersion: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+      },
+    });
+    assert.equal(updated.sources?.length, 1);
+    assert.equal(updated.sources?.[0]?.title, "MDN Baseline");
+    assert.equal(updated.enhancement?.provider, "openai");
+
+    const plain = await updatePrompt(directory, created.id, revisionFields);
+    assert.equal(plain.sources?.length, 1);
+    assert.equal(plain.enhancement?.provider, "openai");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

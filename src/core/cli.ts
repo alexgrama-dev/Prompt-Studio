@@ -60,6 +60,14 @@ import {
   SELECTABLE_ENHANCEMENT_PROFILE_IDS,
   type SelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
+import {
+  listMissedSearches,
+  tallyMissedSearches,
+} from "./missed-searches.ts";
+import {
+  DEFAULT_OVERLAP_THRESHOLD,
+  findPromptOverlaps,
+} from "./overlap.ts";
 import { fusePromptSearch, rebuildQmd, searchQmd } from "./qmd-search.ts";
 import {
   defaultSearchIndexPath,
@@ -198,6 +206,7 @@ const COMMAND_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   get: new Set(["body-only"]),
   copy: new Set(),
   stats: new Set(),
+  overlap: new Set(["threshold"]),
   create: new Set([
     "yes",
     "input",
@@ -366,6 +375,8 @@ async function runEnabledCommand(
       return optimizationCommand(context);
     case "stats":
       return statsCommand(context);
+    case "overlap":
+      return overlapCommand(context);
     case "enhance":
       return enhanceCommand(context);
     default:
@@ -552,6 +563,9 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
   const usage = loadPromptUsage(context.searchIndexPath);
   const usageAvailable = usage.size > 0 || activeIndexReadable(context);
   const feedback = await listPromptUseFeedback(context.directory);
+  const missedSearches = tallyMissedSearches(
+    await listMissedSearches(context.directory),
+  );
 
   const ranked = active
     .map((record) => ({
@@ -595,6 +609,7 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
         verdicts,
         outcomes,
       },
+      missedSearches: missedSearches.slice(0, 20),
     },
     human: [
       `Prompts: ${active.length} active, ${library.records.length - active.length} archived`,
@@ -612,7 +627,53 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
       `Feedback: ${feedback.records.length} records`,
       `  Verdicts: ${tally(verdicts)}`,
       `  Outcomes: ${tally(outcomes)}`,
+      `Missed searches: ${missedSearches.length ? `${missedSearches.length} distinct queries with no match` : "(none)"}`,
+      ...missedSearches
+        .slice(0, 5)
+        .map(
+          (entry) =>
+            `  ${entry.count}x  "${entry.query}"  (last ${entry.lastAt})`,
+        ),
     ].join("\n"),
+  };
+}
+
+async function overlapCommand(context: CommandContext): Promise<CommandOutcome> {
+  assertPositionals(context.parsed, 0, 0);
+  const rawThreshold = optionString(context.parsed, "threshold");
+  const threshold = rawThreshold
+    ? Number(rawThreshold)
+    : DEFAULT_OVERLAP_THRESHOLD;
+  if (!Number.isFinite(threshold)) {
+    throw new CliError(
+      "INVALID_THRESHOLD",
+      "The --threshold option must be a number between 0.2 and 0.95.",
+      CLI_EXIT_CODES.usage,
+    );
+  }
+  const library = await listPrompts(context.directory);
+  let overlaps;
+  try {
+    overlaps = findPromptOverlaps(library.records, threshold);
+  } catch (error) {
+    throw new CliError(
+      "INVALID_THRESHOLD",
+      error instanceof Error ? error.message : String(error),
+      CLI_EXIT_CODES.usage,
+    );
+  }
+  return {
+    data: { threshold, overlaps, count: overlaps.length },
+    human: overlaps.length
+      ? [
+          `${overlaps.length} overlapping pair${overlaps.length === 1 ? "" : "s"} at similarity >= ${threshold}:`,
+          ...overlaps.map(
+            (overlap) =>
+              `  ${Math.round(overlap.similarity * 100)}%  ${overlap.leftTitle}  <->  ${overlap.rightTitle}`,
+          ),
+          "Review each pair, then merge or `archive <id> --yes` the weaker prompt.",
+        ].join("\n")
+      : `No overlapping prompts at similarity >= ${threshold}.`,
   };
 }
 
@@ -2247,7 +2308,8 @@ Commands:
                                Issue a five-minute one-time mutation token
   feedback <operation>         Add, list, get, update, delete, or export feedback
   optimization <operation>     Generate, evaluate, inspect, approve, or roll back proposals
-  stats                        Show use counts, feedback tallies, and zero-use prompts
+  stats                        Show use counts, feedback tallies, zero-use prompts, and missed searches
+  overlap                      Report near-duplicate active prompts; --threshold 0.2-0.95
   enhance                      Enhance rough thoughts; requires --yes
 
 Global options:

@@ -121,11 +121,12 @@ export function planResearchRoutes(
   }
   if (
     input.researchLevel === "deep" &&
-    needsBroadResearch(input.roughThoughts)
+    (needsBroadResearch(input.roughThoughts) || routes.includes("web"))
   ) {
     routes.push("exa");
-    reasons.exa =
-      "Deep research explicitly asks for broader examples, papers, or comparisons.";
+    reasons.exa = needsBroadResearch(input.roughThoughts)
+      ? "Deep research explicitly asks for broader examples, papers, or comparisons."
+      : "Deep research corroborates current-web facts through a second retrieval engine.";
   }
 
   if (routes.length === 0) {
