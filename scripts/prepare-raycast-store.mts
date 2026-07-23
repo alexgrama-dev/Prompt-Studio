@@ -29,7 +29,6 @@ const sourceFiles = [
   "src/core/project-context.ts",
   "src/core/prompt-store.ts",
   "src/core/qmd-search.ts",
-  "src/core/search-index.ts",
   "src/core/secrets.ts",
   "src/feature-status.tsx",
   "src/feedback-form.tsx",
@@ -64,6 +63,10 @@ await cp(
 await cp(
   join(repositoryRoot, "store", "tsconfig.json"),
   join(outputDirectory, "tsconfig.json"),
+);
+await cp(
+  join(repositoryRoot, "store", "src", "core", "search-index.ts"),
+  join(outputDirectory, "src", "core", "search-index.ts"),
 );
 await cp(
   join(repositoryRoot, "store", "package-lock.json"),

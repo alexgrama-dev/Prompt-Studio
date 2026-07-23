@@ -18,6 +18,13 @@ preference and SHALL not advertise an unavailable enhancement workflow.
 - **WHEN** a user installs Prompt Studio without changing preferences
 - **THEN** the user can create, browse, search, preview, paste, and copy local prompts
 - **AND** the released commands make no Prompt Studio network request
+- **AND** the commands load without requiring `node:sqlite`
+
+#### Scenario: Rank menu-bar prompts in the Store runtime
+
+- **WHEN** a user copies or pastes a prompt from the Store release
+- **THEN** Prompt Studio records its count and last-used time in a local JSON cache
+- **AND** the menu bar ranks used prompts without requiring SQLite
 
 ### Requirement: Allowlisted Store package
 

@@ -73,11 +73,26 @@ Privacy language is scoped to the two commands in the initial Store manifest.
 It separately discloses that advanced source-tree features exist but are not
 released commands.
 
+### 5. The Store runtime does not load Node's experimental SQLite module
+
+Raycast's extension runtime does not provide `node:sqlite`, even when the build
+machine's Node version does. The Store package therefore replaces the advanced
+SQLite search module with a Store-specific compatibility module. Exact prompt
+search continues to use the Markdown records already loaded by the library.
+Usage counts and last-used timestamps are kept in a small atomic JSON cache so
+the menu-bar ranking still works.
+
+The development build keeps its existing SQLite implementation. The package
+preparation script performs the replacement explicitly, and a Store-specific
+test imports and exercises the compatibility module without `node:sqlite`.
+
 ## Risks and mitigations
 
 - **Store and root manifests drift:** `check:store` builds and lints the
   generated Store package, and the preparation script asserts its public
   surface.
+- **Build succeeds but Raycast cannot load a Node module:** the Store check
+  imports and exercises its runtime compatibility module before bundling.
 - **Internal files enter the submission:** the generated directory uses a
   fixed allowlist and checks the exact top-level entries.
 - **Screenshots expose private information:** only reviewed synthetic prompt

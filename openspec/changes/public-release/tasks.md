@@ -11,6 +11,7 @@
 - [x] 2.2 Assert exact Store commands, preferences, and top-level files
 - [x] 2.3 Generate and commit the npm dependency lock on the Mac mini
 - [x] 2.4 Pass Store lint and build from the generated package on the Mac mini
+- [x] 2.5 Replace unsupported `node:sqlite` loading with a tested Store usage cache
 
 ## 3. Public project material
 
@@ -26,5 +27,6 @@
 - [x] 4.2 Pass the complete repository check on the Mac mini
 - [x] 4.3 Scan the repository and generated Store package for secrets and private paths
 - [x] 4.4 Review the exact public Git diff and Store file list
-- [ ] 4.5 Publish the repository release
+- [x] 4.5 Publish the repository release
 - [ ] 4.6 Submit the Raycast Store pull request
+- [ ] 4.7 Load the exact Store distribution in Raycast without a runtime error
