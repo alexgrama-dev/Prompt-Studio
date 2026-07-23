@@ -110,7 +110,7 @@
     "verify:mcp-runtime": "node --experimental-strip-types scripts/verify-mcp-runtime.mts",
     "verify:feedback-cli": "node --experimental-strip-types scripts/verify-feedback-cli.mts",
     "verify:optimization-cli": "node --experimental-strip-types scripts/verify-optimization-cli.mts",
-    "package:store": "node --experimental-strip-types scripts/prepare-raycast-store.mts",
+    "package:store": "node --experimental-strip-types scripts/prepare-raycast-store.mts && prettier --write dist-store --config dist-store/.prettierrc --ignore-path /dev/null",
     "test:store-core": "node --experimental-strip-types --test store/*.test.mts",
     "check:store": "pnpm test:store-core && pnpm package:store && npm --prefix dist-store ci --ignore-scripts --no-audit --no-fund && npm --prefix dist-store run lint && npm --prefix dist-store run build",
     "publish:store": "pnpm package:store && npm --prefix dist-store ci --ignore-scripts --no-audit --no-fund && npm --prefix dist-store run publish",

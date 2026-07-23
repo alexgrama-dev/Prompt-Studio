@@ -1,6 +1,7 @@
 import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertStoreTextIsCredentialSafe } from "./store-safety.mts";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputDirectory = join(repositoryRoot, "dist-store");
@@ -13,7 +14,6 @@ if (
 }
 
 const rootFiles = [
-  ".prettierrc",
   "CHANGELOG.md",
   "LICENSE",
   "PRIVACY.md",
@@ -23,6 +23,7 @@ const rootFiles = [
 const rootDirectories = ["assets", "media"] as const;
 const sourceFiles = [
   "src/browse-prompts.tsx",
+  "src/core/extension-preferences.ts",
   "src/core/features.ts",
   "src/core/feedback-store.ts",
   "src/core/placeholders.ts",
@@ -57,6 +58,10 @@ for (const file of sourceFiles) {
 }
 
 await cp(
+  join(repositoryRoot, "store", ".prettierrc"),
+  join(outputDirectory, ".prettierrc"),
+);
+await cp(
   join(repositoryRoot, "store", "package.json"),
   join(outputDirectory, "package.json"),
 );
@@ -67,6 +72,10 @@ await cp(
 await cp(
   join(repositoryRoot, "store", "src", "core", "search-index.ts"),
   join(outputDirectory, "src", "core", "search-index.ts"),
+);
+await cp(
+  join(repositoryRoot, "store", "src", "core", "extension-preferences.ts"),
+  join(outputDirectory, "src", "core", "extension-preferences.ts"),
 );
 await cp(
   join(repositoryRoot, "store", "package-lock.json"),
@@ -115,6 +124,18 @@ if (JSON.stringify(preferenceNames) !== JSON.stringify(["libraryDirectory"])) {
   throw new Error(
     `Unexpected Store preferences: ${preferenceNames.join(", ")}`,
   );
+}
+
+const credentialSafeFiles = [
+  ...rootFiles,
+  ...sourceFiles,
+  "package.json",
+  "tsconfig.json",
+];
+
+for (const file of credentialSafeFiles) {
+  const contents = await readFile(join(outputDirectory, file), "utf8");
+  assertStoreTextIsCredentialSafe(file, contents);
 }
 
 console.log(

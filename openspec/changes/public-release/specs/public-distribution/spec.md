@@ -26,6 +26,12 @@ preference and SHALL not advertise an unavailable enhancement workflow.
 - **THEN** Prompt Studio records its count and last-used time in a local JSON cache
 - **AND** the menu bar ranks used prompts without requiring SQLite
 
+#### Scenario: Choose a prompt with placeholders from the menu bar
+
+- **WHEN** a menu-bar prompt still contains a reusable placeholder
+- **THEN** Prompt Studio opens the main library instead of copying unresolved template text
+- **AND** the user can fill the placeholder before copy or paste
+
 ### Requirement: Allowlisted Store package
 
 The system SHALL prepare publication in a fixed ignored directory by copying an
@@ -42,6 +48,11 @@ It SHALL verify the exact top-level result before publication.
 
 - **WHEN** the prepared directory contains an entry outside the allowlist
 - **THEN** preparation fails before lint, build, or publication
+
+#### Scenario: An OpenAI credential marker enters a submitted text file
+
+- **WHEN** preparation detects an OpenAI preference field, environment-variable name, or key-shaped value
+- **THEN** preparation fails without printing the suspected credential
 
 ### Requirement: Explicit remote configuration
 

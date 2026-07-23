@@ -2,7 +2,6 @@ import {
   Action,
   ActionPanel,
   Color,
-  getPreferenceValues,
   Icon,
   List,
   showToast,
@@ -14,6 +13,7 @@ import {
   getFeatureStatus,
   loadFeatureStatuses,
 } from "./core/features";
+import { getPromptStudioPreferences } from "./core/extension-preferences";
 import {
   listPrompts,
   rebuildPromptSearchIndex,
@@ -26,17 +26,12 @@ import {
   type SearchIndexHealth,
 } from "./core/search-index";
 
-interface Preferences {
-  libraryDirectory?: string;
-  qmdExecutable?: string;
-}
-
 export default function FeatureStatus() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [indexHealth, setIndexHealth] = useState<SearchIndexHealth>();
   const [qmdHealth, setQmdHealth] = useState<QmdHealth>();
   const [error, setError] = useState<string>();
-  const preferences = getPreferenceValues<Preferences>();
+  const preferences = getPromptStudioPreferences();
 
   const load = useCallback(async () => {
     setError(undefined);
