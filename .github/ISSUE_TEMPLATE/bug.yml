@@ -1,0 +1,51 @@
+name: Bug report
+description: Report behavior that is broken or unsafe
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove private prompts, API keys, customer data, and machine-specific paths before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Prompt Studio version
+      description: Use the Store version or Git commit.
+      placeholder: Initial Release or abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain what you saw and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest safe sequence that reproduces the problem.
+      placeholder: |
+        1. Open Prompt Studio
+        2. Search for ...
+        3. Choose ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include macOS and Raycast versions.
+      placeholder: macOS 15.x, Raycast 1.x
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private prompts, customer data, and personal paths.
+          required: true
