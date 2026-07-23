@@ -2,6 +2,8 @@ import {
   Clipboard,
   getPreferenceValues,
   Icon,
+  launchCommand,
+  LaunchType,
   MenuBarExtra,
   showHUD,
 } from "@raycast/api";
@@ -11,6 +13,7 @@ import {
   resolvePromptDirectory,
   type PromptRecord,
 } from "./core/prompt-store";
+import { extractPlaceholders } from "./core/placeholders";
 import {
   loadPromptUsage,
   rankRecordsByUsage,
@@ -20,7 +23,7 @@ import {
 const MENU_LIMIT = 5;
 
 export default function MenubarPrompts() {
-  const preferences = getPreferenceValues<{ libraryDirectory?: string }>();
+  const preferences = getPreferenceValues<Preferences.MenubarPrompts>();
   const [records, setRecords] = useState<PromptRecord[]>();
   const [error, setError] = useState<string>();
 
@@ -60,6 +63,14 @@ export default function MenubarPrompts() {
             key={record.id}
             title={record.title}
             onAction={async () => {
+              if (extractPlaceholders(record.body).length > 0) {
+                await launchCommand({
+                  name: "browse-prompts",
+                  type: LaunchType.UserInitiated,
+                });
+                await showHUD("Open the prompt to fill its placeholders");
+                return;
+              }
               await Clipboard.copy(record.body);
               try {
                 recordPromptUse(record.id);

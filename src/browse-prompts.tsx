@@ -8,7 +8,6 @@ import {
   confirmAlert,
   Detail,
   Form,
-  getPreferenceValues,
   Icon,
   Keyboard,
   List,
@@ -34,6 +33,7 @@ import {
   type PromptUpdate,
 } from "./core/prompt-store";
 import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
+import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { currentProjectCommit } from "./core/project-context";
 import { ensureQmd, fusePromptSearch, searchQmd } from "./core/qmd-search";
 import {
@@ -55,13 +55,6 @@ import { FeedbackForm, feedbackDraftFromForm } from "./feedback-form";
 import FeatureStatus from "./feature-status";
 import PromptFeedback from "./prompt-feedback";
 
-interface Preferences {
-  libraryDirectory?: string;
-  qmdExecutable?: string;
-  projectRoots?: string;
-  sshProjectRoot?: string;
-}
-
 type LibraryFilter =
   | "current"
   | "all"
@@ -71,7 +64,7 @@ type LibraryFilter =
   | `tag:${string}`;
 
 export default function BrowsePrompts() {
-  const preferences = getPreferenceValues<Preferences>();
+  const preferences = getPromptStudioPreferences();
   const directory = useMemo(() => {
     try {
       return resolvePromptDirectory(preferences.libraryDirectory);
@@ -194,7 +187,7 @@ export default function BrowsePrompts() {
     try {
       const exact = searchPrompts(
         searchText,
-        searchFilters(filter),
+        searchFilters(filter, records.length),
         defaultSearchIndexPath(),
       );
       setIndexedResults(exact);
@@ -690,25 +683,29 @@ function CreateFeedback({
   );
 }
 
-function searchFilters(filter: LibraryFilter): SearchFilters {
-  if (filter === "all") return { includeArchived: true, limit: 500 };
-  if (filter === "favorites") return { favorite: true, limit: 500 };
+function searchFilters(
+  filter: LibraryFilter,
+  librarySize: number,
+): SearchFilters {
+  const limit = Math.max(librarySize, 1);
+  if (filter === "all") return { includeArchived: true, limit };
+  if (filter === "favorites") return { favorite: true, limit };
   if (filter.startsWith("target:")) {
     return {
       target: filter.slice("target:".length) as PromptRecord["target"],
-      limit: 500,
+      limit,
     };
   }
   if (filter.startsWith("project:")) {
     return {
       projectPath: filter.slice("project:".length),
-      limit: 500,
+      limit,
     };
   }
   if (filter.startsWith("tag:")) {
-    return { tag: filter.slice("tag:".length), limit: 500 };
+    return { tag: filter.slice("tag:".length), limit };
   }
-  return { limit: 500 };
+  return { limit };
 }
 
 function recordMatchesFilter(

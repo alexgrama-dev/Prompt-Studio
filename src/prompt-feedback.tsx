@@ -4,7 +4,6 @@ import {
   Alert,
   Color,
   confirmAlert,
-  getPreferenceValues,
   Icon,
   List,
   showToast,
@@ -22,12 +21,9 @@ import {
   type PromptUseFeedbackRecord,
 } from "./core/feedback-store";
 import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
+import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { resolvePromptDirectory } from "./core/prompt-store";
 import { FeedbackForm, feedbackPatchFromForm } from "./feedback-form";
-
-interface Preferences {
-  libraryDirectory?: string;
-}
 
 type FeedbackFilter =
   | "all"
@@ -37,7 +33,7 @@ type FeedbackFilter =
   | "with-outcome";
 
 export default function PromptFeedback() {
-  const preferences = getPreferenceValues<Preferences>();
+  const preferences = getPromptStudioPreferences();
   const directory = useMemo(
     () => resolvePromptDirectory(preferences.libraryDirectory),
     [preferences.libraryDirectory],

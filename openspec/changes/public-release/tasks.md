@@ -12,6 +12,9 @@
 - [x] 2.3 Generate and commit the npm dependency lock on the Mac mini
 - [x] 2.4 Pass Store lint and build from the generated package on the Mac mini
 - [x] 2.5 Replace unsupported `node:sqlite` loading with a tested Store usage cache
+- [x] 2.6 Substitute Store-only preferences so excluded settings cannot enter the package
+- [x] 2.7 Reject OpenAI credential fields and key-shaped values during Store preparation
+- [x] 2.8 Prevent menu-bar copy until reusable placeholders are filled
 
 ## 3. Public project material
 

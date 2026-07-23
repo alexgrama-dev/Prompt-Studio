@@ -86,6 +86,18 @@ The development build keeps its existing SQLite implementation. The package
 preparation script performs the replacement explicitly, and a Store-specific
 test imports and exercises the compatibility module without `node:sqlite`.
 
+### 6. Store preferences and credential checks are isolated
+
+The development build can read its optional local integration settings through
+a shared preference adapter. Store preparation replaces that adapter with a
+Store-only module that reads only the generated prompt-directory preference and
+returns no provider, project, or SSH setting.
+
+Before a Store package is accepted, preparation scans every copied text file
+for the OpenAI preference name, the OpenAI environment-variable name, and
+OpenAI-shaped key values. A match stops preparation with only the file name and
+marker category; the suspected value is never printed.
+
 ## Risks and mitigations
 
 - **Store and root manifests drift:** `check:store` builds and lints the
@@ -95,6 +107,8 @@ test imports and exercises the compatibility module without `node:sqlite`.
   imports and exercises its runtime compatibility module before bundling.
 - **Internal files enter the submission:** the generated directory uses a
   fixed allowlist and checks the exact top-level entries.
+- **A provider credential enters an allowed file:** preparation checks the
+  copied text surface and stops without logging the suspected value.
 - **Screenshots expose private information:** only reviewed synthetic prompt
   examples are copied into `media/`.
 - **The narrow release appears misleading:** README and privacy documentation
