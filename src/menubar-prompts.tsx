@@ -14,6 +14,7 @@ import {
   type PromptRecord,
 } from "./core/prompt-store";
 import { extractPlaceholders } from "./core/placeholders";
+import { browsePromptsLaunchContext } from "./core/launch-context";
 import {
   loadPromptUsage,
   rankRecordsByUsage,
@@ -67,6 +68,7 @@ export default function MenubarPrompts() {
                 await launchCommand({
                   name: "browse-prompts",
                   type: LaunchType.UserInitiated,
+                  context: browsePromptsLaunchContext(record.id),
                 });
                 await showHUD("Open the prompt to fill its placeholders");
                 return;
