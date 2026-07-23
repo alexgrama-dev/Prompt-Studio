@@ -26,6 +26,7 @@ const sourceFiles = [
   "src/core/extension-preferences.ts",
   "src/core/features.ts",
   "src/core/feedback-store.ts",
+  "src/core/launch-context.ts",
   "src/core/placeholders.ts",
   "src/core/project-context.ts",
   "src/core/prompt-store.ts",
@@ -76,6 +77,10 @@ await cp(
 await cp(
   join(repositoryRoot, "store", "src", "core", "extension-preferences.ts"),
   join(outputDirectory, "src", "core", "extension-preferences.ts"),
+);
+await cp(
+  join(repositoryRoot, "store", "src", "core", "features.ts"),
+  join(outputDirectory, "src", "core", "features.ts"),
 );
 await cp(
   join(repositoryRoot, "store", "package-lock.json"),

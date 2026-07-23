@@ -10,6 +10,7 @@ import {
   Form,
   Icon,
   Keyboard,
+  LaunchProps,
   List,
   showHUD,
   showToast,
@@ -45,6 +46,7 @@ import {
   type SearchResult,
 } from "./core/search-index";
 import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
+import type { BrowsePromptsLaunchContext } from "./core/launch-context";
 import {
   commaSeparated,
   PromptForm,
@@ -63,7 +65,9 @@ type LibraryFilter =
   | `project:${string}`
   | `tag:${string}`;
 
-export default function BrowsePrompts() {
+export default function BrowsePrompts({
+  launchContext,
+}: LaunchProps<{ launchContext: BrowsePromptsLaunchContext }>) {
   const preferences = getPromptStudioPreferences();
   const directory = useMemo(() => {
     try {
@@ -73,6 +77,9 @@ export default function BrowsePrompts() {
     }
   }, [preferences.libraryDirectory]);
   const [records, setRecords] = useState<PromptRecord[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
+    launchContext?.promptId ?? null,
+  );
   const [invalid, setInvalid] = useState<InvalidPrompt[]>([]);
   const [filter, setFilter] = useState<LibraryFilter>("current");
   const [searchText, setSearchText] = useState("");
@@ -282,6 +289,8 @@ export default function BrowsePrompts() {
       isLoading={loading || semanticSearching}
       isShowingDetail={visible.length + invalid.length > 0}
       filtering={!sqliteActive}
+      {...(selectedPromptId ? { selectedItemId: selectedPromptId } : {})}
+      onSelectionChange={setSelectedPromptId}
       onSearchTextChange={setSearchText}
       throttle
       searchBarPlaceholder="Search prompts… · ⌘N saves without AI"
@@ -526,6 +535,7 @@ function PromptItem({
 
   return (
     <List.Item
+      id={record.id}
       icon={{
         source: record.favorite ? Icon.Star : Icon.TextDocument,
         tintColor: record.favorite ? Color.Yellow : Color.Purple,
