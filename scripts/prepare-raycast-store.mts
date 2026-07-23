@@ -20,7 +20,7 @@ const rootFiles = [
   "README.md",
   "eslint.config.cjs",
 ] as const;
-const rootDirectories = ["assets", "media"] as const;
+const rootDirectories = ["assets", "media", "metadata"] as const;
 const sourceFiles = [
   "src/browse-prompts.tsx",
   "src/core/extension-preferences.ts",
@@ -96,6 +96,7 @@ const expectedTopLevel = [
   "assets",
   "eslint.config.cjs",
   "media",
+  "metadata",
   "package-lock.json",
   "package.json",
   "src",
