@@ -2,8 +2,9 @@
 
 - [x] 1.1 Add the one-paragraph recall-and-feedback instruction to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, and record it verbatim in the README
   - 2026-07-21: installed in both global instruction files and recorded verbatim in the README.
-- [ ] 1.2 Verify one live Claude Code session performs a real `prompt_studio_search` recall
+- [x] 1.2 Verify one live Claude Code session performs a real `prompt_studio_search` recall
   - 2026-07-21: a nested headless Claude Code session could not authenticate; the server and tools are verified over stdio, and the client-level recall check moves to the next interactive session.
+  - 2026-07-21 (later): a live interactive Claude Code session called `prompt_studio_search` ("diagnose bug root cause evidence" returned both diagnosis prompts) and `prompt_studio_get` through the registered user-scope server, including the new placeholders field.
 - [x] 1.3 Verify one live Codex session performs a real recall
   - 2026-07-21: `codex exec` recalled `Test-Driven Development Loop` through the registered MCP entry. A stale index surfaced first and was rebuilt with `reindex --yes`.
 
