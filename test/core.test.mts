@@ -54,6 +54,7 @@ import type { PromptStudioMcpMutationOptions } from "../src/core/mcp-write.ts";
 import {
   appendExecutionGuardrails,
   defaultEnhancementCompilerPolicy,
+  enhancementCompilerInstructions,
   buildOpenAIResponseRequest,
   ENHANCEMENT_COMPILER_VERSION,
   ENHANCEMENT_GUARDRAILS_MARKER,
@@ -339,7 +340,7 @@ test("execution guardrails normalize every frozen case without changing its task
     "claude-code": "applicable CLAUDE.md and repository instructions",
   } as const;
 
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.1.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.2.0");
   for (const item of raw.cases) {
     const taskPrompt = `${item.roughInput.trim()}\n\nPreserve this case's stricter evidence and authorization thresholds.`;
     const request: EnhancementRequest = {
@@ -6095,5 +6096,25 @@ test("stats reports usage, feedback tallies, zero-use prompts, and placeholder e
     assert.equal(payload.feedback.outcomes.succeeded, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("compiler 1.2.0 pins threshold preservation, conditional UI verification, and grounded metadata", () => {
+  const base = enhancementCompilerInstructions({ target: "generic" });
+  assert.match(base, /exact lower bounds/);
+  assert.match(base, /never soften them/);
+  assert.match(base, /only when the user or supplied context named it/);
+  assert.equal(
+    base.includes("rendered UI verification"),
+    false,
+    "The generic target must not mention rendered UI verification at all.",
+  );
+  for (const target of ["codex", "claude-code"] as const) {
+    const composed = enhancementCompilerInstructions({ target });
+    assert.match(
+      composed,
+      /only when the task itself can change rendered user-interface behavior/,
+    );
+    assert.match(composed, /omit UI verification entirely/);
   }
 });

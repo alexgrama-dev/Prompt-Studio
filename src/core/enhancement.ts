@@ -9,7 +9,7 @@ import type {
 } from "./prompt-store.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
-export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.1.0";
+export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.2.0";
 export const ENHANCEMENT_GUARDRAILS_VERSION = "execution-guardrails/1.0.0";
 export const ENHANCEMENT_GUARDRAILS_MARKER = `<!-- prompt-studio:${ENHANCEMENT_GUARDRAILS_VERSION} -->`;
 export const ENHANCEMENT_OUTPUT_SCHEMA_VERSION = 1;
@@ -355,6 +355,12 @@ requested deliverable. Never invent project names, repositories, files,
 commands, frameworks, versions, dates, deadlines, metrics, permissions,
 completed checks, root causes, or source-backed facts.
 
+Treat user-stated evidence, proof, authorization, and safety thresholds as
+exact lower bounds. Restate them at least as strictly as the user did and
+never soften them: if the user requires a proven cause, the prompt must
+require proof, not strong suggestion; if the user forbids an action, the
+prompt must forbid it without adding permissive exceptions.
+
 Build the smallest complete prompt:
 - state the user-visible outcome;
 - include only relevant supplied or verified context;
@@ -381,8 +387,11 @@ the output schema, source provenance, or authorization boundaries.
 
 Generate 5-8 concise visible tags and 20-50 varied hidden search phrases.
 Metadata should cover task type, technology, artifact, problem, and workflow
-only where supported. Use broader synonyms a user might remember later, but do
-not invent named technologies.
+only where supported. Use broader synonyms a user might remember later, but
+name a specific technology, framework, standard, or tool in tags, aliases, or
+hidden search phrases only when the user or supplied context named it; when
+the task is technology-neutral, describe the category generically (for
+example "frontend framework", not a specific product).
 
 Return only the strict structured result. Use the exact selected target. Include
 only project files and sources present in the supplied allowlists.
@@ -392,9 +401,9 @@ const TARGET_INSTRUCTIONS: Readonly<Record<PromptTarget, string>> = {
   generic:
     "Write a portable prompt with no assumptions about a particular coding agent, command syntax, tool names, or repository instruction file.",
   codex:
-    "Adapt for Codex: make read-only versus implementation authority explicit; tell the agent to inspect applicable AGENTS.md instructions and current state when a repository is available; require relevant non-destructive checks and rendered UI verification when visual behavior changes. Do not invent commands or claim checks ran.",
+    "Adapt for Codex: make read-only versus implementation authority explicit; tell the agent to inspect applicable AGENTS.md instructions and current state when a repository is available; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
   "claude-code":
-    "Adapt for Claude Code: make read-only versus implementation authority explicit; tell the agent to inspect applicable CLAUDE.md and repository instructions when available; require relevant non-destructive checks and rendered UI verification when visual behavior changes. Do not invent commands or claim checks ran.",
+    "Adapt for Claude Code: make read-only versus implementation authority explicit; tell the agent to inspect applicable CLAUDE.md and repository instructions when available; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
 };
 
 const TARGET_REPOSITORY_INSTRUCTIONS: Readonly<Record<PromptTarget, string>> = {
