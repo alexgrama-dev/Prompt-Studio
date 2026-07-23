@@ -46,7 +46,10 @@ import {
   type SearchResult,
 } from "./core/search-index";
 import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
-import type { BrowsePromptsLaunchContext } from "./core/launch-context";
+import {
+  retainPromptSelectionWhileLoading,
+  type BrowsePromptsLaunchContext,
+} from "./core/launch-context";
 import {
   commaSeparated,
   PromptForm,
@@ -290,7 +293,11 @@ export default function BrowsePrompts({
       isShowingDetail={visible.length + invalid.length > 0}
       filtering={!sqliteActive}
       {...(selectedPromptId ? { selectedItemId: selectedPromptId } : {})}
-      onSelectionChange={setSelectedPromptId}
+      onSelectionChange={(nextId) =>
+        setSelectedPromptId((currentId) =>
+          retainPromptSelectionWhileLoading(currentId, nextId, loading),
+        )
+      }
       onSearchTextChange={setSearchText}
       throttle
       searchBarPlaceholder="Search prompts… · ⌘N saves without AI"

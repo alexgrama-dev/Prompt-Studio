@@ -7,3 +7,11 @@ export function browsePromptsLaunchContext(
 ): BrowsePromptsLaunchContext {
   return { promptId };
 }
+
+export function retainPromptSelectionWhileLoading(
+  currentId: string | null,
+  nextId: string | null,
+  isLoading: boolean,
+): string | null {
+  return isLoading && nextId === null ? currentId : nextId;
+}
