@@ -3,9 +3,9 @@
   "name": "prompt-studio",
   "title": "Prompt Studio",
   "type": "module",
-  "description": "Find, improve, and reuse prompts across coding tools",
+  "description": "Find and reuse prompts across coding tools",
   "icon": "command-icon.png",
-  "author": "alexgrama",
+  "author": "alex_grama",
   "platforms": [
     "macOS"
   ],
@@ -48,8 +48,7 @@
       "type": "textfield",
       "required": false,
       "title": "Mac Mini Project Root",
-      "description": "Optional read-only SSH source in host:path form; leave blank to disable",
-      "default": "mini:~/Developer"
+      "description": "Optional read-only SSH source in host:path form; leave blank to disable"
     }
   ],
   "commands": [
@@ -111,6 +110,9 @@
     "verify:mcp-runtime": "node --experimental-strip-types scripts/verify-mcp-runtime.mts",
     "verify:feedback-cli": "node --experimental-strip-types scripts/verify-feedback-cli.mts",
     "verify:optimization-cli": "node --experimental-strip-types scripts/verify-optimization-cli.mts",
+    "package:store": "node --experimental-strip-types scripts/prepare-raycast-store.mts",
+    "check:store": "pnpm package:store && npm --prefix dist-store ci --ignore-scripts --no-audit --no-fund && npm --prefix dist-store run lint && npm --prefix dist-store run build",
+    "publish:store": "pnpm package:store && npm --prefix dist-store ci --ignore-scripts --no-audit --no-fund && npm --prefix dist-store run publish",
     "eval:dry": "node --experimental-strip-types evals/run-provider.mts",
     "eval:openai": "node --experimental-strip-types evals/run-provider.mts --profile openai-standard-v1",
     "eval:anthropic": "node --experimental-strip-types evals/run-provider.mts --profile anthropic-sonnet-5-v1",
@@ -119,7 +121,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@raycast/api": "1.104.22",
+    "@raycast/api": "1.104.23",
     "zod": "4.4.3"
   },
   "devDependencies": {

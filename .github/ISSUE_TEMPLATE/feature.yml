@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a focused improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is difficult today?
+      description: Describe the prompt workflow problem before proposing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What should become easier?
+      description: Give one concrete example of the desired result.
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Does this need new data access?
+      options:
+        - No new file, network, clipboard, or credential access
+        - Local file access
+        - Clipboard or paste access
+        - Network access
+        - A credential
+        - Unsure
+    validations:
+      required: true

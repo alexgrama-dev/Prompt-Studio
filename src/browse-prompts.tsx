@@ -340,7 +340,7 @@ export default function BrowsePrompts() {
           title={error ? "Prompt Library Unavailable" : "No Prompts Found"}
           description={
             error ??
-            "Paste an existing prompt or enhance rough thoughts, then find it here in plain language."
+            "Save your first prompt, then find and reuse it here in plain language."
           }
           actions={
             <ActionPanel>

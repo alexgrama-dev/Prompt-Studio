@@ -239,9 +239,10 @@ export function loadPromptUsage(
   return usage;
 }
 
-export function rankRecordsByUsage<
-  T extends { id: string; updatedAt: string },
->(records: readonly T[], usage: ReadonlyMap<string, PromptUsage>): T[] {
+export function rankRecordsByUsage<T extends { id: string; updatedAt: string }>(
+  records: readonly T[],
+  usage: ReadonlyMap<string, PromptUsage>,
+): T[] {
   return [...records].sort((left, right) => {
     const leftUse = usage.get(left.id);
     const rightUse = usage.get(right.id);

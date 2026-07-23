@@ -5912,13 +5912,14 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     assert.equal(badVerdict.ok, false);
     assert.equal(badVerdict.code, "INVALID_ARGUMENTS");
 
+    const syntheticSecret = ["sk", "abc123def456ghi789jkl012"].join("-");
     const secretNote = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
         verdict: "useful",
         outcomeStatus: "succeeded",
         targetAgent: "claude-code",
-        note: "Worked after exporting OPENAI_API_KEY=sk-abc123def456ghi789jkl012",
+        note: `Worked after exporting OPENAI_API_KEY=${syntheticSecret}`,
       },
       options,
     );

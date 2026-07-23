@@ -1,4 +1,5 @@
 dist/
 dist-cli/
 dist-mcp/
+dist-store/
 raycast-env.d.ts
