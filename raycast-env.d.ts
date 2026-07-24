@@ -15,7 +15,7 @@ type ExtensionPreferences = {
   /** Project Roots - Folders Prompt Studio may scan for saved Git repositories; you can also choose one exact repo directly in Enhance Prompt */
   "projectRoots": string,
   /** Mac Mini Project Root - Optional read-only SSH source in host:path form; leave blank to disable */
-  "sshProjectRoot": string
+  "sshProjectRoot"?: string
 }
 
 /** Preferences accessible in all the extension's commands */

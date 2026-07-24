@@ -112,6 +112,10 @@ export interface PromptUpdate extends PromptDraft {
   archived?: boolean;
 }
 
+export interface CreatePromptOptions {
+  syncSearchIndex?: boolean;
+}
+
 export interface InvalidPrompt {
   filePath: string;
   error: string;
@@ -146,6 +150,10 @@ export function resolvePromptDirectory(configured?: string): string {
     );
   }
   return resolve(expanded);
+}
+
+export function enhancementHistoryDirectory(promptDirectory: string): string {
+  return join(promptDirectory, ".enhancements");
 }
 
 export async function listPrompts(directory: string): Promise<PromptLibrary> {
@@ -186,6 +194,7 @@ async function listPromptFiles(directory: string): Promise<PromptLibrary> {
 export async function createPrompt(
   directory: string,
   draft: PromptDraft,
+  options: CreatePromptOptions = {},
 ): Promise<PromptRecord> {
   const now = new Date().toISOString();
   const metadata: PromptMetadata = validateMetadata({
@@ -220,8 +229,19 @@ export async function createPrompt(
   );
   await atomicWrite(filePath, serializePrompt(metadata, body));
   const record = { ...metadata, body, filePath };
-  await refreshActiveSearchIndex(directory, record);
+  if (options.syncSearchIndex !== false) {
+    await refreshActiveSearchIndex(directory, record);
+  }
   return record;
+}
+
+export async function recordEnhancementHistory(
+  promptDirectory: string,
+  draft: PromptDraft,
+): Promise<PromptRecord> {
+  return createPrompt(enhancementHistoryDirectory(promptDirectory), draft, {
+    syncSearchIndex: false,
+  });
 }
 
 export async function updatePrompt(
@@ -276,26 +296,33 @@ export async function duplicatePrompt(
 ): Promise<PromptRecord> {
   const current = await findPrompt(directory, id);
   return createPrompt(directory, {
+    ...promptRecordToDraft(current),
     title: `${current.title} Copy`,
-    summary: current.summary,
-    body: current.body,
-    target: current.target,
-    tags: current.tags,
-    aliases: current.aliases,
-    searchTerms: current.searchTerms,
-    ...(current.project ? { project: current.project } : {}),
-    ...(current.projectFiles ? { projectFiles: current.projectFiles } : {}),
-    ...(current.assumptions ? { assumptions: current.assumptions } : {}),
-    ...(current.missingInformation
-      ? { missingInformation: current.missingInformation }
-      : {}),
-    ...(current.validationSteps
-      ? { validationSteps: current.validationSteps }
-      : {}),
-    ...(current.taxonomy ? { taxonomy: current.taxonomy } : {}),
-    ...(current.sources ? { sources: current.sources } : {}),
-    ...(current.enhancement ? { enhancement: current.enhancement } : {}),
   });
+}
+
+export function promptRecordToDraft(record: PromptRecord): PromptDraft {
+  return {
+    title: record.title,
+    summary: record.summary,
+    body: record.body,
+    target: record.target,
+    tags: record.tags,
+    aliases: record.aliases,
+    searchTerms: record.searchTerms,
+    ...(record.project ? { project: record.project } : {}),
+    ...(record.projectFiles ? { projectFiles: record.projectFiles } : {}),
+    ...(record.assumptions ? { assumptions: record.assumptions } : {}),
+    ...(record.missingInformation
+      ? { missingInformation: record.missingInformation }
+      : {}),
+    ...(record.validationSteps
+      ? { validationSteps: record.validationSteps }
+      : {}),
+    ...(record.taxonomy ? { taxonomy: record.taxonomy } : {}),
+    ...(record.sources ? { sources: record.sources } : {}),
+    ...(record.enhancement ? { enhancement: record.enhancement } : {}),
+  };
 }
 
 export async function deletePrompt(

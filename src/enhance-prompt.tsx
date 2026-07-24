@@ -39,6 +39,10 @@ import {
   dispatchEnhancement,
 } from "./core/enhancement-dispatch";
 import {
+  parseEnhancementFormDraft,
+  type EnhancementFormDraft,
+} from "./core/enhancement-form-draft";
+import {
   blindEvaluationRecords,
   fullMarksHumanReview,
   getEnhancementEvaluationPlan,
@@ -95,8 +99,13 @@ import {
 import { mergeReviewedSources } from "./core/research-safety";
 import {
   createPrompt,
+  enhancementHistoryDirectory,
+  listPrompts,
+  promptRecordToDraft,
+  recordEnhancementHistory,
   resolvePromptDirectory,
   updatePrompt,
+  type PromptRecord,
   type PromptTarget,
 } from "./core/prompt-store";
 import {
@@ -141,6 +150,7 @@ interface EditorValues {
 }
 
 const RECENT_PROJECTS_KEY = "prompt-studio.recent-projects.v1";
+const ENHANCEMENT_FORM_DRAFT_KEY = "prompt-studio.enhancement-form-draft.v1";
 
 export default function EnhancePrompt(props: {
   arguments?: { thoughts?: string };
@@ -262,6 +272,8 @@ function EnhancementWorkspace({
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
   const [roughThoughts, setRoughThoughts] = useState(initialThoughts);
+  const [target, setTarget] = useState<PromptTarget>("codex");
+  const [oneRunInstruction, setOneRunInstruction] = useState("");
   const [projects, setProjects] = useState<DiscoveredProject[]>([]);
   const [recentProjectPaths, setRecentProjectPaths] = useState<string[]>([]);
   const [projectDiscoveryLoading, setProjectDiscoveryLoading] = useState(false);
@@ -275,6 +287,7 @@ function EnhancementWorkspace({
     useState<EnhancementEvaluationRun>();
   const activeController = useRef<AbortController | undefined>(undefined);
   const evaluationController = useRef<AbortController | undefined>(undefined);
+  const formDraftLoaded = useRef(false);
   const effectiveProfileId = profileId;
   const effectiveResearchLevel = setupMode === "smart" ? "none" : researchLevel;
   const profile = getProviderEnhancementProfile(effectiveProfileId);
@@ -301,6 +314,55 @@ function EnhancementWorkspace({
     () => groupDiscoveredProjects(projects, recentProjectPaths),
     [projects, recentProjectPaths],
   );
+
+  useEffect(() => {
+    void LocalStorage.getItem<string>(ENHANCEMENT_FORM_DRAFT_KEY)
+      .then((stored) => {
+        if (initialThoughts || !stored) return;
+        const draft = parseEnhancementFormDraft(stored);
+        if (!draft) return;
+        setRoughThoughts(draft.roughThoughts);
+        setTarget(draft.target);
+        setProject(draft.project);
+        setRepositoryFolder(draft.repositoryFolder);
+        setShowFolderPicker(draft.repositoryFolder.length > 0);
+        setSetupMode(draft.setupMode);
+        setProfileId(draft.profileId);
+        setResearchLevel(draft.researchLevel);
+        setOneRunInstruction(draft.oneRunInstruction);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        formDraftLoaded.current = true;
+      });
+  }, [initialThoughts]);
+
+  useEffect(() => {
+    if (!formDraftLoaded.current) return;
+    const draft: EnhancementFormDraft = {
+      roughThoughts,
+      target,
+      project,
+      repositoryFolder,
+      setupMode,
+      profileId,
+      researchLevel,
+      oneRunInstruction,
+    };
+    void LocalStorage.setItem(
+      ENHANCEMENT_FORM_DRAFT_KEY,
+      JSON.stringify(draft),
+    ).catch(() => undefined);
+  }, [
+    oneRunInstruction,
+    profileId,
+    project,
+    repositoryFolder,
+    researchLevel,
+    roughThoughts,
+    setupMode,
+    target,
+  ]);
 
   useEffect(() => {
     if (projectContextState === "disabled") return;
@@ -885,14 +947,28 @@ function EnhancementWorkspace({
         apiKey,
         signal: controller.signal,
       });
-      toast.style = Toast.Style.Success;
-      toast.title = "Enhancement Ready";
-      toast.message = "Review or edit it before saving.";
+      const directory = resolvePromptDirectory(preferences.libraryDirectory);
+      try {
+        await recordEnhancementHistory(
+          directory,
+          enhancementResultToPromptDraft(run, effectiveRequest),
+        );
+        toast.style = Toast.Style.Success;
+        toast.title = "Enhancement Ready";
+        toast.message = "Saved to Enhancement History.";
+      } catch (historyError) {
+        toast.style = Toast.Style.Failure;
+        toast.title = "Enhancement Ready, History Save Failed";
+        toast.message =
+          historyError instanceof Error
+            ? historyError.message
+            : String(historyError);
+      }
       push(
         <EnhancementPreview
           request={effectiveRequest}
           run={run}
-          directory={resolvePromptDirectory(preferences.libraryDirectory)}
+          directory={directory}
           revisionOfPromptId={revisionOfPromptId}
         />,
       );
@@ -1063,6 +1139,15 @@ function EnhancementWorkspace({
             />
           ) : null}
           <Action.Push
+            title="Enhancement History"
+            icon={Icon.Clock}
+            target={
+              <EnhancementHistory
+                directory={resolvePromptDirectory(preferences.libraryDirectory)}
+              />
+            }
+          />
+          <Action.Push
             title="Advanced Provider"
             icon={Icon.Gear}
             target={
@@ -1131,7 +1216,12 @@ function EnhancementWorkspace({
         value={roughThoughts}
         onChange={setRoughThoughts}
       />
-      <Form.Dropdown id="target" title="Use With" defaultValue="codex">
+      <Form.Dropdown
+        id="target"
+        title="Use With"
+        value={target}
+        onChange={(value) => setTarget(value as PromptTarget)}
+      >
         <Form.Dropdown.Item title="Codex" value="codex" />
         <Form.Dropdown.Item title="Claude Code" value="claude-code" />
         <Form.Dropdown.Item title="Generic / Any Agent" value="generic" />
@@ -1239,6 +1329,8 @@ function EnhancementWorkspace({
             id="oneRunInstruction"
             title="Special Instructions"
             placeholder="Optional: emphasize accessibility, keep it short, use Romanian…"
+            value={oneRunInstruction}
+            onChange={setOneRunInstruction}
           />
         </>
       ) : null}
@@ -1247,8 +1339,8 @@ function EnhancementWorkspace({
         title="Ready to Enhance"
         text={
           setupMode === "smart"
-            ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Guardrails and search tags are automatic; nothing is saved until you approve it.`
-            : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Nothing is saved until you approve it.`
+            ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
+            : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
         }
       />
     </Form>
@@ -1335,7 +1427,7 @@ function enhancementSetupMarkdown(
     `**Reasoning:** ${profile.reasoningEffort}`,
     `**External research:** ${title(researchLevel)}`,
     `**Maximum model-token estimate:** $${estimatedCost.toFixed(3)}`,
-    "The actual model cost is calculated from returned token counts and is usually lower. Project files and external research have separate review steps when enabled. The enhanced prompt remains editable and is not saved until you approve it.",
+    "The actual model cost is calculated from returned token counts and is usually lower. Project files and external research have separate review steps when enabled. Completed results are kept in local Enhancement History; the main prompt library changes only when you approve.",
     providerPricingDisclosure(profile),
     providerPrivacyDisclosure(profile),
   ]
@@ -2964,6 +3056,95 @@ function ExaResearchSourceReview({
         </ActionPanel>
       }
     />
+  );
+}
+
+function EnhancementHistory({ directory }: { directory: string }) {
+  const [records, setRecords] = useState<PromptRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    void listPrompts(enhancementHistoryDirectory(directory))
+      .then((library) => setRecords(library.records))
+      .catch((loadError: unknown) =>
+        setError(
+          loadError instanceof Error ? loadError.message : String(loadError),
+        ),
+      )
+      .finally(() => setIsLoading(false));
+  }, [directory]);
+
+  async function saveToLibrary(record: PromptRecord) {
+    try {
+      await createPrompt(directory, promptRecordToDraft(record));
+      await showHUD("Prompt saved to library");
+    } catch (saveError) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Save Prompt",
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    }
+  }
+
+  return (
+    <List
+      isLoading={isLoading}
+      isShowingDetail={records.length > 0}
+      searchBarPlaceholder="Search enhancement history…"
+    >
+      {!isLoading && records.length === 0 ? (
+        <List.EmptyView
+          icon={Icon.Clock}
+          title={error ? "History Unavailable" : "No Enhancements Yet"}
+          description={
+            error ??
+            "Every completed enhancement will appear here automatically."
+          }
+        />
+      ) : null}
+      {records.map((record) => (
+        <List.Item
+          key={record.id}
+          id={record.id}
+          icon={Icon.Wand}
+          title={record.title}
+          subtitle={record.summary}
+          accessories={[{ date: new Date(record.createdAt) }]}
+          detail={
+            <List.Item.Detail
+              markdown={record.body}
+              metadata={
+                <List.Item.Detail.Metadata>
+                  <List.Item.Detail.Metadata.Label
+                    title="Target"
+                    text={targetTitle(record.target)}
+                  />
+                  <List.Item.Detail.Metadata.Label
+                    title="Created"
+                    text={new Date(record.createdAt).toLocaleString()}
+                  />
+                </List.Item.Detail.Metadata>
+              }
+            />
+          }
+          actions={
+            <ActionPanel>
+              <Action.CopyToClipboard
+                title="Copy Prompt"
+                content={record.body}
+              />
+              <Action
+                title="Save to Prompt Library"
+                icon={Icon.CheckCircle}
+                onAction={() => saveToLibrary(record)}
+              />
+            </ActionPanel>
+          }
+        />
+      ))}
+    </List>
   );
 }
 

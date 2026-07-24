@@ -79,6 +79,7 @@ import {
   type EnhancementRequest,
   type EnhancementResult,
 } from "../src/core/enhancement.ts";
+import { parseEnhancementFormDraft } from "../src/core/enhancement-form-draft.ts";
 import {
   ANTHROPIC_API_VERSION,
   ANTHROPIC_MESSAGES_ENDPOINT,
@@ -96,9 +97,12 @@ import {
 import {
   createPrompt,
   deletePrompt,
+  enhancementHistoryDirectory,
   listPrompts,
   listPromptVersions,
   parsePrompt,
+  promptRecordToDraft,
+  recordEnhancementHistory,
   resolvePromptDirectory,
   restorePromptVersion,
   serializePrompt,
@@ -2661,6 +2665,64 @@ test("only an approved enhancement draft becomes a rich Markdown prompt record",
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("completed enhancements stay in history until explicitly saved to the library", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-enhancement-history-"),
+  );
+  try {
+    const historical = await recordEnhancementHistory(directory, {
+      title: "Recoverable Enhancement",
+      summary: "A completed result kept outside the current library.",
+      body: "Persist this enhanced prompt.",
+      target: "codex",
+      tags: ["history"],
+      searchTerms: ["recover enhanced prompt"],
+    });
+
+    assert.equal((await listPrompts(directory)).records.length, 0);
+    assert.equal(
+      (await listPrompts(enhancementHistoryDirectory(directory))).records[0]
+        ?.body,
+      historical.body,
+    );
+
+    const saved = await createPrompt(
+      directory,
+      promptRecordToDraft(historical),
+    );
+    assert.equal(saved.body, historical.body);
+    assert.equal((await listPrompts(directory)).records.length, 1);
+    assert.equal(
+      (await listPrompts(enhancementHistoryDirectory(directory))).records
+        .length,
+      1,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Raycast enhancement drafts restore only valid saved form values", () => {
+  const draft = {
+    roughThoughts: "Keep this unfinished task",
+    target: "codex",
+    project: "none",
+    repositoryFolder: [],
+    setupMode: "custom",
+    profileId: "openai-standard-v1",
+    researchLevel: "auto",
+    oneRunInstruction: "Keep it concise",
+  };
+  assert.deepEqual(parseEnhancementFormDraft(JSON.stringify(draft)), draft);
+  assert.equal(
+    parseEnhancementFormDraft(
+      JSON.stringify({ ...draft, profileId: "unknown-provider" }),
+    ),
+    undefined,
+  );
+  assert.equal(parseEnhancementFormDraft("not json"), undefined);
 });
 
 test("updates preserve restorable history and confirmed deletion can remove the record", async () => {
