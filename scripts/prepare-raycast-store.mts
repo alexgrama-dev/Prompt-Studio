@@ -25,6 +25,7 @@ const sourceFiles = [
   "src/browse-prompts.tsx",
   "src/core/extension-preferences.ts",
   "src/core/features.ts",
+  "src/core/feedback-revision.ts",
   "src/core/feedback-store.ts",
   "src/core/launch-context.ts",
   "src/core/placeholders.ts",

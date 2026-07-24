@@ -7,12 +7,14 @@ import {
   loadPromptUsage,
   rankRecordsByUsage,
   recordPromptUse,
+  shouldTrackPromptUsage,
 } from "./src/core/search-index.ts";
 
 test("Store usage cache records use without node:sqlite", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-store-"));
   const path = join(directory, "usage.json");
 
+  assert.equal(shouldTrackPromptUsage(false), true);
   recordPromptUse("used", path);
   recordPromptUse("used", path);
 
