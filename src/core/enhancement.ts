@@ -3,6 +3,7 @@ import type {
   EnhancementProvenance,
   ProjectBinding,
   PromptDraft,
+  PromptSeedReference,
   PromptSource,
   PromptTarget,
   PromptTaxonomy,
@@ -836,6 +837,7 @@ export function privacyDisclosure(profile: EnhancementProfile): string {
 export function enhancementResultToPromptDraft(
   run: EnhancementRun,
   request?: Pick<EnhancementRequest, "project" | "sources">,
+  seed?: PromptSeedReference,
 ): PromptDraft {
   const now = new Date().toISOString();
   const sources: PromptSource[] = run.result.sources.map((source) => {
@@ -874,6 +876,7 @@ export function enhancementResultToPromptDraft(
     sources,
     enhancement,
     ...(request?.project ? { project: request.project } : {}),
+    ...(seed ? { seed } : {}),
   };
 }
 

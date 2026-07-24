@@ -14,6 +14,7 @@ export interface EnhancementFormDraft {
   profileId: SelectableEnhancementProfileId;
   researchLevel: EnhancementResearchLevel;
   oneRunInstruction: string;
+  seedId?: string;
 }
 
 export function parseEnhancementFormDraft(
@@ -35,6 +36,15 @@ export function parseEnhancementFormDraft(
       ) ||
       !["none", "auto", "deep"].includes(String(draft.researchLevel)) ||
       typeof draft.oneRunInstruction !== "string"
+    ) {
+      return;
+    }
+    if (
+      draft.seedId !== undefined &&
+      (typeof draft.seedId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          draft.seedId,
+        ))
     ) {
       return;
     }

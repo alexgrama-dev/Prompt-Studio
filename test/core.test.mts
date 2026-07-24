@@ -101,8 +101,10 @@ import {
   listPrompts,
   listPromptVersions,
   parsePrompt,
+  promptSeedDirectory,
   promptRecordToDraft,
   recordEnhancementHistory,
+  recordPromptSeed,
   resolvePromptDirectory,
   restorePromptVersion,
   serializePrompt,
@@ -2672,6 +2674,11 @@ test("completed enhancements stay in history until explicitly saved to the libra
     join(tmpdir(), "prompt-studio-enhancement-history-"),
   );
   try {
+    const seed = await recordPromptSeed(directory, {
+      title: "Recover an enhancement",
+      body: "Keep this rough thought.",
+      target: "codex",
+    });
     const historical = await recordEnhancementHistory(directory, {
       title: "Recoverable Enhancement",
       summary: "A completed result kept outside the current library.",
@@ -2679,32 +2686,60 @@ test("completed enhancements stay in history until explicitly saved to the libra
       target: "codex",
       tags: ["history"],
       searchTerms: ["recover enhanced prompt"],
+      seed: { id: seed.id, thoughts: seed.body },
     });
 
     assert.equal((await listPrompts(directory)).records.length, 0);
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records[0]?.body,
+      seed.body,
+    );
     assert.equal(
       (await listPrompts(enhancementHistoryDirectory(directory))).records[0]
         ?.body,
       historical.body,
     );
+    assert.deepEqual(historical.seed, {
+      id: seed.id,
+      thoughts: "Keep this rough thought.",
+    });
 
     const saved = await createPrompt(
       directory,
       promptRecordToDraft(historical),
     );
     assert.equal(saved.body, historical.body);
+    assert.deepEqual(saved.seed, historical.seed);
     assert.equal((await listPrompts(directory)).records.length, 1);
     assert.equal(
       (await listPrompts(enhancementHistoryDirectory(directory))).records
         .length,
       1,
     );
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records.length,
+      1,
+    );
+    await deletePrompt(promptSeedDirectory(directory), seed.id, {
+      syncSearchIndex: false,
+    });
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records.length,
+      0,
+    );
+    assert.equal(
+      (await listPrompts(enhancementHistoryDirectory(directory))).records
+        .length,
+      1,
+    );
+    assert.equal((await listPrompts(directory)).records.length, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
 test("Raycast enhancement drafts restore only valid saved form values", () => {
+  const seedId = "123e4567-e89b-12d3-a456-426614174000";
   const draft = {
     roughThoughts: "Keep this unfinished task",
     target: "codex",
@@ -2714,12 +2749,17 @@ test("Raycast enhancement drafts restore only valid saved form values", () => {
     profileId: "openai-standard-v1",
     researchLevel: "auto",
     oneRunInstruction: "Keep it concise",
+    seedId,
   };
   assert.deepEqual(parseEnhancementFormDraft(JSON.stringify(draft)), draft);
   assert.equal(
     parseEnhancementFormDraft(
       JSON.stringify({ ...draft, profileId: "unknown-provider" }),
     ),
+    undefined,
+  );
+  assert.equal(
+    parseEnhancementFormDraft(JSON.stringify({ ...draft, seedId: "bad-id" })),
     undefined,
   );
   assert.equal(parseEnhancementFormDraft("not json"), undefined);

@@ -61,6 +61,11 @@ export interface EnhancementProvenance {
   generatedAt: string;
 }
 
+export interface PromptSeedReference {
+  thoughts: string;
+  id?: string;
+}
+
 export interface PromptMetadata {
   schemaVersion: 1;
   id: string;
@@ -82,6 +87,7 @@ export interface PromptMetadata {
   taxonomy?: PromptTaxonomy;
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
+  seed?: PromptSeedReference;
 }
 
 export interface PromptRecord extends PromptMetadata {
@@ -105,6 +111,7 @@ export interface PromptDraft {
   taxonomy?: PromptTaxonomy;
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
+  seed?: PromptSeedReference;
 }
 
 export interface PromptUpdate extends PromptDraft {
@@ -112,7 +119,7 @@ export interface PromptUpdate extends PromptDraft {
   archived?: boolean;
 }
 
-export interface CreatePromptOptions {
+export interface PromptMutationOptions {
   syncSearchIndex?: boolean;
 }
 
@@ -156,6 +163,10 @@ export function enhancementHistoryDirectory(promptDirectory: string): string {
   return join(promptDirectory, ".enhancements");
 }
 
+export function promptSeedDirectory(promptDirectory: string): string {
+  return join(promptDirectory, ".seeds");
+}
+
 export async function listPrompts(directory: string): Promise<PromptLibrary> {
   await mkdir(directory, { recursive: true });
   return listPromptFiles(directory);
@@ -194,7 +205,7 @@ async function listPromptFiles(directory: string): Promise<PromptLibrary> {
 export async function createPrompt(
   directory: string,
   draft: PromptDraft,
-  options: CreatePromptOptions = {},
+  options: PromptMutationOptions = {},
 ): Promise<PromptRecord> {
   const now = new Date().toISOString();
   const metadata: PromptMetadata = validateMetadata({
@@ -221,6 +232,7 @@ export async function createPrompt(
     ...(draft.taxonomy ? { taxonomy: draft.taxonomy } : {}),
     ...(draft.sources ? { sources: draft.sources } : {}),
     ...(draft.enhancement ? { enhancement: draft.enhancement } : {}),
+    ...(draft.seed ? { seed: draft.seed } : {}),
   });
   const body = validateBody(draft.body);
   const filePath = join(
@@ -242,6 +254,21 @@ export async function recordEnhancementHistory(
   return createPrompt(enhancementHistoryDirectory(promptDirectory), draft, {
     syncSearchIndex: false,
   });
+}
+
+export async function recordPromptSeed(
+  promptDirectory: string,
+  draft: Pick<PromptDraft, "title" | "body" | "target">,
+): Promise<PromptRecord> {
+  return createPrompt(
+    promptSeedDirectory(promptDirectory),
+    {
+      ...draft,
+      tags: ["seed"],
+      searchTerms: ["rough thought", "prompt seed"],
+    },
+    { syncSearchIndex: false },
+  );
 }
 
 export async function updatePrompt(
@@ -281,6 +308,7 @@ export async function updatePrompt(
     ...(update.taxonomy ? { taxonomy: update.taxonomy } : {}),
     ...(update.sources ? { sources: update.sources } : {}),
     ...(update.enhancement ? { enhancement: update.enhancement } : {}),
+    ...(update.seed ? { seed: update.seed } : {}),
   });
   const body = validateBody(update.body);
   await preserveVersion(directory, current);
@@ -322,17 +350,21 @@ export function promptRecordToDraft(record: PromptRecord): PromptDraft {
     ...(record.taxonomy ? { taxonomy: record.taxonomy } : {}),
     ...(record.sources ? { sources: record.sources } : {}),
     ...(record.enhancement ? { enhancement: record.enhancement } : {}),
+    ...(record.seed ? { seed: record.seed } : {}),
   };
 }
 
 export async function deletePrompt(
   directory: string,
   id: string,
+  options: PromptMutationOptions = {},
 ): Promise<void> {
   const current = await findPrompt(directory, id);
   await rm(current.filePath);
   await rm(versionDirectory(directory, id), { recursive: true, force: true });
-  await removeFromActiveSearchIndex(directory, id);
+  if (options.syncSearchIndex !== false) {
+    await removeFromActiveSearchIndex(directory, id);
+  }
 }
 
 export async function listPromptVersions(
@@ -506,7 +538,21 @@ function validateMetadata(value: unknown): PromptMetadata {
     metadata.sources = promptSources(value.sources);
   if (value.enhancement !== undefined)
     metadata.enhancement = enhancementProvenance(value.enhancement);
+  if (value.seed !== undefined) metadata.seed = promptSeedReference(value.seed);
   return metadata;
+}
+
+function promptSeedReference(value: unknown): PromptSeedReference {
+  if (!isObject(value)) throw new Error("seed must be an object.");
+  const seed: PromptSeedReference = {
+    thoughts: requiredString(value.thoughts, "seed.thoughts"),
+  };
+  if (value.id !== undefined) {
+    const id = requiredString(value.id, "seed.id");
+    if (!UUID.test(id)) throw new Error("seed.id must be a UUID.");
+    seed.id = id;
+  }
+  return seed;
 }
 
 function projectBinding(value: unknown): ProjectBinding {
