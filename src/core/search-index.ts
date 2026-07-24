@@ -32,6 +32,10 @@ export interface SearchIndexHealth {
   message: string;
 }
 
+export function shouldTrackPromptUsage(sqliteActive: boolean): boolean {
+  return sqliteActive;
+}
+
 interface SearchRow {
   id: string;
   title: string;

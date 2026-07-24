@@ -44,6 +44,7 @@ import {
   loadPromptUsage,
   recordPromptUse,
   searchPrompts,
+  shouldTrackPromptUsage,
   type SearchFilters,
   type SearchResult,
 } from "./core/search-index";
@@ -408,7 +409,7 @@ export default function BrowsePrompts({
             matchReason={
               searchText.trim() ? matchesById.get(record.id) : undefined
             }
-            trackUsage={sqliteActive}
+            trackUsage={shouldTrackPromptUsage(sqliteActive)}
             feedbackEnabled={feedbackEnabled}
             currentProjectCommit={
               record.project
