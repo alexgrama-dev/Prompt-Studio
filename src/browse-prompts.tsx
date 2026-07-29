@@ -14,6 +14,7 @@ import {
   LaunchProps,
   LaunchType,
   List,
+  openExtensionPreferences,
   showHUD,
   showToast,
   Toast,
@@ -55,9 +56,12 @@ import {
 } from "./core/search-index";
 import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
 import {
+  enhancePromptThoughtsLaunchContext,
+  ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
   type BrowsePromptsLaunchContext,
 } from "./core/launch-context";
+import { browseEmptyState } from "./core/browse-state";
 import {
   commaSeparated,
   PromptForm,
@@ -104,6 +108,7 @@ export default function BrowsePrompts({
   const [sqliteActive, setSqliteActive] = useState(false);
   const [qmdActive, setQmdActive] = useState(false);
   const [feedbackEnabled, setFeedbackEnabled] = useState(false);
+  const [enhancementEnabled, setEnhancementEnabled] = useState(false);
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [indexedResults, setIndexedResults] = useState<SearchResult[]>();
   const [projectCommits, setProjectCommits] = useState<
@@ -134,6 +139,10 @@ export default function BrowsePrompts({
         "disabled";
       setFeedbackEnabled(
         getFeatureStatus(statuses, "feedback").effectiveState !== "disabled",
+      );
+      setEnhancementEnabled(
+        getFeatureStatus(statuses, "openai-enhancement").effectiveState !==
+          "disabled",
       );
       setRecords(library.records);
       setInvalid(library.invalid);
@@ -185,6 +194,9 @@ export default function BrowsePrompts({
     } catch (loadError) {
       const message =
         loadError instanceof Error ? loadError.message : String(loadError);
+      setRecords([]);
+      setInvalid([]);
+      setIndexedResults([]);
       setError(message);
       await showToast(Toast.Style.Failure, "Could Not Load Prompts", message);
     } finally {
@@ -298,6 +310,13 @@ export default function BrowsePrompts({
     () => [...new Set(records.flatMap((record) => record.tags))].sort(),
     [records],
   );
+  const emptyState = browseEmptyState({
+    loading: loading || semanticSearching,
+    ...(error ? { error } : {}),
+    recordCount: records.length,
+    visibleCount: visible.length + invalid.length,
+    query: searchText,
+  });
 
   return (
     <List
@@ -311,6 +330,7 @@ export default function BrowsePrompts({
         )
       }
       onSearchTextChange={setSearchText}
+      searchText={searchText}
       throttle
       searchBarPlaceholder="Search prompts… · ⌘N saves without AI"
       searchBarAccessory={
@@ -355,23 +375,43 @@ export default function BrowsePrompts({
         </List.Dropdown>
       }
     >
-      {!loading && visible.length === 0 ? (
+      {emptyState ? (
         <List.EmptyView
           icon={Icon.TextDocument}
-          title={error ? "Prompt Library Unavailable" : "No Prompts Found"}
+          title={
+            emptyState === "load-failure"
+              ? "Prompt Library Unavailable"
+              : emptyState === "empty-library"
+                ? "No Prompts Yet"
+                : emptyState === "no-results"
+                  ? "No Matching Prompt"
+                  : "No Prompts in This View"
+          }
           description={
-            error ??
-            "Save your first prompt, then find and reuse it here in plain language."
+            emptyState === "load-failure"
+              ? (error ?? "Reload the prompt library or review its directory.")
+              : emptyState === "empty-library"
+                ? "Save your first reusable prompt here."
+                : emptyState === "no-results"
+                  ? `Nothing matches “${searchText.trim()}”. Keep searching, enhance it, or capture it as an idea.`
+                  : "Choose another filter to see the rest of your prompt library."
           }
           actions={
             <ActionPanel>
-              {error ? (
-                <Action
-                  title="Reload Prompt Library"
-                  icon={Icon.ArrowClockwise}
-                  onAction={load}
-                />
-              ) : (
+              {emptyState === "load-failure" ? (
+                <>
+                  <Action
+                    title="Reload Prompt Library"
+                    icon={Icon.ArrowClockwise}
+                    onAction={load}
+                  />
+                  <Action
+                    title="Open Extension Preferences"
+                    icon={Icon.Gear}
+                    onAction={openExtensionPreferences}
+                  />
+                </>
+              ) : emptyState === "empty-library" ? (
                 <Action.Push
                   title={
                     directory
@@ -392,6 +432,45 @@ export default function BrowsePrompts({
                       />
                     )
                   }
+                />
+              ) : emptyState === "no-results" ? (
+                <>
+                  {enhancementEnabled ? (
+                    <Action
+                      title="Enhance This Search"
+                      icon={Icon.Wand}
+                      onAction={() =>
+                        launchCommand({
+                          name: "enhance-prompt",
+                          type: LaunchType.UserInitiated,
+                          context:
+                            enhancePromptThoughtsLaunchContext(searchText),
+                        })
+                      }
+                    />
+                  ) : null}
+                  <Action
+                    title="Open in Idea Studio"
+                    icon={Icon.LightBulb}
+                    onAction={() =>
+                      launchCommand({
+                        name: "idea-studio",
+                        type: LaunchType.UserInitiated,
+                        context: ideaStudioLaunchContext(searchText),
+                      })
+                    }
+                  />
+                  <Action
+                    title="Clear Search"
+                    icon={Icon.XMarkCircle}
+                    onAction={() => setSearchText("")}
+                  />
+                </>
+              ) : (
+                <Action
+                  title="Show All Prompts"
+                  icon={Icon.List}
+                  onAction={() => setFilter("all")}
                 />
               )}
               <Action.Push

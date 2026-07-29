@@ -47,6 +47,13 @@ export function enhancePromptLaunchContext(
   };
 }
 
+export function enhancePromptThoughtsLaunchContext(
+  thoughts: string,
+  target?: PromptTarget,
+): EnhancePromptLaunchContext {
+  return { thoughts, ...(target ? { target } : {}) };
+}
+
 export function retainPromptSelectionWhileLoading(
   currentId: string | null,
   nextId: string | null,

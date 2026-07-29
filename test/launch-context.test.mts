@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { browseEmptyState } from "../src/core/browse-state.ts";
 import {
   browsePromptsLaunchContext,
   enhancePromptLaunchContext,
+  enhancePromptThoughtsLaunchContext,
   ideaStudioInitialIdea,
   ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
@@ -47,5 +49,57 @@ test("Idea Studio and Enhance Prompt handoffs preserve exact unsaved text and id
       target: "claude-code",
       seedId: "idea-123",
     },
+  );
+  assert.deepEqual(enhancePromptThoughtsLaunchContext(idea), {
+    thoughts: idea,
+  });
+});
+
+test("browse recovery distinguishes empty, no-match, filtered, and failed states", () => {
+  assert.equal(
+    browseEmptyState({
+      loading: true,
+      recordCount: 0,
+      visibleCount: 0,
+      query: "",
+    }),
+    undefined,
+  );
+  assert.equal(
+    browseEmptyState({
+      loading: false,
+      error: "permission denied",
+      recordCount: 0,
+      visibleCount: 0,
+      query: "",
+    }),
+    "load-failure",
+  );
+  assert.equal(
+    browseEmptyState({
+      loading: false,
+      recordCount: 0,
+      visibleCount: 0,
+      query: "",
+    }),
+    "empty-library",
+  );
+  assert.equal(
+    browseEmptyState({
+      loading: false,
+      recordCount: 4,
+      visibleCount: 0,
+      query: "missing prompt",
+    }),
+    "no-results",
+  );
+  assert.equal(
+    browseEmptyState({
+      loading: false,
+      recordCount: 4,
+      visibleCount: 0,
+      query: "",
+    }),
+    "filtered-empty",
   );
 });
