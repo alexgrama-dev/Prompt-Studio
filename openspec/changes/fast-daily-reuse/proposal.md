@@ -20,6 +20,8 @@ feedback requires finding the prompt again.
 - Add a Rate Last Prompt menubar item that judges the exact last library paste
   when feedback is Preview or Active.
 - Give every action in the changed panels a native or explicit shortcut.
+- Replace long mixed action lists with one-level task submenus while keeping the
+  primary Paste or Enhance action visible.
 
 ## Capabilities
 

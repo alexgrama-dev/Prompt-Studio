@@ -138,7 +138,11 @@ through the existing feedback store.
 Every action in Browse results, the Browse no-result state, Placeholder Form,
 Enhancement Preview, Enhancement History, and Rate Last Prompt SHALL use its
 Raycast-native shortcut or an explicit conflict-free shortcut. Destructive
-actions SHALL retain confirmation.
+actions SHALL retain confirmation. Browse SHALL keep Paste or Fill and Paste at
+the first level. Edit, favorite, duplicate, archive, and delete SHALL appear in
+a Manage Prompt submenu. Version, feedback, and improvement actions SHALL
+appear in a Review submenu. Status and settings actions SHALL appear in a
+System submenu. No submenu SHALL contain another submenu.
 
 #### Scenario: Review available actions
 
@@ -146,3 +150,10 @@ actions SHALL retain confirmation.
 - **THEN** the primary action uses Enter
 - **AND** the secondary action uses Command-Enter
 - **AND** every remaining action displays an explicit shortcut
+
+#### Scenario: Open the Prompt Studio action menu
+
+- **WHEN** the user opens actions for one prompt
+- **THEN** Paste or Fill and Paste remains immediately visible
+- **AND** management, review, and system actions are grouped by task
+- **AND** destructive actions remain confirmed inside Manage Prompt

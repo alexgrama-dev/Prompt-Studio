@@ -47,3 +47,20 @@ action SHALL save to the main prompt library.
 - **WHEN** the user cancels from the preview
 - **THEN** no current prompt-library record is created or changed
 - **AND** the enhancement-history entry remains available
+
+### Requirement: Task-based enhancement actions
+
+Enhance Prompt SHALL keep its current primary Generate, Paste, or Continue
+action at the first level. Project and research actions SHALL appear in a
+Context submenu. Saved ideas and enhancement history SHALL appear in a Saved
+Work submenu. Provider evaluation, feature status, and preferences SHALL appear
+in a System submenu. Saving a validated result to the prompt library SHALL
+remain visible in review but SHALL not replace Paste as the primary action. No
+submenu SHALL contain another submenu.
+
+#### Scenario: Open an Enhance Prompt action menu
+
+- **WHEN** the user opens an action panel in Enhance Prompt
+- **THEN** the next step in the current enhancement remains immediately visible
+- **AND** optional context, saved work, and system controls are grouped by task
+- **AND** no required step is hidden behind a submenu

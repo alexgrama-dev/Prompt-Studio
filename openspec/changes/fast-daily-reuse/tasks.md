@@ -7,7 +7,7 @@ Each implementation task is complete only after `pnpm test`,
 - [ ] 1.2 Add the live filled-body preview and opt-in remembered non-sensitive values, including prompt-version invalidation, secret rejection, storage failure, forget, repeated, and blank coverage in `test/core.test.mts`
 - [ ] 1.3 Add Paste and Copy to enhancement preview and history, and prove neither action saves a library prompt
 - [ ] 1.4 Add the one-time last-library-paste pointer and menubar rating flow, including Preview, Active, Disabled, retry, duplicate, and no-paste cases in `test/core.test.mts`
-- [ ] 1.5 Give every action in the six named changed panels a native or explicit conflict-free shortcut
+- [ ] 1.5 Reorganize Prompt Studio and Enhance Prompt actions into one-level task submenus, keep each primary action visible, and give every action in the six named changed panels a native or explicit conflict-free shortcut
 
 ## 2. Verification
 
