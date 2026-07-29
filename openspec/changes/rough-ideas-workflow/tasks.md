@@ -3,7 +3,8 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 1. Implementation
 
-- [ ] 1.1 Make idea saves repeat-safe, add identity-preserving edit and AI-title provenance, and cover exact, target-different, whitespace, Unicode, title, and linked-record cases in `test/core.test.mts`
+- [x] 1.1 Make idea saves repeat-safe, add identity-preserving edit and AI-title provenance, and cover exact, target-different, whitespace, Unicode, title, and linked-record cases in `test/core.test.mts`
+  - 2026-07-29: normalized repeat saves reuse the oldest matching identity while preserving the first exact body and title; target, whitespace, Unicode, AI-title round-trip, edit, and linked-record checks passed. `pnpm test` passed 73/73, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [ ] 1.2 Add a bounded OpenAI idea-title request with strict validation, editable review, shared encrypted preference, manual fallback, no fallback provider, and failure coverage in `test/core.test.mts`
 - [ ] 1.3 Add exact duplicate discovery plus previewed confirmed consolidation with prior identifiers, unchanged history and prompt counts, cancellation, and failure coverage in `test/core.test.mts`
 - [ ] 1.4 Add typed Idea Studio launch context and register the third top-level view command without an automatic save

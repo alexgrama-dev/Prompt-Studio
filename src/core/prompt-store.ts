@@ -61,6 +61,12 @@ export interface EnhancementProvenance {
   generatedAt: string;
 }
 
+export interface IdeaTitleProvenance {
+  provider: "openai";
+  model: string;
+  generatedAt: string;
+}
+
 export interface PromptSeedReference {
   thoughts: string;
   id?: string;
@@ -87,6 +93,7 @@ export interface PromptMetadata {
   taxonomy?: PromptTaxonomy;
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
+  ideaTitle?: IdeaTitleProvenance;
   seed?: PromptSeedReference;
 }
 
@@ -111,12 +118,14 @@ export interface PromptDraft {
   taxonomy?: PromptTaxonomy;
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
+  ideaTitle?: IdeaTitleProvenance;
   seed?: PromptSeedReference;
 }
 
-export interface PromptUpdate extends PromptDraft {
+export interface PromptUpdate extends Omit<PromptDraft, "ideaTitle"> {
   favorite?: boolean;
   archived?: boolean;
+  ideaTitle?: IdeaTitleProvenance | null;
 }
 
 export interface PromptMutationOptions {
@@ -232,6 +241,7 @@ export async function createPrompt(
     ...(draft.taxonomy ? { taxonomy: draft.taxonomy } : {}),
     ...(draft.sources ? { sources: draft.sources } : {}),
     ...(draft.enhancement ? { enhancement: draft.enhancement } : {}),
+    ...(draft.ideaTitle ? { ideaTitle: draft.ideaTitle } : {}),
     ...(draft.seed ? { seed: draft.seed } : {}),
   });
   const body = validateBody(draft.body);
@@ -258,14 +268,29 @@ export async function recordEnhancementHistory(
 
 export async function recordPromptSeed(
   promptDirectory: string,
-  draft: Pick<PromptDraft, "title" | "body" | "target">,
+  draft: Pick<PromptDraft, "title" | "body" | "target" | "ideaTitle">,
 ): Promise<PromptRecord> {
+  const directory = promptSeedDirectory(promptDirectory);
+  const normalizedBody = normalizeIdeaText(draft.body);
+  const existing = (await listPrompts(directory)).records
+    .filter(
+      (record) =>
+        record.target === draft.target &&
+        normalizeIdeaText(record.body) === normalizedBody,
+    )
+    .sort(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id),
+    )[0];
+  if (existing) return existing;
+
   return createPrompt(
-    promptSeedDirectory(promptDirectory),
+    directory,
     {
       ...draft,
       tags: ["seed"],
-      searchTerms: ["rough thought", "prompt seed"],
+      searchTerms: ["idea", "prompt idea"],
     },
     { syncSearchIndex: false },
   );
@@ -275,10 +300,12 @@ export async function updatePrompt(
   directory: string,
   id: string,
   update: PromptUpdate,
+  options: PromptMutationOptions = {},
 ): Promise<PromptRecord> {
   const current = await findPrompt(directory, id);
   const currentMetadata = metadataFrom(current);
   if (update.archived !== undefined) delete currentMetadata.archivedAt;
+  if (update.ideaTitle !== undefined) delete currentMetadata.ideaTitle;
   const archivedAt =
     update.archived === undefined
       ? current.archivedAt
@@ -308,14 +335,45 @@ export async function updatePrompt(
     ...(update.taxonomy ? { taxonomy: update.taxonomy } : {}),
     ...(update.sources ? { sources: update.sources } : {}),
     ...(update.enhancement ? { enhancement: update.enhancement } : {}),
+    ...(update.ideaTitle ? { ideaTitle: update.ideaTitle } : {}),
     ...(update.seed ? { seed: update.seed } : {}),
   });
   const body = validateBody(update.body);
   await preserveVersion(directory, current);
   await atomicWrite(current.filePath, serializePrompt(metadata, body));
   const record = { ...metadata, body, filePath: current.filePath };
-  await refreshActiveSearchIndex(directory, record);
+  if (options.syncSearchIndex !== false) {
+    await refreshActiveSearchIndex(directory, record);
+  }
   return record;
+}
+
+export async function updatePromptSeed(
+  promptDirectory: string,
+  id: string,
+  draft: Pick<PromptDraft, "title" | "body" | "target" | "ideaTitle">,
+): Promise<PromptRecord> {
+  const directory = promptSeedDirectory(promptDirectory);
+  const current = await findPrompt(directory, id);
+  const titleChanged = draft.title.trim() !== current.title;
+  return updatePrompt(
+    directory,
+    id,
+    {
+      ...draft,
+      tags: current.tags,
+      aliases: current.aliases,
+      searchTerms: current.searchTerms,
+      favorite: current.favorite,
+      ideaTitle:
+        draft.ideaTitle ?? (titleChanged ? null : (current.ideaTitle ?? null)),
+    },
+    { syncSearchIndex: false },
+  );
+}
+
+export function normalizeIdeaText(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/gu, " ");
 }
 
 export async function duplicatePrompt(
@@ -350,6 +408,7 @@ export function promptRecordToDraft(record: PromptRecord): PromptDraft {
     ...(record.taxonomy ? { taxonomy: record.taxonomy } : {}),
     ...(record.sources ? { sources: record.sources } : {}),
     ...(record.enhancement ? { enhancement: record.enhancement } : {}),
+    ...(record.ideaTitle ? { ideaTitle: record.ideaTitle } : {}),
     ...(record.seed ? { seed: record.seed } : {}),
   };
 }
@@ -538,6 +597,8 @@ function validateMetadata(value: unknown): PromptMetadata {
     metadata.sources = promptSources(value.sources);
   if (value.enhancement !== undefined)
     metadata.enhancement = enhancementProvenance(value.enhancement);
+  if (value.ideaTitle !== undefined)
+    metadata.ideaTitle = ideaTitleProvenance(value.ideaTitle);
   if (value.seed !== undefined) metadata.seed = promptSeedReference(value.seed);
   return metadata;
 }
@@ -633,6 +694,18 @@ function enhancementProvenance(value: unknown): EnhancementProvenance {
     ),
     outputSchemaVersion,
     generatedAt: timestamp(value.generatedAt, "enhancement.generatedAt"),
+  };
+}
+
+function ideaTitleProvenance(value: unknown): IdeaTitleProvenance {
+  if (!isObject(value)) throw new Error("ideaTitle must be an object.");
+  if (value.provider !== "openai") {
+    throw new Error("ideaTitle.provider must be openai.");
+  }
+  return {
+    provider: "openai",
+    model: requiredString(value.model, "ideaTitle.model"),
+    generatedAt: timestamp(value.generatedAt, "ideaTitle.generatedAt"),
   };
 }
 

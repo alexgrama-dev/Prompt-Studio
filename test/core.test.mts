@@ -109,6 +109,7 @@ import {
   restorePromptVersion,
   serializePrompt,
   updatePrompt,
+  updatePromptSeed,
 } from "../src/core/prompt-store.ts";
 import { createPromptStudioMcpServer } from "../mcp/server.mts";
 import {
@@ -2736,6 +2737,78 @@ test("completed enhancements stay in history until explicitly saved to the libra
       1,
     );
     assert.equal((await listPrompts(directory)).records.length, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("idea saves reuse normalized text and identity while preserving exact content and links", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-ideas-"));
+  try {
+    const exactBody = "  Fix cafe\u0301 retries.\nKeep evidence.  ";
+    const idea = await recordPromptSeed(directory, {
+      title: "Diagnose Café Retries",
+      body: exactBody,
+      target: "codex",
+      ideaTitle: {
+        provider: "openai",
+        model: "gpt-5-mini",
+        generatedAt: "2026-07-29T10:00:00.000Z",
+      },
+    });
+    const repeated = await recordPromptSeed(directory, {
+      title: "A Different Title Must Not Replace It",
+      body: "\nFix café   retries. Keep evidence.\t",
+      target: "codex",
+    });
+    const otherTarget = await recordPromptSeed(directory, {
+      title: "Diagnose Café Retries for Claude",
+      body: "Fix café retries. Keep evidence.",
+      target: "claude-code",
+    });
+
+    assert.equal(repeated.id, idea.id);
+    assert.equal(repeated.title, "Diagnose Café Retries");
+    assert.equal(repeated.body, exactBody);
+    assert.notEqual(otherTarget.id, idea.id);
+    const ideaLibrary = await listPrompts(promptSeedDirectory(directory));
+    assert.equal(ideaLibrary.records.length, 2);
+    assert.equal(
+      ideaLibrary.records.find((record) => record.id === idea.id)?.ideaTitle
+        ?.provider,
+      "openai",
+    );
+
+    const history = await recordEnhancementHistory(directory, {
+      title: "Retry Diagnosis",
+      body: "Diagnose the retry failure.",
+      target: "codex",
+      seed: { id: idea.id, thoughts: idea.body },
+    });
+    const prompt = await createPrompt(directory, promptRecordToDraft(history));
+    const edited = await updatePromptSeed(directory, idea.id, {
+      title: idea.title,
+      body: "Fix café retries and preserve the failing trace.",
+      target: "codex",
+    });
+    assert.equal(edited.id, idea.id);
+    assert.equal(edited.ideaTitle?.model, "gpt-5-mini");
+
+    const manuallyRetitled = await updatePromptSeed(directory, idea.id, {
+      title: "Investigate Retry Failures",
+      body: edited.body,
+      target: "codex",
+    });
+    assert.equal(manuallyRetitled.id, idea.id);
+    assert.equal(manuallyRetitled.ideaTitle, undefined);
+    assert.equal(
+      (await listPrompts(enhancementHistoryDirectory(directory))).records
+        .length,
+      1,
+    );
+    assert.equal((await listPrompts(directory)).records.length, 1);
+    assert.equal(history.seed?.id, manuallyRetitled.id);
+    assert.equal(prompt.seed?.id, manuallyRetitled.id);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
