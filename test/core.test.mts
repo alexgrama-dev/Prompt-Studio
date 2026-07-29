@@ -6895,6 +6895,80 @@ test("build freshness warns only when core sources are newer than the bundle", a
   }
 });
 
+test("build freshness resolves installed symlinks and ignores copied bundle sources", async () => {
+  const checkout = await mkdtemp(
+    join(tmpdir(), "prompt-studio-fresh-checkout-"),
+  );
+  const standalone = await mkdtemp(
+    join(tmpdir(), "prompt-studio-fresh-standalone-"),
+  );
+  try {
+    const source = join(checkout, "src", "core", "cli.ts");
+    const copiedSource = join(checkout, "dist-cli", "src", "core", "cli.js");
+    const bundle = join(
+      checkout,
+      "dist-cli",
+      "cli",
+      "prompt-studio.mjs",
+    );
+    const installed = join(checkout, "installed", "prompt-studio");
+    await mkdir(join(checkout, "src", "core"), { recursive: true });
+    await mkdir(join(checkout, "dist-cli", "src", "core"), {
+      recursive: true,
+    });
+    await mkdir(join(checkout, "dist-cli", "cli"), { recursive: true });
+    await mkdir(join(checkout, "installed"), { recursive: true });
+    await writeFile(source, "// checkout source");
+    await writeFile(copiedSource, "// copied build source");
+    await writeFile(bundle, "// bundle");
+    await symlink(bundle, installed);
+
+    const past = new Date(Date.now() - 3_600_000);
+    const present = new Date();
+    const future = new Date(Date.now() + 3_600_000);
+    await utimes(bundle, past, past);
+    await utimes(source, present, present);
+    assert.match(
+      buildFreshnessWarning(installed, "pnpm build:cli") ?? "",
+      /pnpm build:cli/,
+    );
+
+    await utimes(bundle, present, present);
+    await utimes(source, past, past);
+    await utimes(copiedSource, future, future);
+    assert.equal(buildFreshnessWarning(bundle, "pnpm build:cli"), undefined);
+
+    const standaloneBundle = join(
+      standalone,
+      "dist-cli",
+      "cli",
+      "prompt-studio.mjs",
+    );
+    const standaloneCopy = join(
+      standalone,
+      "dist-cli",
+      "src",
+      "core",
+      "cli.js",
+    );
+    await mkdir(join(standalone, "dist-cli", "cli"), { recursive: true });
+    await mkdir(join(standalone, "dist-cli", "src", "core"), {
+      recursive: true,
+    });
+    await writeFile(standaloneBundle, "// standalone bundle");
+    await writeFile(standaloneCopy, "// copied source only");
+    await utimes(standaloneBundle, past, past);
+    await utimes(standaloneCopy, future, future);
+    assert.equal(
+      buildFreshnessWarning(standaloneBundle, "pnpm build:cli"),
+      undefined,
+    );
+  } finally {
+    await rm(checkout, { recursive: true, force: true });
+    await rm(standalone, { recursive: true, force: true });
+  }
+});
+
 test("stats reports usage, feedback tallies, zero-use prompts, and placeholder exposure", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-stats-"));
   const searchIndex = join(directory, "derived", "search.sqlite");

@@ -1,5 +1,5 @@
-import { readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readdirSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 // ponytail: mtime comparison, not content hashing; touch or rsync can fool
 // it, and the upgrade path is embedding a source digest at build time.
@@ -9,8 +9,9 @@ export function buildFreshnessWarning(
 ): string | undefined {
   if (!bundlePath) return undefined;
   try {
-    const bundle = statSync(bundlePath);
-    const repoRoot = findRepoRoot(resolve(bundlePath));
+    const resolvedBundle = realpathSync(resolve(bundlePath));
+    const bundle = statSync(resolvedBundle);
+    const repoRoot = findRepoRoot(resolvedBundle);
     if (!repoRoot) return undefined;
     const newest = newestMtime(join(repoRoot, "src", "core"));
     if (newest !== undefined && newest > bundle.mtimeMs) {
@@ -28,13 +29,19 @@ export function buildFreshnessWarning(
 
 function findRepoRoot(bundlePath: string): string | undefined {
   let current = dirname(bundlePath);
-  for (let depth = 0; depth < 4; depth += 1) {
-    try {
-      statSync(join(current, "src", "core"));
-      return current;
-    } catch {
-      current = dirname(current);
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (!/^dist(?:-|$)/.test(basename(current))) {
+      try {
+        if (statSync(join(current, "src", "core")).isDirectory()) {
+          return current;
+        }
+      } catch {
+        // Continue toward a possible source checkout.
+      }
     }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
   }
   return undefined;
 }
