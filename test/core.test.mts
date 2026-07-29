@@ -3932,17 +3932,25 @@ test("QMD semantic confidence keeps the recorded coding match and rejects unrela
   const observedScores = new Map([
     [
       "find the underlying cause before making a small repair",
-      0.5539740920066833,
+      0.37571221590042114,
     ],
-    ["zzqvplmokn", 0.40752243995666504],
-    ["organize my spice rack", 0.3899409770965576],
-    ["make blueberry pancakes", 0.3895223140716553],
+    ["zzqvplmokn", 0.2101871371269226],
+    ["organize my spice rack", 0.1852927803993225],
+    ["make blueberry pancakes", 0.15612071752548218],
   ]);
   const runner: QmdRunner = async (_executable, args) => {
     const query = [...observedScores.keys()].find((candidate) =>
       args[3]?.includes(candidate),
     );
     assert.ok(query);
+    assert.equal(
+      args[3],
+      [
+        "intent: Find saved coding prompts that match this requested task; avoid prompts for unrelated work.",
+        `lex: ${query}`,
+        `vec: ${query}`,
+      ].join("\n"),
+    );
     return {
       stdout: JSON.stringify([
         {

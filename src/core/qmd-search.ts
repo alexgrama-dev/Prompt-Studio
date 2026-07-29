@@ -18,7 +18,7 @@ import { promptLibraryFingerprint, type SearchResult } from "./search-index.ts";
 const execFileAsync = promisify(execFile);
 const QMD_INDEX = "prompt-studio";
 const QMD_COLLECTION = "prompt-studio";
-const QMD_SEMANTIC_CONFIDENCE = 0.48;
+const QMD_SEMANTIC_CONFIDENCE = 0.35;
 const UUID =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -346,7 +346,7 @@ export async function searchQmd(
   const queryDocument = [
     `intent: Find saved coding prompts that match this requested task; avoid prompts for unrelated work.`,
     `lex: ${normalized}`,
-    `vec: A reusable coding-agent prompt for this task: ${normalized}`,
+    `vec: ${normalized}`,
   ].join("\n");
   const result = await runner(
     executable,
