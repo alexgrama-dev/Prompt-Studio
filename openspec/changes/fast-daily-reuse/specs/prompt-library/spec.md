@@ -3,18 +3,33 @@
 ### Requirement: Root Search query handoff
 
 With Prompt Studio configured as the first Raycast fallback, Browse Prompts
-SHALL use fallback text as its initial search text. The default Enter action
-SHALL paste the selected visible result when it has no unresolved placeholder.
-A result with placeholders SHALL open the existing fill form first. Prompt
-Studio SHALL NOT paste a result that the user has not seen. For a query of `q`
-characters and a result without placeholders, the repeatable path SHALL fall
-from `q + 15` keys to `q + 3` keys.
+SHALL use fallback text as its initial search text. When the normalized text
+matches exactly one active prompt by full identifier, title, or alias and that
+prompt has no placeholder, Prompt Studio SHALL paste it immediately. Full
+identifier matches MAY resolve directly. Title and alias matches SHALL resolve
+only when exactly one active record matches. Partial, semantic, body, tag,
+search-term, archived, ambiguous, and placeholder-bearing matches SHALL NOT
+paste without review. For an exact query of `q` characters, the repeatable path
+SHALL fall from `q + 15` keys to `q + 2` keys.
 
-#### Scenario: Launch from fallback search
+#### Scenario: Launch one exact prompt from fallback search
 
-- **WHEN** the user selects Prompt Studio for unmatched Root Search text and the selected prompt has no placeholders
-- **THEN** Browse Prompts opens with that text already applied
-- **AND** Enter pastes the selected visible result
+- **WHEN** fallback text exactly names one active prompt by full identifier, title, or alias
+- **AND** the prompt has no placeholders
+- **THEN** Prompt Studio pastes that prompt without a second Enter press
+- **AND** records its use only after paste succeeds
+
+#### Scenario: Exact match needs placeholder input
+
+- **WHEN** fallback text exactly names one active prompt with placeholders
+- **THEN** Prompt Studio opens the placeholder form
+- **AND** does not paste until the user reviews and submits that form
+
+#### Scenario: Match is not uniquely exact
+
+- **WHEN** fallback text has zero exact matches, multiple title or alias matches, or only a partial or meaning-based match
+- **THEN** Browse Prompts opens with that text still visible
+- **AND** Prompt Studio does not paste an unseen result
 
 #### Scenario: Empty or failed search
 
@@ -39,6 +54,39 @@ or Copy. The pasted or copied body SHALL match that preview exactly.
 
 - **WHEN** a placeholder value is blank
 - **THEN** the original token remains visible in the preview
+
+### Requirement: Remembered non-sensitive placeholder values
+
+The placeholder form SHALL let the user explicitly remember non-sensitive
+values for one prompt. Saved values SHALL be local to Prompt Studio, SHALL bind
+to the prompt's current update time, and SHALL contain only current placeholder
+names and their values. Prompt Studio SHALL save them only after Paste or Copy
+succeeds. It SHALL NOT save blanks, prompt bodies, secret-like placeholder
+names, or values rejected by the existing secret detector. A storage failure
+SHALL NOT block Paste or Copy.
+
+#### Scenario: Remember values after successful use
+
+- **WHEN** the user opts in and successfully pastes or copies a prompt
+- **THEN** the next use of the unchanged prompt prefills eligible values
+- **AND** the placeholder form still opens for review
+
+#### Scenario: Prompt or placeholders change
+
+- **WHEN** the prompt update time changes or a saved name is no longer a current placeholder
+- **THEN** Prompt Studio does not restore that stale value
+
+#### Scenario: Value may contain a secret
+
+- **WHEN** a placeholder name is credential-like or its value matches the existing secret detector
+- **THEN** Prompt Studio does not store that name or value
+- **AND** Paste or Copy still uses the reviewed form value
+
+#### Scenario: Forget saved values
+
+- **WHEN** the user chooses Forget Saved Values
+- **THEN** Prompt Studio removes the saved values for that prompt
+- **AND** it does not change the prompt or usage evidence
 
 ### Requirement: Fast feedback for the last paste
 
