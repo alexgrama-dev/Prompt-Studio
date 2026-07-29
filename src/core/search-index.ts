@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -63,6 +63,12 @@ interface IntegrityRow {
   quick_check: string;
 }
 
+interface UsageRow {
+  prompt_id: string;
+  use_count: number;
+  last_used_at: string | null;
+}
+
 export function defaultSearchIndexPath(): string {
   return join(
     homedir(),
@@ -90,6 +96,12 @@ export function rebuildSearchIndex(
   path = defaultSearchIndexPath(),
   versions: ReadonlyMap<string, readonly PromptRecord[]> = new Map(),
 ): SearchIndexHealth {
+  // ponytail: this preserves the usage snapshot present when rebuild starts;
+  // add cross-process locking only if concurrent writes are observed in practice.
+  const usage = readUsageForRebuild(
+    path,
+    new Set(records.map((record) => record.id)),
+  );
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.rebuild-${randomUUID()}.tmp`;
   let database: DatabaseSync | undefined;
@@ -105,6 +117,7 @@ export function rebuildSearchIndex(
           insertVersion(database, record.id, version);
         }
       }
+      insertUsage(database, usage);
       setMetadata(
         database,
         promptLibraryFingerprint(records),
@@ -794,6 +807,46 @@ function insertVersion(
       version.body,
       JSON.stringify(metadata),
     );
+}
+
+function readUsageForRebuild(
+  path: string,
+  promptIds: ReadonlySet<string>,
+): UsageRow[] {
+  if (!existsSync(path)) return [];
+  let database: DatabaseSync | undefined;
+  try {
+    database = new DatabaseSync(path, { readOnly: true, timeout: 5_000 });
+    const rows = database
+      .prepare("SELECT prompt_id, use_count, last_used_at FROM usage")
+      .all() as unknown as UsageRow[];
+    return rows.filter((row) => {
+      if (
+        typeof row.prompt_id !== "string" ||
+        !Number.isSafeInteger(row.use_count) ||
+        row.use_count < 1 ||
+        (row.last_used_at !== null && typeof row.last_used_at !== "string")
+      ) {
+        throw new Error("Existing usage evidence is invalid.");
+      }
+      return promptIds.has(row.prompt_id);
+    });
+  } catch (error) {
+    throw new Error(
+      `Search index rebuild stopped because existing usage could not be preserved: ${errorMessage(error)}`,
+    );
+  } finally {
+    database?.close();
+  }
+}
+
+function insertUsage(database: DatabaseSync, rows: readonly UsageRow[]): void {
+  const insert = database.prepare(
+    "INSERT INTO usage (prompt_id, use_count, last_used_at) VALUES (?, ?, ?)",
+  );
+  for (const row of rows) {
+    insert.run(row.prompt_id, row.use_count, row.last_used_at);
+  }
 }
 
 function deleteRecord(database: DatabaseSync, id: string): void {

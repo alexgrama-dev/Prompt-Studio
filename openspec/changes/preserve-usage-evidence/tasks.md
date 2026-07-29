@@ -3,7 +3,8 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 1. Implementation
 
-- [ ] 1.1 Preserve the starting usage snapshot during explicit and automatic rebuilds, fail without replacement when it is unreadable, and cover readable, missing, and failure cases in `test/core.test.mts`
+- [x] 1.1 Preserve the starting usage snapshot during explicit and automatic rebuilds, fail without replacement when it is unreadable, and cover readable, missing, and failure cases in `test/core.test.mts`
+  - 2026-07-29: `SQLite search rebuild preserves recorded prompt usage` and `a rebuild leaves an unreadable index unchanged` passed; `pnpm test` passed 70/70, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [ ] 1.2 Label stats as recorded evidence, infer no zero-use rows when evidence is unavailable, and cover feedback-without-use plus unavailable evidence in `test/core.test.mts`
 
 ## 2. Verification

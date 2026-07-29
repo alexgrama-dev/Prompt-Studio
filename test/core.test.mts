@@ -3105,7 +3105,50 @@ test("SQLite search rebuilds from Markdown and ranks exact metadata above body t
   }
 });
 
-test("a corrupt SQLite index is recognized and repaired from prompt files", async () => {
+test("SQLite search rebuild preserves recorded prompt usage", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-usage-rebuild-"),
+  );
+  const databasePath = join(directory, "derived", "search.sqlite");
+  try {
+    const prompt = await createPrompt(directory, {
+      title: "Reusable Diagnosis",
+      body: "Find the root cause before changing code.",
+      target: "codex",
+    });
+    const records = (await listPrompts(directory)).records;
+    rebuildSearchIndex(records, databasePath);
+    recordPromptUse(prompt.id, databasePath);
+    recordPromptUse(prompt.id, databasePath);
+    const before = loadPromptUsage(databasePath).get(prompt.id);
+
+    rebuildSearchIndex(records, databasePath);
+
+    assert.deepEqual(loadPromptUsage(databasePath).get(prompt.id), before);
+    recordPromptUse(prompt.id, databasePath);
+    const beforeAutomaticRebuild = loadPromptUsage(databasePath).get(prompt.id);
+    const changedRecords = records.map((record) =>
+      record.id === prompt.id
+        ? { ...record, updatedAt: "2026-07-29T19:30:00.000Z" }
+        : record,
+    );
+    assert.equal(
+      inspectSearchIndex(databasePath, changedRecords).needsRebuild,
+      true,
+    );
+
+    ensureSearchIndex(changedRecords, databasePath);
+
+    assert.deepEqual(
+      loadPromptUsage(databasePath).get(prompt.id),
+      beforeAutomaticRebuild,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a rebuild leaves an unreadable index unchanged", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-repair-"));
   const databasePath = join(directory, "search.sqlite");
   try {
@@ -3116,13 +3159,25 @@ test("a corrupt SQLite index is recognized and repaired from prompt files", asyn
     });
     await writeFile(databasePath, "not sqlite", "utf8");
     assert.equal(inspectSearchIndex(databasePath).status, "corrupt");
+    const beforeDigest = createHash("sha256")
+      .update(await readFile(databasePath))
+      .digest("hex");
+    const records = (await listPrompts(directory)).records;
 
-    const repaired = ensureSearchIndex(
-      (await listPrompts(directory)).records,
-      databasePath,
+    assert.throws(
+      () => ensureSearchIndex(records, databasePath),
+      /existing usage could not be preserved/i,
     );
-    assert.equal(repaired.status, "healthy");
-    assert.equal(repaired.recordCount, 1);
+    assert.equal(
+      createHash("sha256")
+        .update(await readFile(databasePath))
+        .digest("hex"),
+      beforeDigest,
+    );
+    assert.deepEqual(
+      (await readdir(directory)).filter((name) => name.includes(".rebuild-")),
+      [],
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
