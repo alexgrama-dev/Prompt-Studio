@@ -15,7 +15,9 @@ type ExtensionPreferences = {
   /** Project Roots - Folders Prompt Studio may scan for saved Git repositories; you can also choose one exact repo directly in Enhance Prompt */
   "projectRoots": string,
   /** Mac Mini Project Root - Optional read-only SSH source in host:path form; leave blank to disable */
-  "sshProjectRoot"?: string
+  "sshProjectRoot"?: string,
+  /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Idea Studio; read only after an explicit OpenAI action */
+  "openaiApiKey"?: string
 }
 
 /** Preferences accessible in all the extension's commands */
@@ -24,26 +26,31 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `browse-prompts` command */
   export type BrowsePrompts = ExtensionPreferences & {}
-  /** Preferences accessible in the `menubar-prompts` command */
-  export type MenubarPrompts = ExtensionPreferences & {}
   /** Preferences accessible in the `enhance-prompt` command */
   export type EnhancePrompt = ExtensionPreferences & {
-  /** OpenAI API Key - Stored by Raycast in encrypted command-scoped storage; read only after enhancement enters Preview */
-  "openaiApiKey"?: string,
   /** Context7 API Key - Stored by Raycast in encrypted command-scoped storage; used only after an exact documentation query is reviewed */
   "context7ApiKey"?: string
 }
+  /** Preferences accessible in the `idea-studio` command */
+  export type IdeaStudio = ExtensionPreferences & {}
+  /** Preferences accessible in the `menubar-prompts` command */
+  export type MenubarPrompts = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `browse-prompts` command */
   export type BrowsePrompts = {}
-  /** Arguments passed to the `menubar-prompts` command */
-  export type MenubarPrompts = {}
   /** Arguments passed to the `enhance-prompt` command */
   export type EnhancePrompt = {
   /** Rough thoughts */
   "thoughts": string
 }
+  /** Arguments passed to the `idea-studio` command */
+  export type IdeaStudio = {
+  /** Idea to capture */
+  "idea": string
+}
+  /** Arguments passed to the `menubar-prompts` command */
+  export type MenubarPrompts = {}
 }
 

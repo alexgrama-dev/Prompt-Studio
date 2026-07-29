@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   browsePromptsLaunchContext,
+  enhancePromptLaunchContext,
+  ideaStudioInitialIdea,
+  ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
 } from "../src/core/launch-context.ts";
 
@@ -23,5 +26,26 @@ test("an empty loading list cannot erase the launched prompt selection", () => {
   assert.equal(
     retainPromptSelectionWhileLoading("prompt-456", null, false),
     null,
+  );
+});
+
+test("Idea Studio and Enhance Prompt handoffs preserve exact unsaved text and identity", () => {
+  const idea = "  Keep this exact idea.\n";
+  assert.equal(
+    ideaStudioInitialIdea(ideaStudioLaunchContext(idea), "ignored", "ignored"),
+    idea,
+  );
+  assert.equal(ideaStudioInitialIdea(undefined, idea), idea);
+  assert.deepEqual(
+    enhancePromptLaunchContext({
+      id: "idea-123",
+      body: idea,
+      target: "claude-code",
+    }),
+    {
+      thoughts: idea,
+      target: "claude-code",
+      seedId: "idea-123",
+    },
   );
 });

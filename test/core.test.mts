@@ -2032,11 +2032,36 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
     ),
     /No provider fallback occurred/,
   );
+  for (const response of [
+    { status: "incomplete", output: [] },
+    {
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          content: [{ type: "refusal", refusal: "cannot comply" }],
+        },
+      ],
+    },
+  ]) {
+    await assert.rejects(
+      generateIdeaTitle(
+        { idea: exactIdea, target: "codex" },
+        {
+          apiKey: "test-secret",
+          fetcher: (async () => Response.json(response)) as typeof fetch,
+        },
+      ),
+      /No provider fallback occurred/,
+    );
+  }
 
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     preferences?: Array<{ name?: string; type?: string }>;
     commands?: Array<{
       name?: string;
+      title?: string;
+      mode?: string;
       preferences?: Array<{ name?: string }>;
     }>;
   };
@@ -2051,6 +2076,12 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
       ?.find((command) => command.name === "enhance-prompt")
       ?.preferences?.some((preference) => preference.name === "openaiApiKey"),
     false,
+  );
+  assert.deepEqual(
+    manifest.commands
+      ?.filter((command) => command.mode === "view")
+      .map((command) => command.title),
+    ["Prompt Studio", "Enhance Prompt", "Idea Studio"],
   );
 });
 

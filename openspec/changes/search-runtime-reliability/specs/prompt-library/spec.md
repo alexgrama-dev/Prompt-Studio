@@ -4,8 +4,8 @@
 
 Prompt Studio SHALL distinguish an empty library, a query with no match, and a
 load failure. A no-match state SHALL preserve the query and offer explicit
-Enhance This Search when OpenAI enhancement is Preview or Active and Save Rough
-Thought when the portable Markdown store is available. Opening either route
+Enhance This Search when OpenAI enhancement is Preview or Active and Open in
+Idea Studio when the portable Markdown store is available. Opening either route
 SHALL NOT create an authoritative record. Enhance MAY retain its normal local
 recovery draft.
 
@@ -17,7 +17,7 @@ recovery draft.
 
 #### Scenario: Start a recovery route
 
-- **WHEN** the user opens Enhance This Search or Save Rough Thought
+- **WHEN** the user opens Enhance This Search or Open in Idea Studio
 - **THEN** the selected view receives the query
 - **AND** no seed, prompt, history, usage, or feedback record is created until the user completes its existing Save action
 

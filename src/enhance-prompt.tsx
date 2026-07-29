@@ -7,9 +7,12 @@ import {
   Form,
   getPreferenceValues,
   Icon,
+  launchCommand,
+  LaunchType,
   List,
   LocalStorage,
   openCommandPreferences,
+  openExtensionPreferences,
   showHUD,
   showToast,
   Toast,
@@ -99,19 +102,20 @@ import {
 import { mergeReviewedSources } from "./core/research-safety";
 import {
   createPrompt,
-  deletePrompt,
   enhancementHistoryDirectory,
   listPrompts,
-  promptSeedDirectory,
   promptRecordToDraft,
   recordEnhancementHistory,
-  recordPromptSeed,
   resolvePromptDirectory,
   updatePrompt,
   type PromptRecord,
   type PromptSeedReference,
   type PromptTarget,
 } from "./core/prompt-store";
+import {
+  ideaStudioLaunchContext,
+  type EnhancePromptLaunchContext,
+} from "./core/launch-context";
 import {
   estimatedProviderMaximumCostUsd,
   getProviderEnhancementProfile,
@@ -159,13 +163,15 @@ const ENHANCEMENT_FORM_DRAFT_KEY = "prompt-studio.enhancement-form-draft.v1";
 export default function EnhancePrompt(props: {
   arguments?: { thoughts?: string };
   fallbackText?: string;
-  launchContext?: { thoughts?: string; revisionOfPromptId?: string };
+  launchContext?: EnhancePromptLaunchContext;
 }) {
   const initialThoughts =
-    props.launchContext?.thoughts?.trim() ||
-    props.arguments?.thoughts?.trim() ||
-    props.fallbackText?.trim() ||
-    "";
+    props.launchContext?.thoughts ??
+    (props.arguments?.thoughts?.trim() || props.fallbackText?.trim() || "");
+  const initialTarget = props.launchContext?.target ?? "codex";
+  const initialSeed = props.launchContext?.seedId
+    ? { id: props.launchContext.seedId, thoughts: initialThoughts }
+    : undefined;
   const revisionOfPromptId = props.launchContext?.revisionOfPromptId;
   const [state, setState] = useState<
     "checking" | "disabled" | "preview" | "active" | "error"
@@ -224,6 +230,8 @@ export default function EnhancePrompt(props: {
       <EnhancementWorkspace
         state={state}
         initialThoughts={initialThoughts}
+        initialTarget={initialTarget}
+        {...(initialSeed ? { initialSeed } : {})}
         revisionOfPromptId={revisionOfPromptId}
         projectContextState={projectContextState}
         context7State={context7State}
@@ -254,6 +262,8 @@ function EnhancementWorkspace({
   anthropicState,
   googleState,
   initialThoughts,
+  initialTarget,
+  initialSeed,
   revisionOfPromptId,
 }: {
   state: "preview" | "active";
@@ -265,6 +275,8 @@ function EnhancementWorkspace({
   anthropicState: FeatureState;
   googleState: FeatureState;
   initialThoughts: string;
+  initialTarget: PromptTarget;
+  initialSeed?: PromptSeedReference;
   revisionOfPromptId?: string | undefined;
 }) {
   const preferences = getPreferenceValues<Preferences>();
@@ -276,9 +288,11 @@ function EnhancementWorkspace({
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
   const [roughThoughts, setRoughThoughts] = useState(initialThoughts);
-  const [target, setTarget] = useState<PromptTarget>("codex");
+  const [target, setTarget] = useState<PromptTarget>(initialTarget);
   const [oneRunInstruction, setOneRunInstruction] = useState("");
-  const [activeSeed, setActiveSeed] = useState<PromptSeedReference>();
+  const [activeSeed, setActiveSeed] = useState<PromptSeedReference | undefined>(
+    initialSeed,
+  );
   const [projects, setProjects] = useState<DiscoveredProject[]>([]);
   const [recentProjectPaths, setRecentProjectPaths] = useState<string[]>([]);
   const [projectDiscoveryLoading, setProjectDiscoveryLoading] = useState(false);
@@ -375,41 +389,6 @@ function EnhancementWorkspace({
     setupMode,
     target,
   ]);
-
-  async function saveRoughThought() {
-    const thoughts = roughThoughts.trim();
-    if (!thoughts) {
-      await showToast(
-        Toast.Style.Failure,
-        "Rough Thought Is Empty",
-        "Write the thought you want to keep first.",
-      );
-      return;
-    }
-    try {
-      const seed = await recordPromptSeed(
-        resolvePromptDirectory(preferences.libraryDirectory),
-        {
-          title: seedTitle(thoughts),
-          body: thoughts,
-          target,
-        },
-      );
-      setRoughThoughts(seed.body);
-      setActiveSeed({ id: seed.id, thoughts: seed.body });
-      await showToast(
-        Toast.Style.Success,
-        "Rough Thought Saved",
-        "It is now linked to this enhancement form.",
-      );
-    } catch (error) {
-      await showToast(
-        Toast.Style.Failure,
-        "Could Not Save Rough Thought",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
 
   useEffect(() => {
     if (projectContextState === "disabled") return;
@@ -724,7 +703,7 @@ function EnhancementWorkspace({
           "OpenAI API Key Required",
           "Add the key before Prompt Studio creates focused research questions.",
         );
-        await openCommandPreferences();
+        await openExtensionPreferences();
         return;
       }
       const maximumCost = maximumFocusedResearchCostUsd();
@@ -959,9 +938,9 @@ function EnhancementWorkspace({
       await showToast(
         Toast.Style.Failure,
         "OpenAI API Key Required",
-        "Add the key in this command's preferences before enhancing.",
+        "Add the shared key in Prompt Studio extension preferences before enhancing.",
       );
-      await openCommandPreferences();
+      await openExtensionPreferences();
       return;
     }
     await executeEnhancement(request, openaiApiKey);
@@ -1091,9 +1070,9 @@ function EnhancementWorkspace({
       await showToast(
         Toast.Style.Failure,
         "OpenAI API Key Required",
-        "Add the key in this command's preferences before running the evaluation.",
+        "Add the shared key in Prompt Studio extension preferences before running the evaluation.",
       );
-      await openCommandPreferences();
+      await openExtensionPreferences();
       return;
     }
     await executeActivationEvaluation(effectiveProfileId, apiKey);
@@ -1176,22 +1155,14 @@ function EnhancementWorkspace({
             />
           ) : null}
           <Action
-            title="Save Rough Thought"
-            icon={Icon.Bookmark}
-            onAction={saveRoughThought}
-          />
-          <Action.Push
-            title="Seed Inbox"
-            icon={Icon.Tray}
-            target={
-              <PromptSeedInbox
-                directory={resolvePromptDirectory(preferences.libraryDirectory)}
-                onSelect={(seed) => {
-                  setRoughThoughts(seed.body);
-                  setTarget(seed.target);
-                  setActiveSeed({ id: seed.id, thoughts: seed.body });
-                }}
-              />
+            title="Open in Idea Studio"
+            icon={Icon.LightBulb}
+            onAction={() =>
+              launchCommand({
+                name: "idea-studio",
+                type: LaunchType.UserInitiated,
+                context: ideaStudioLaunchContext(roughThoughts, target),
+              })
             }
           />
           <Action
@@ -2601,9 +2572,9 @@ function WebResearchPlanReview({
       await showToast(
         Toast.Style.Failure,
         "OpenAI API Key Required",
-        "Add the key in this command's preferences before current web research.",
+        "Add the shared key in Prompt Studio extension preferences before current web research.",
       );
-      await openCommandPreferences();
+      await openExtensionPreferences();
       return;
     }
     const confirmed = await confirmAlert({
@@ -3136,152 +3107,6 @@ function ExaResearchSourceReview({
   );
 }
 
-function PromptSeedInbox({
-  directory,
-  onSelect,
-}: {
-  directory: string;
-  onSelect: (seed: PromptRecord) => void;
-}) {
-  const { pop } = useNavigation();
-  const [seeds, setSeeds] = useState<PromptRecord[]>([]);
-  const [history, setHistory] = useState<PromptRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    void Promise.all([
-      listPrompts(promptSeedDirectory(directory)),
-      listPrompts(enhancementHistoryDirectory(directory)),
-    ])
-      .then(([seedLibrary, enhancementLibrary]) => {
-        setSeeds(seedLibrary.records);
-        setHistory(enhancementLibrary.records);
-      })
-      .catch((loadError: unknown) =>
-        setError(
-          loadError instanceof Error ? loadError.message : String(loadError),
-        ),
-      )
-      .finally(() => setIsLoading(false));
-  }, [directory]);
-
-  function useSeed(seed: PromptRecord) {
-    onSelect(seed);
-    pop();
-  }
-
-  async function removeSeed(seed: PromptRecord) {
-    const confirmed = await confirmAlert({
-      title: `Delete “${seed.title}”?`,
-      message:
-        "This permanently removes the rough thought. Existing enhancement history remains.",
-      primaryAction: {
-        title: "Delete Rough Thought",
-        style: Alert.ActionStyle.Destructive,
-      },
-    });
-    if (!confirmed) return;
-    try {
-      await deletePrompt(promptSeedDirectory(directory), seed.id, {
-        syncSearchIndex: false,
-      });
-      setSeeds((current) => current.filter((record) => record.id !== seed.id));
-      await showToast(Toast.Style.Success, "Rough Thought Deleted");
-    } catch (deleteError) {
-      await showToast(
-        Toast.Style.Failure,
-        "Could Not Delete Rough Thought",
-        deleteError instanceof Error
-          ? deleteError.message
-          : String(deleteError),
-      );
-    }
-  }
-
-  return (
-    <List
-      isLoading={isLoading}
-      isShowingDetail={seeds.length > 0}
-      searchBarPlaceholder="Search saved rough thoughts…"
-    >
-      {!isLoading && seeds.length === 0 ? (
-        <List.EmptyView
-          icon={Icon.Bookmark}
-          title={error ? "Seed Inbox Unavailable" : "No Saved Thoughts"}
-          description={
-            error ??
-            "Use Save Rough Thought from the Enhance Prompt form to keep an idea."
-          }
-        />
-      ) : null}
-      {seeds.map((seed) => {
-        // ponytail: linear counting is enough for a local inbox; index if history reaches thousands.
-        const enhancementCount = history.filter(
-          (record) => record.seed?.id === seed.id,
-        ).length;
-        return (
-          <List.Item
-            key={seed.id}
-            id={seed.id}
-            icon={Icon.Bookmark}
-            title={seed.title}
-            subtitle={seed.body}
-            accessories={[
-              {
-                text:
-                  enhancementCount === 0
-                    ? "Not enhanced"
-                    : `${enhancementCount} prompt${enhancementCount === 1 ? "" : "s"}`,
-              },
-            ]}
-            detail={
-              <List.Item.Detail
-                markdown={`# Rough Thought\n\n${seed.body}`}
-                metadata={
-                  <List.Item.Detail.Metadata>
-                    <List.Item.Detail.Metadata.Label
-                      title="Target"
-                      text={targetTitle(seed.target)}
-                    />
-                    <List.Item.Detail.Metadata.Label
-                      title="Enhanced"
-                      text={`${enhancementCount} time${enhancementCount === 1 ? "" : "s"}`}
-                    />
-                    <List.Item.Detail.Metadata.Label
-                      title="Saved"
-                      text={new Date(seed.createdAt).toLocaleString()}
-                    />
-                  </List.Item.Detail.Metadata>
-                }
-              />
-            }
-            actions={
-              <ActionPanel>
-                <Action
-                  title="Use as Enhancement Seed"
-                  icon={Icon.Wand}
-                  onAction={() => useSeed(seed)}
-                />
-                <Action.CopyToClipboard
-                  title="Copy Rough Thought"
-                  content={seed.body}
-                />
-                <Action
-                  title="Delete Rough Thought"
-                  icon={Icon.Trash}
-                  style={Action.Style.Destructive}
-                  onAction={() => removeSeed(seed)}
-                />
-              </ActionPanel>
-            }
-          />
-        );
-      })}
-    </List>
-  );
-}
-
 function EnhancementHistory({ directory }: { directory: string }) {
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -3581,14 +3406,9 @@ function EnhancementEditor({
   );
 }
 
-function seedTitle(thoughts: string): string {
-  const compact = thoughts.replace(/\s+/g, " ").trim();
-  return compact.length <= 80 ? compact : `${compact.slice(0, 77).trimEnd()}…`;
-}
-
 function enhancementHistoryMarkdown(record: PromptRecord): string {
   return record.seed
-    ? `${record.body}\n\n---\n\n## Original Rough Thought\n\n${record.seed.thoughts}`
+    ? `${record.body}\n\n---\n\n## Original Idea\n\n${record.seed.thoughts}`
     : record.body;
 }
 
@@ -3601,8 +3421,8 @@ function resultDetailsMarkdown(
     "These details support review, saving, and search. They are not part of the copy-ready prompt.",
     ...(seed
       ? [
-          `## Original Rough Thought\n\n${seed.thoughts}`,
-          `## Saved Seed\n\n${seed.id ? "Linked to Seed Inbox." : "Not saved to Seed Inbox."}`,
+          `## Original Idea\n\n${seed.thoughts}`,
+          `## Saved Idea\n\n${seed.id ? "Linked to Idea Studio." : "Not saved to Idea Studio."}`,
         ]
       : []),
     `## Library Title\n\n${result.title}`,

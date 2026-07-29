@@ -66,15 +66,9 @@
       "mode": "view"
     },
     {
-      "name": "menubar-prompts",
-      "title": "Most-Used Prompts",
-      "description": "Copy your most-used prompts from the macOS menubar",
-      "mode": "menu-bar"
-    },
-    {
       "name": "enhance-prompt",
       "title": "Enhance Prompt",
-      "description": "Turn rough thoughts into a complete prompt when enhancement is activated",
+      "description": "Turn an idea into a complete prompt when enhancement is activated",
       "mode": "view",
       "arguments": [
         {
@@ -93,6 +87,26 @@
           "description": "Stored by Raycast in encrypted command-scoped storage; used only after an exact documentation query is reviewed"
         }
       ]
+    },
+    {
+      "name": "idea-studio",
+      "title": "Idea Studio",
+      "description": "Capture, title, organize, and enhance prompt ideas",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "idea",
+          "type": "text",
+          "placeholder": "Idea to capture",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "menubar-prompts",
+      "title": "Most-Used Prompts",
+      "description": "Copy your most-used prompts from the macOS menubar",
+      "mode": "menu-bar"
     }
   ],
   "scripts": {
