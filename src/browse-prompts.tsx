@@ -37,7 +37,11 @@ import {
 import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { currentProjectCommit } from "./core/project-context";
-import { ensureQmd, fusePromptSearch, searchQmd } from "./core/qmd-search";
+import {
+  fusePromptSearch,
+  prepareQmdDiscovery,
+  searchQmd,
+} from "./core/qmd-search";
 import {
   defaultSearchIndexPath,
   inspectSearchIndex,
@@ -131,29 +135,25 @@ export default function BrowsePrompts({
       setFeedbackEnabled(
         getFeatureStatus(statuses, "feedback").effectiveState !== "disabled",
       );
-      let qmdIsReady = false;
-      if (qmdIsEnabled) {
-        try {
-          qmdIsReady =
-            (
-              await ensureQmd(
-                resolvedDirectory,
-                library.records,
-                preferences.qmdExecutable,
-              )
-            ).state === "healthy";
-        } catch (qmdError) {
-          await showToast(
-            Toast.Style.Failure,
-            "Meaning Search Unavailable",
-            `SQLite exact search remains active. ${qmdError instanceof Error ? qmdError.message : String(qmdError)}`,
-          );
-        }
-      }
       setRecords(library.records);
       setInvalid(library.invalid);
       setSqliteActive(indexIsReady);
-      setQmdActive(qmdIsReady);
+      setQmdActive(false);
+      setLoading(false);
+      void prepareQmdDiscovery(
+        qmdIsEnabled,
+        resolvedDirectory,
+        library.records,
+        preferences.qmdExecutable,
+      )
+        .then((health) => setQmdActive(health?.state === "healthy"))
+        .catch((qmdError: unknown) =>
+          showToast(
+            Toast.Style.Failure,
+            "Meaning Search Unavailable",
+            `Using local search. ${qmdError instanceof Error ? qmdError.message : String(qmdError)}`,
+          ),
+        );
       if (projectContextEnabled) {
         const paths = [
           ...new Set(

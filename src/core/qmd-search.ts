@@ -209,6 +209,18 @@ export async function ensureQmd(
   );
 }
 
+export async function prepareQmdDiscovery(
+  enabled: boolean,
+  directory: string,
+  records: readonly PromptRecord[],
+  configuredExecutable?: string,
+  runner: QmdRunner = runQmd,
+  statePath = qmdStatePath(),
+): Promise<QmdHealth | undefined> {
+  if (!enabled) return undefined;
+  return ensureQmd(directory, records, configuredExecutable, runner, statePath);
+}
+
 export async function rebuildQmd(
   directory: string,
   records: readonly PromptRecord[],

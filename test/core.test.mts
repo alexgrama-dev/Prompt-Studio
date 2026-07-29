@@ -134,6 +134,7 @@ import { executePromptStudioFeedbackTool } from "../src/core/mcp-feedback.ts";
 import {
   fusePromptSearch,
   inspectQmd,
+  prepareQmdDiscovery,
   rebuildQmd,
   searchQmd,
   type QmdRunner,
@@ -3310,6 +3311,38 @@ test("QMD refresh, health, parsing, and deterministic result fusion work through
         .state,
       "healthy",
     );
+    let disabledCalls = 0;
+    assert.equal(
+      await prepareQmdDiscovery(
+        false,
+        directory,
+        [prompt],
+        "fake-qmd",
+        async () => {
+          disabledCalls += 1;
+          throw new Error("Disabled QMD must not run.");
+        },
+        statePath,
+      ),
+      undefined,
+    );
+    assert.equal(disabledCalls, 0);
+
+    await rm(statePath);
+    assert.equal(
+      (
+        await prepareQmdDiscovery(
+          true,
+          directory,
+          [prompt],
+          "fake-qmd",
+          runner,
+          statePath,
+        )
+      )?.state,
+      "healthy",
+    );
+    assert.equal(updateCalls, 2);
 
     const semantic = await searchQmd(
       "a flaky service call",
@@ -3354,6 +3387,19 @@ test("QMD refresh, health, parsing, and deterministic result fusion work through
     );
     assert.equal(unavailable.state, "unavailable");
     assert.match(unavailable.message, /offline/);
+    await assert.rejects(
+      prepareQmdDiscovery(
+        true,
+        directory,
+        [prompt],
+        "fake-qmd",
+        async () => {
+          throw new Error("qmd is offline");
+        },
+        statePath,
+      ),
+      /offline/,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
