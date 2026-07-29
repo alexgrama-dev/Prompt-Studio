@@ -9,7 +9,6 @@ import {
   type PromptTarget,
 } from "./prompt-store.ts";
 import { buildFreshnessWarning } from "./build-freshness.ts";
-import { recordMissedSearch } from "./missed-searches.ts";
 import { extractPlaceholders } from "./placeholders.ts";
 import { containsLikelySecret } from "./secrets.ts";
 import {
@@ -449,12 +448,6 @@ async function searchTool(
       },
     ];
   });
-  if (matches.length === 0) {
-    // ponytail: best-effort telemetry; a failed log write never fails the search
-    await recordMissedSearch(options.directory, redactLocalPaths(query)).catch(
-      () => {},
-    );
-  }
   return success(
     "prompt_studio_search",
     {

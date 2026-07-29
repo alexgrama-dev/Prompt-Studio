@@ -5409,8 +5409,7 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
       assert.notEqual(missed.isError, true);
       assert.equal(mcpStructuredData(missed).count, 0);
       const missedRecords = await listMissedSearches(directory);
-      assert.equal(missedRecords.length, 1);
-      assert.equal(missedRecords[0]?.query, missedQuery);
+      assert.equal(missedRecords.length, 0);
 
       const auditText = JSON.stringify(audits);
       assert.equal(auditText.includes("flaky cache"), false);
@@ -5422,6 +5421,14 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
       );
       assert.ok(
         audits.filter((event) => event.outcome === "success").length >= 3,
+      );
+      assert.ok(
+        audits.some(
+          (event) =>
+            event.tool === "prompt_studio_search" &&
+            event.outcome === "success" &&
+            event.resultCount === 0,
+        ),
       );
     } finally {
       await closeTestMcp(connection);
