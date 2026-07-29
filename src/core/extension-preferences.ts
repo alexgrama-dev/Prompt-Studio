@@ -5,6 +5,7 @@ export interface PromptStudioPreferences {
   qmdExecutable?: string;
   projectRoots?: string;
   sshProjectRoot?: string;
+  openaiApiKey?: string;
 }
 
 export function getPromptStudioPreferences(): PromptStudioPreferences {

@@ -81,6 +81,10 @@ import {
 } from "../src/core/enhancement.ts";
 import { parseEnhancementFormDraft } from "../src/core/enhancement-form-draft.ts";
 import {
+  generateIdeaTitle,
+  validateIdeaTitle,
+} from "../src/core/idea-title.ts";
+import {
   ANTHROPIC_API_VERSION,
   ANTHROPIC_MESSAGES_ENDPOINT,
   buildAnthropicMessageRequest,
@@ -96,8 +100,10 @@ import {
 } from "../src/core/evaluation.ts";
 import {
   createPrompt,
+  consolidateExactIdeaDuplicates,
   deletePrompt,
   enhancementHistoryDirectory,
+  findExactIdeaDuplicates,
   listPrompts,
   listPromptVersions,
   parsePrompt,
@@ -105,6 +111,7 @@ import {
   promptRecordToDraft,
   recordEnhancementHistory,
   recordPromptSeed,
+  resolvePromptSeed,
   resolvePromptDirectory,
   restorePromptVersion,
   serializePrompt,
@@ -1946,6 +1953,107 @@ test("the native OpenAI adapter validates output and records returned usage with
   assert.equal(run.outputSchemaVersion, ENHANCEMENT_OUTPUT_SCHEMA_VERSION);
 });
 
+test("idea titles use one bounded OpenAI request, shared preference, and strict validation", async () => {
+  const exactIdea = "  Diagnose the retry race without losing evidence.\n";
+  let calls = 0;
+  const generated = await generateIdeaTitle(
+    { idea: exactIdea, target: "codex" },
+    {
+      apiKey: "test-secret",
+      fetcher: (async (_input, init) => {
+        calls += 1;
+        assert.equal(
+          new Headers(init?.headers).get("Authorization"),
+          "Bearer test-secret",
+        );
+        const request = JSON.parse(String(init?.body)) as {
+          input: Array<{ content: Array<{ text: string }> }>;
+          max_output_tokens: number;
+          store: boolean;
+        };
+        assert.equal(request.store, false);
+        assert.ok(request.max_output_tokens <= 128);
+        assert.deepEqual(JSON.parse(request.input[0]!.content[0]!.text), {
+          idea: exactIdea,
+          target: "codex",
+        });
+        assert.doesNotMatch(String(init?.body), /test-secret/);
+        return Response.json({
+          id: "resp_idea_title",
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: "Diagnose Retry Race Failures",
+                },
+              ],
+            },
+          ],
+        });
+      }) as typeof fetch,
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(generated.title, "Diagnose Retry Race Failures");
+  assert.equal(generated.provenance.provider, "openai");
+
+  let missingKeyCalls = 0;
+  await assert.rejects(
+    generateIdeaTitle(
+      { idea: exactIdea, target: "codex" },
+      {
+        apiKey: " ",
+        fetcher: (async () => {
+          missingKeyCalls += 1;
+          return Response.json({});
+        }) as typeof fetch,
+      },
+    ),
+    /OpenAI API key/,
+  );
+  assert.equal(missingKeyCalls, 0);
+  assert.throws(() => validateIdeaTitle('"Quoted title"'), /plain text/);
+  assert.throws(() => validateIdeaTitle("Title\nSubtitle"), /one line/);
+  assert.throws(() => validateIdeaTitle("word ".repeat(30)), /80 characters/);
+  await assert.rejects(
+    generateIdeaTitle(
+      { idea: exactIdea, target: "codex" },
+      {
+        apiKey: "test-secret",
+        fetcher: (async () =>
+          Response.json(
+            { error: { code: "rate_limit" } },
+            { status: 429 },
+          )) as typeof fetch,
+      },
+    ),
+    /No provider fallback occurred/,
+  );
+
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    preferences?: Array<{ name?: string; type?: string }>;
+    commands?: Array<{
+      name?: string;
+      preferences?: Array<{ name?: string }>;
+    }>;
+  };
+  assert.equal(
+    manifest.preferences?.find(
+      (preference) => preference.name === "openaiApiKey",
+    )?.type,
+    "password",
+  );
+  assert.equal(
+    manifest.commands
+      ?.find((command) => command.name === "enhance-prompt")
+      ?.preferences?.some((preference) => preference.name === "openaiApiKey"),
+    false,
+  );
+});
+
 test("OpenAI transient retries, Deep review, refusal, and cancellation remain explicit", async () => {
   let attempts = 0;
   const retryingFetcher = (async () => {
@@ -2809,6 +2917,96 @@ test("idea saves reuse normalized text and identity while preserving exact conte
     assert.equal((await listPrompts(directory)).records.length, 1);
     assert.equal(history.seed?.id, manuallyRetitled.id);
     assert.equal(prompt.seed?.id, manuallyRetitled.id);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("exact idea duplicates preview and consolidate without rewriting linked records", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-idea-duplicates-"),
+  );
+  try {
+    const seedDirectory = promptSeedDirectory(directory);
+    const oldest = await createPrompt(
+      seedDirectory,
+      {
+        title: "Plan Café Migration",
+        body: "Plan café migration.",
+        target: "codex",
+        tags: ["seed"],
+      },
+      { syncSearchIndex: false },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const duplicate = await createPrompt(
+      seedDirectory,
+      {
+        title: "A Later Duplicate",
+        body: "  Plan cafe\u0301   migration. ",
+        target: "codex",
+        tags: ["seed"],
+      },
+      { syncSearchIndex: false },
+    );
+    const otherTarget = await createPrompt(
+      seedDirectory,
+      {
+        title: "Same Words for Claude",
+        body: "Plan café migration.",
+        target: "claude-code",
+        tags: ["seed"],
+      },
+      { syncSearchIndex: false },
+    );
+    await recordEnhancementHistory(directory, {
+      title: "Migration Enhancement",
+      body: "Build the migration plan.",
+      target: "codex",
+      seed: { id: duplicate.id, thoughts: duplicate.body },
+    });
+    await createPrompt(directory, {
+      title: "Saved Migration Prompt",
+      body: "Execute the migration plan.",
+      target: "codex",
+      seed: { id: oldest.id, thoughts: oldest.body },
+    });
+
+    const preview = await findExactIdeaDuplicates(directory);
+    assert.equal(preview.length, 1);
+    assert.equal(preview[0]?.retained.id, oldest.id);
+    assert.deepEqual(
+      preview[0]?.removed.map((record) => record.id),
+      [duplicate.id],
+    );
+    assert.equal(preview[0]?.linkedEnhancementCount, 1);
+    assert.equal(preview[0]?.linkedPromptCount, 1);
+    assert.equal((await listPrompts(seedDirectory)).records.length, 3);
+
+    await assert.rejects(
+      consolidateExactIdeaDuplicates(directory, oldest.id, [otherTarget.id]),
+      /exact duplicate group/,
+    );
+    assert.equal((await listPrompts(seedDirectory)).records.length, 3);
+
+    await consolidateExactIdeaDuplicates(directory, oldest.id, [duplicate.id]);
+    const remainingIdeas = (await listPrompts(seedDirectory)).records;
+    assert.equal(remainingIdeas.length, 2);
+    assert.ok(
+      remainingIdeas
+        .find((record) => record.id === oldest.id)
+        ?.aliases.includes(duplicate.id),
+    );
+    assert.equal(
+      (await resolvePromptSeed(directory, duplicate.id)).id,
+      oldest.id,
+    );
+    assert.equal(
+      (await listPrompts(enhancementHistoryDirectory(directory))).records
+        .length,
+      1,
+    );
+    assert.equal((await listPrompts(directory)).records.length, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -49,6 +49,13 @@
       "required": false,
       "title": "Mac Mini Project Root",
       "description": "Optional read-only SSH source in host:path form; leave blank to disable"
+    },
+    {
+      "name": "openaiApiKey",
+      "type": "password",
+      "required": false,
+      "title": "OpenAI API Key",
+      "description": "Shared encrypted preference for Enhance Prompt and Idea Studio; read only after an explicit OpenAI action"
     }
   ],
   "commands": [
@@ -78,13 +85,6 @@
         }
       ],
       "preferences": [
-        {
-          "name": "openaiApiKey",
-          "type": "password",
-          "required": false,
-          "title": "OpenAI API Key",
-          "description": "Stored by Raycast in encrypted command-scoped storage; read only after enhancement enters Preview"
-        },
         {
           "name": "context7ApiKey",
           "type": "password",

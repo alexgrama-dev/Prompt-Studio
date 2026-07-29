@@ -142,6 +142,13 @@ export interface PromptLibrary {
   invalid: InvalidPrompt[];
 }
 
+export interface ExactIdeaDuplicateGroup {
+  retained: PromptRecord;
+  removed: PromptRecord[];
+  linkedEnhancementCount: number;
+  linkedPromptCount: number;
+}
+
 export function defaultPromptDirectory(): string {
   return join(
     homedir(),
@@ -209,6 +216,17 @@ async function listPromptFiles(directory: string): Promise<PromptLibrary> {
   );
   invalid.sort((left, right) => left.filePath.localeCompare(right.filePath));
   return { records, invalid };
+}
+
+async function listExistingPromptFiles(
+  directory: string,
+): Promise<PromptLibrary> {
+  try {
+    return await listPromptFiles(directory);
+  } catch (error) {
+    if (isMissingFile(error)) return { records: [], invalid: [] };
+    throw error;
+  }
 }
 
 export async function createPrompt(
@@ -374,6 +392,100 @@ export async function updatePromptSeed(
 
 export function normalizeIdeaText(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+}
+
+export async function findExactIdeaDuplicates(
+  promptDirectory: string,
+): Promise<ExactIdeaDuplicateGroup[]> {
+  const [ideas, enhancements, prompts] = await Promise.all([
+    listExistingPromptFiles(promptSeedDirectory(promptDirectory)),
+    listExistingPromptFiles(enhancementHistoryDirectory(promptDirectory)),
+    listExistingPromptFiles(promptDirectory),
+  ]);
+  const grouped = new Map<string, PromptRecord[]>();
+  for (const idea of ideas.records) {
+    const key = `${idea.target}\0${normalizeIdeaText(idea.body)}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), idea]);
+  }
+  return [...grouped.values()].flatMap((records) => {
+    if (records.length < 2) return [];
+    const [retained, ...removed] = records.sort(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id),
+    );
+    const identifiers = new Set(records.map((record) => record.id));
+    return [
+      {
+        retained: retained!,
+        removed,
+        linkedEnhancementCount: enhancements.records.filter(
+          (record) => record.seed?.id && identifiers.has(record.seed.id),
+        ).length,
+        linkedPromptCount: prompts.records.filter(
+          (record) => record.seed?.id && identifiers.has(record.seed.id),
+        ).length,
+      },
+    ];
+  });
+}
+
+export async function consolidateExactIdeaDuplicates(
+  promptDirectory: string,
+  retainedId: string,
+  removedIds: readonly string[],
+): Promise<PromptRecord> {
+  const requested = [...new Set(removedIds)].sort();
+  const group = (await findExactIdeaDuplicates(promptDirectory)).find(
+    (candidate) =>
+      candidate.retained.id === retainedId &&
+      candidate.removed
+        .map((record) => record.id)
+        .sort()
+        .every((id, index) => id === requested[index]) &&
+      candidate.removed.length === requested.length,
+  );
+  if (!group) {
+    throw new Error(
+      "The selected records are no longer one exact duplicate group. Reload the review before consolidating.",
+    );
+  }
+
+  const directory = promptSeedDirectory(promptDirectory);
+  const aliases = [
+    ...new Set([
+      ...group.retained.aliases,
+      ...group.removed.flatMap((record) => [record.id, ...record.aliases]),
+    ]),
+  ];
+  const retained = await updatePrompt(
+    directory,
+    group.retained.id,
+    {
+      ...promptRecordToDraft(group.retained),
+      aliases,
+      favorite: group.retained.favorite,
+    },
+    { syncSearchIndex: false },
+  );
+  for (const duplicate of group.removed) {
+    await deletePrompt(directory, duplicate.id, { syncSearchIndex: false });
+  }
+  return retained;
+}
+
+export async function resolvePromptSeed(
+  promptDirectory: string,
+  id: string,
+): Promise<PromptRecord> {
+  const records = (
+    await listPromptsReadOnly(promptSeedDirectory(promptDirectory))
+  ).records;
+  const direct = records.find((record) => record.id === id);
+  const resolved =
+    direct ?? records.find((record) => record.aliases.includes(id));
+  if (!resolved) throw new Error(`Idea not found: ${id}.`);
+  return resolved;
 }
 
 export async function duplicatePrompt(
