@@ -5,6 +5,7 @@ import {
   browsePromptsLaunchContext,
   enhancePromptLaunchContext,
   enhancePromptThoughtsLaunchContext,
+  fallbackPromptDecision,
   ideaStudioInitialIdea,
   ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
@@ -102,4 +103,57 @@ test("browse recovery distinguishes empty, no-match, filtered, and failed states
     }),
     "filtered-empty",
   );
+});
+
+test("fallback paste requires one exact active prompt without placeholders", () => {
+  const exact = {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Repair the flaky cache",
+    aliases: ["cache repair"],
+    body: "Find and repair the cache failure.",
+  };
+  const ambiguous = {
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "Another prompt",
+    aliases: ["cache repair"],
+    body: "Do something else.",
+  };
+  const archived = {
+    id: "33333333-3333-4333-8333-333333333333",
+    title: "Archived prompt",
+    aliases: ["old repair"],
+    body: "Do the old work.",
+    archivedAt: "2026-07-29T00:00:00.000Z",
+  };
+  const placeholder = {
+    id: "44444444-4444-4444-8444-444444444444",
+    title: "Prepare release",
+    aliases: ["release prep"],
+    body: "Prepare {{product}} for release.",
+  };
+  const records = [exact, ambiguous, archived, placeholder];
+
+  assert.deepEqual(
+    fallbackPromptDecision(records, "  REPAIR   THE FLAKY CACHE "),
+    { kind: "paste", record: exact },
+  );
+  assert.deepEqual(
+    fallbackPromptDecision(records, exact.id.toUpperCase()),
+    { kind: "paste", record: exact },
+  );
+  assert.deepEqual(fallbackPromptDecision(records, "release prep"), {
+    kind: "review",
+    record: placeholder,
+  });
+
+  for (const unsafe of [
+    "cache repair",
+    "Repair the flaky",
+    "Find and repair the cache failure.",
+    "old repair",
+    "flaky system repair",
+    "",
+  ]) {
+    assert.deepEqual(fallbackPromptDecision(records, unsafe), { kind: "none" });
+  }
 });

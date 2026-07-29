@@ -21,7 +21,7 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { dirname } from "node:path";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createPrompt,
   deletePrompt,
@@ -57,6 +57,7 @@ import {
 import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
 import {
   enhancePromptThoughtsLaunchContext,
+  fallbackPromptDecision,
   ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
   type BrowsePromptsLaunchContext,
@@ -89,7 +90,9 @@ type LibraryFilter =
 
 export default function BrowsePrompts({
   launchContext,
+  fallbackText,
 }: LaunchProps<{ launchContext: BrowsePromptsLaunchContext }>) {
+  const { push } = useNavigation();
   const preferences = getPromptStudioPreferences();
   const directory = useMemo(() => {
     try {
@@ -104,7 +107,7 @@ export default function BrowsePrompts({
   );
   const [invalid, setInvalid] = useState<InvalidPrompt[]>([]);
   const [filter, setFilter] = useState<LibraryFilter>("current");
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(fallbackText ?? "");
   const [sqliteActive, setSqliteActive] = useState(false);
   const [qmdActive, setQmdActive] = useState(false);
   const [feedbackEnabled, setFeedbackEnabled] = useState(false);
@@ -116,6 +119,7 @@ export default function BrowsePrompts({
   >(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const handledFallback = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -213,6 +217,56 @@ export default function BrowsePrompts({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (
+      handledFallback.current ||
+      loading ||
+      error ||
+      !fallbackText?.trim()
+    ) {
+      return;
+    }
+    handledFallback.current = true;
+    const decision = fallbackPromptDecision(records, fallbackText);
+    if (decision.kind === "none") return;
+    const usePrompt = (body: string, mode: "paste" | "copy") =>
+      useLibraryPrompt(
+        decision.record,
+        body,
+        mode,
+        shouldTrackPromptUsage(sqliteActive),
+        feedbackEnabled,
+      );
+    if (decision.kind === "review") {
+      setSelectedPromptId(decision.record.id);
+      push(
+        <PlaceholderForm
+          record={decision.record}
+          placeholders={extractPlaceholders(decision.record.body)}
+          onUse={usePrompt}
+        />,
+      );
+      return;
+    }
+    void usePrompt(decision.record.body, "paste").catch(
+      async (pasteError: unknown) => {
+        await showToast(
+          Toast.Style.Failure,
+          "Could Not Paste Prompt",
+          pasteError instanceof Error ? pasteError.message : String(pasteError),
+        );
+      },
+    );
+  }, [
+    error,
+    fallbackText,
+    feedbackEnabled,
+    loading,
+    push,
+    records,
+    sqliteActive,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -640,27 +694,7 @@ function PromptItem({
   const placeholders = extractPlaceholders(record.body);
 
   async function usePrompt(body: string, mode: "paste" | "copy") {
-    let useCount: number | undefined;
-    if (trackUsage) {
-      try {
-        recordPromptUse(record.id);
-        useCount = loadPromptUsage().get(record.id)?.useCount;
-      } catch {
-        // ponytail: a missing index only loses ranking, never the paste.
-      }
-    }
-    const nudge =
-      feedbackEnabled && useCount !== undefined && useCount % 5 === 0
-        ? ` · Used ${useCount} times — consider recording feedback`
-        : "";
-    if (mode === "paste") {
-      await closeMainWindow();
-      await Clipboard.paste(body);
-      await showHUD(`Prompt Pasted${nudge}`);
-    } else {
-      await Clipboard.copy(body);
-      await showToast(Toast.Style.Success, "Prompt Copied", nudge || undefined);
-    }
+    await useLibraryPrompt(record, body, mode, trackUsage, feedbackEnabled);
   }
 
   return (
@@ -834,6 +868,39 @@ function PromptItem({
       }
     />
   );
+}
+
+async function useLibraryPrompt(
+  record: PromptRecord,
+  body: string,
+  mode: "paste" | "copy",
+  trackUsage: boolean,
+  feedbackEnabled: boolean,
+) {
+  if (mode === "paste") {
+    await closeMainWindow();
+    await Clipboard.paste(body);
+  } else {
+    await Clipboard.copy(body);
+  }
+  let useCount: number | undefined;
+  if (trackUsage) {
+    try {
+      recordPromptUse(record.id);
+      useCount = loadPromptUsage().get(record.id)?.useCount;
+    } catch {
+      // ponytail: a missing index only loses ranking, never the completed use.
+    }
+  }
+  const nudge =
+    feedbackEnabled && useCount !== undefined && useCount % 5 === 0
+      ? ` · Used ${useCount} times — consider recording feedback`
+      : "";
+  if (mode === "paste") {
+    await showHUD(`Prompt Pasted${nudge}`);
+  } else {
+    await showToast(Toast.Style.Success, "Prompt Copied", nudge || undefined);
+  }
 }
 
 function CreateFeedback({
