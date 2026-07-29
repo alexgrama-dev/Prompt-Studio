@@ -10,8 +10,12 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 2. Verification
 
-- [ ] 2.1 Capture a read-only MacBook usage snapshot before and after one rebuild and prove the recorded rows do not decrease
-- [ ] 2.2 Pass `pnpm check` on the Mac Mini mirror
-- [ ] 2.3 Pass `pnpm check:store`
-- [ ] 2.4 Pass `openspec validate --all --strict`
-- [ ] 2.5 Record dated evidence in `docs/verification/2026-07-29-preserve-usage-evidence.md`
+- [x] 2.1 Capture a read-only MacBook usage snapshot before and after one rebuild and prove the recorded rows do not decrease
+  - 2026-07-29: the real MacBook index remained at 0 rows and 0 total recorded uses with the same empty-snapshot SHA-256 before and after rebuilding 13 prompts; the non-zero carry-forward case passed in the shared regression.
+- [x] 2.2 Pass `pnpm check` on the Mac Mini mirror
+  - 2026-07-29: exit 0 with 71/71 shared tests, typecheck, lint, Raycast/CLI/MCP builds, and all runtime probes passing.
+- [x] 2.3 Pass `pnpm check:store`
+  - 2026-07-29: exit 0 with 3/3 Store-core tests plus package install, lint, and build passing.
+- [x] 2.4 Pass `openspec validate --all --strict`
+  - 2026-07-29: 19/19 changes and specifications passed strict validation.
+- [x] 2.5 Record dated evidence in `docs/verification/2026-07-29-preserve-usage-evidence.md`
