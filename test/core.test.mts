@@ -137,6 +137,11 @@ import {
   extractPlaceholders,
   fillPlaceholders,
 } from "../src/core/placeholders.ts";
+import {
+  forgetRememberedPlaceholderValues,
+  loadRememberedPlaceholderValues,
+  saveRememberedPlaceholderValues,
+} from "../src/core/placeholder-values.ts";
 import { buildFreshnessWarning } from "../src/core/build-freshness.ts";
 import { executePromptStudioFeedbackTool } from "../src/core/mcp-feedback.ts";
 import {
@@ -6472,6 +6477,87 @@ test("usage statistics rank used prompts first and placeholders fill safely", as
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("remembered placeholder values stay prompt-scoped, current, and non-sensitive", async () => {
+  const values = new Map<string, string>();
+  const storage = {
+    async getItem(key: string) {
+      return values.get(key);
+    },
+    async setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    async removeItem(key: string) {
+      values.delete(key);
+    },
+  };
+  const prompt = {
+    id: "11111111-1111-4111-8111-111111111111",
+    updatedAt: "2026-07-29T08:00:00.000Z",
+    body: "Ship {{product}} to {{owner}}. Repeat: {{product}}. Use {{api_key}} and {{note}}.",
+  };
+
+  assert.equal(
+    await saveRememberedPlaceholderValues(storage, prompt, {
+      product: "Prompt Studio",
+      owner: " ",
+      api_key: "never-save-a-credential-field",
+      note: "sk-example01234567890123456789",
+      removed: "not a current placeholder",
+    }),
+    "saved",
+  );
+  assert.deepEqual(await loadRememberedPlaceholderValues(storage, prompt), {
+    product: "Prompt Studio",
+  });
+  assert.doesNotMatch([...values.values()][0] ?? "", /Ship|api_key|sk-example/);
+
+  assert.deepEqual(
+    await loadRememberedPlaceholderValues(storage, {
+      ...prompt,
+      updatedAt: "2026-07-29T09:00:00.000Z",
+    }),
+    {},
+    "A prompt update invalidates remembered values.",
+  );
+  assert.deepEqual(
+    await loadRememberedPlaceholderValues(storage, {
+      ...prompt,
+      body: "Ship {{owner}}.",
+    }),
+    {},
+    "Removed placeholders are not restored.",
+  );
+
+  assert.equal(await forgetRememberedPlaceholderValues(storage, prompt.id), true);
+  assert.deepEqual(await loadRememberedPlaceholderValues(storage, prompt), {});
+
+  const failingStorage = {
+    async getItem() {
+      throw new Error("read failed");
+    },
+    async setItem() {
+      throw new Error("write failed");
+    },
+    async removeItem() {
+      throw new Error("remove failed");
+    },
+  };
+  assert.deepEqual(
+    await loadRememberedPlaceholderValues(failingStorage, prompt),
+    {},
+  );
+  assert.equal(
+    await saveRememberedPlaceholderValues(failingStorage, prompt, {
+      product: "Prompt Studio",
+    }),
+    "failed",
+  );
+  assert.equal(
+    await forgetRememberedPlaceholderValues(failingStorage, prompt.id),
+    false,
+  );
 });
 
 test("agent feedback tool is capability-gated, validated, capped, and append-only", async () => {

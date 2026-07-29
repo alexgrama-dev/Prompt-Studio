@@ -14,6 +14,7 @@ import {
   LaunchProps,
   LaunchType,
   List,
+  LocalStorage,
   openExtensionPreferences,
   showHUD,
   showToast,
@@ -55,6 +56,11 @@ import {
   type SearchResult,
 } from "./core/search-index";
 import { extractPlaceholders, fillPlaceholders } from "./core/placeholders";
+import {
+  forgetRememberedPlaceholderValues,
+  loadRememberedPlaceholderValues,
+  saveRememberedPlaceholderValues,
+} from "./core/placeholder-values";
 import {
   enhancePromptThoughtsLaunchContext,
   fallbackPromptDecision,
@@ -1007,13 +1013,61 @@ function PlaceholderForm({
   onUse: (body: string, mode: "paste" | "copy") => Promise<void>;
 }) {
   const { pop } = useNavigation();
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [remember, setRemember] = useState(false);
+  const [hasSavedValues, setHasSavedValues] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadRememberedPlaceholderValues(placeholderValueStorage, record).then(
+      (saved) => {
+        if (cancelled || Object.keys(saved).length === 0) return;
+        setValues(saved);
+        setRemember(true);
+        setHasSavedValues(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [record.body, record.id, record.updatedAt]);
 
   async function submit(
-    values: Record<string, string>,
     mode: "paste" | "copy",
   ) {
     pop();
     await onUse(fillPlaceholders(record.body, values), mode);
+    if (!remember) return;
+    const result = await saveRememberedPlaceholderValues(
+      placeholderValueStorage,
+      record,
+      values,
+    );
+    if (result === "failed") {
+      await showToast(
+        Toast.Style.Failure,
+        "Prompt Used, Values Not Remembered",
+        "Local storage was unavailable.",
+      );
+    }
+  }
+
+  async function forget() {
+    const forgotten = await forgetRememberedPlaceholderValues(
+      placeholderValueStorage,
+      record.id,
+    );
+    if (!forgotten) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Forget Saved Values",
+        "Local storage was unavailable.",
+      );
+      return;
+    }
+    setRemember(false);
+    setHasSavedValues(false);
+    await showToast(Toast.Style.Success, "Saved Values Forgotten");
   }
 
   return (
@@ -1024,27 +1078,64 @@ function PlaceholderForm({
           <Action.SubmitForm
             title="Paste Prompt"
             icon={Icon.ArrowRightCircle}
-            onSubmit={(values) =>
-              submit(values as Record<string, string>, "paste")
-            }
+            onSubmit={() => submit("paste")}
           />
           <Action.SubmitForm
             title="Copy Prompt"
             icon={Icon.Clipboard}
-            onSubmit={(values) =>
-              submit(values as Record<string, string>, "copy")
-            }
+            onSubmit={() => submit("copy")}
+          />
+          <Action
+            title="Forget Saved Values"
+            icon={Icon.Trash}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "backspace" }}
+            onAction={forget}
           />
         </ActionPanel>
       }
     >
       <Form.Description text="Blank values keep their {{placeholder}} visible so nothing is silently lost." />
       {placeholders.map((name) => (
-        <Form.TextField key={name} id={name} title={name} />
+        <Form.TextField
+          key={name}
+          id={name}
+          title={name}
+          value={values[name] ?? ""}
+          onChange={(value) =>
+            setValues((current) => ({ ...current, [name]: value }))
+          }
+        />
       ))}
+      <Form.Separator />
+      <Form.Description
+        title="Preview"
+        text={fillPlaceholders(record.body, values)}
+      />
+      <Form.Checkbox
+        id="rememberValues"
+        title="Remember Values"
+        label="Remember eligible non-sensitive values for this prompt"
+        value={remember}
+        onChange={setRemember}
+      />
+      {hasSavedValues ? (
+        <Form.Description text="Saved values belong to this prompt version. Updating the prompt invalidates them." />
+      ) : null}
     </Form>
   );
 }
+
+const placeholderValueStorage = {
+  async getItem(key: string) {
+    return await LocalStorage.getItem<string>(key);
+  },
+  async setItem(key: string, value: string) {
+    await LocalStorage.setItem(key, value);
+  },
+  async removeItem(key: string) {
+    await LocalStorage.removeItem(key);
+  },
+};
 
 function EditPrompt({
   record,
