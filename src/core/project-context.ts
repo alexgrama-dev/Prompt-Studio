@@ -110,6 +110,12 @@ export interface SshProjectSource {
 
 export type SshRunner = (host: string, command: string) => Promise<string>;
 
+export function claimProjectDiscovery(flag: { current: boolean }): boolean {
+  if (flag.current) return false;
+  flag.current = true;
+  return true;
+}
+
 interface RepositoryHandle {
   path: string;
   bindingPath: string;

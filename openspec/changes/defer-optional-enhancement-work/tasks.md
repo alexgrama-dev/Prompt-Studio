@@ -3,9 +3,9 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 1. Implementation
 
-- [ ] 1.1 Guard optional enhancement credentials and payloads by capability state, block Disabled provider selection, and recover stale provider drafts with focused coverage in `test/core.test.mts`
-- [ ] 1.2 Remove Context7 from the shared command preference read, use the existing environment value only for an approved request, and cover initial-render, Disabled, missing-key, and no-fallback cases
-- [ ] 1.3 Defer local and SSH project discovery to one explicit load while keeping None and exact-folder selection available, with first-render, repeat-load, and SSH-failure coverage
+- [x] 1.1 Guard optional enhancement credentials and payloads by capability state, block Disabled provider selection, and recover stale provider drafts with focused coverage in `test/core.test.mts`
+- [x] 1.2 Remove Context7 from the shared command preference read, use the existing environment value only for an approved request, and cover initial-render, Disabled, missing-key, and no-fallback cases
+- [x] 1.3 Defer local and SSH project discovery to one explicit load while keeping None and exact-folder selection available, with first-render, repeat-load, and SSH-failure coverage
 
 ## 2. Verification
 

@@ -6,6 +6,7 @@ import {
   type EnhancementRequest,
   type EnhancementRunProfile,
 } from "./enhancement.ts";
+import type { FeatureState } from "./features.ts";
 
 export const SELECTABLE_ENHANCEMENT_PROFILE_IDS = [
   "openai-standard-v1",
@@ -16,6 +17,16 @@ export const SELECTABLE_ENHANCEMENT_PROFILE_IDS = [
 
 export type SelectableEnhancementProfileId =
   (typeof SELECTABLE_ENHANCEMENT_PROFILE_IDS)[number];
+
+export function enhancementProfileIsAvailable(
+  id: SelectableEnhancementProfileId,
+  states: { anthropic: FeatureState; google: FeatureState },
+): boolean {
+  const provider = getProviderEnhancementProfile(id).provider;
+  if (provider === "anthropic") return states.anthropic !== "disabled";
+  if (provider === "google") return states.google !== "disabled";
+  return true;
+}
 
 const SONNET_5_STANDARD_PRICING_START = Date.parse("2026-09-01T00:00:00.000Z");
 

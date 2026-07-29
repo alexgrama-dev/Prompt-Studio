@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CONTEXT7_PRIVACY_DISCLOSURE,
+  context7ApiKeyForApprovedRequest,
   detectTechnicalLibrary,
   findContext7ProjectVersion,
   planContext7Research,
@@ -84,6 +85,7 @@ import {
   type FeatureState,
 } from "./core/features";
 import {
+  claimProjectDiscovery,
   collectProjectContext,
   discoverGitProjects,
   discoverSshGitProjects,
@@ -120,6 +122,7 @@ import {
   type EnhancePromptLaunchContext,
 } from "./core/launch-context";
 import {
+  enhancementProfileIsAvailable,
   estimatedProviderMaximumCostUsd,
   getProviderEnhancementProfile,
   providerPricingDisclosure,
@@ -138,7 +141,6 @@ import FeatureStatus from "./feature-status";
 interface Preferences {
   libraryDirectory?: string;
   openaiApiKey?: string;
-  context7ApiKey?: string;
   projectRoots?: string;
   sshProjectRoot?: string;
 }
@@ -311,18 +313,14 @@ function EnhancementWorkspace({
   const activeController = useRef<AbortController | undefined>(undefined);
   const evaluationController = useRef<AbortController | undefined>(undefined);
   const formDraftLoaded = useRef(false);
+  const projectDiscoveryStarted = useRef(false);
   const effectiveProfileId = profileId;
   const effectiveResearchLevel = setupMode === "smart" ? "none" : researchLevel;
   const profile = getProviderEnhancementProfile(effectiveProfileId);
-  const context7ApiKey =
-    preferences.context7ApiKey?.trim() ||
-    process.env.CONTEXT7_API_KEY?.trim() ||
-    undefined;
-  const context7ApiKeySource = preferences.context7ApiKey?.trim()
-    ? "Raycast's encrypted command preference"
-    : process.env.CONTEXT7_API_KEY?.trim()
-      ? "the CONTEXT7_API_KEY environment variable"
-      : undefined;
+  const profileAvailable = enhancementProfileIsAvailable(profileId, {
+    anthropic: anthropicState,
+    google: googleState,
+  });
   const estimatedCost = useMemo(
     () =>
       estimatedProviderMaximumCostUsd({
@@ -394,18 +392,21 @@ function EnhancementWorkspace({
     target,
   ]);
 
-  useEffect(() => {
-    if (projectContextState === "disabled") return;
-    let cancelled = false;
+  async function loadProjects() {
+    if (
+      projectContextState === "disabled" ||
+      !claimProjectDiscovery(projectDiscoveryStarted)
+    ) {
+      return;
+    }
     setProjectDiscoveryLoading(true);
-    void (async () => {
+    try {
       const source = parseSshProjectSource(preferences.sshProjectRoot);
       const [local, remote, recent] = await Promise.allSettled([
         discoverGitProjects(preferences.projectRoots),
         source ? discoverSshGitProjects(source) : Promise.resolve([]),
         loadRecentProjectPaths(),
       ]);
-      if (cancelled) return;
       const discovered = [
         ...(local.status === "fulfilled" ? local.value : []),
         ...(remote.status === "fulfilled" ? remote.value : []),
@@ -425,25 +426,14 @@ function EnhancementWorkspace({
           : []),
       ];
       setProjectDiscoveryError(failures.join(" "));
-    })()
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setProjectDiscoveryError(
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setProjectDiscoveryLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    preferences.projectRoots,
-    preferences.sshProjectRoot,
-    projectContextState,
-  ]);
+    } catch (error) {
+      setProjectDiscoveryError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setProjectDiscoveryLoading(false);
+    }
+  }
 
   useEffect(() => {
     void latestEnhancementEvaluation()
@@ -470,23 +460,16 @@ function EnhancementWorkspace({
       explicitlySelectedRepository ||
       (values.project === "none" ? undefined : values.project);
     const hasSelectedProject = selectedRepository !== undefined;
-    const selectedProfile = getProviderEnhancementProfile(values.profileId);
     if (
-      selectedProfile.provider === "anthropic" &&
-      anthropicState === "disabled"
+      !enhancementProfileIsAvailable(values.profileId, {
+        anthropic: anthropicState,
+        google: googleState,
+      })
     ) {
       await showToast(
         Toast.Style.Failure,
-        "Anthropic Provider Is Not Active",
-        "Choose an OpenAI profile until Activation 9 passes.",
-      );
-      return;
-    }
-    if (selectedProfile.provider === "google" && googleState === "disabled") {
-      await showToast(
-        Toast.Style.Failure,
-        "Google Provider Is Not Active",
-        "Choose an OpenAI profile until Activation 10 passes.",
+        "Saved Provider Is Unavailable",
+        "Open Advanced Provider and choose an enabled provider. Your task remains unchanged.",
       );
       return;
     }
@@ -836,10 +819,7 @@ function EnhancementWorkspace({
       <Context7PlanReview
         request={request}
         plan={context7Plan}
-        {...(context7ApiKey ? { configuredApiKey: context7ApiKey } : {})}
-        {...(context7ApiKeySource
-          ? { apiKeySource: context7ApiKeySource }
-          : {})}
+        context7State={context7State}
         {...(versionSource ? { versionSource } : {})}
         onContinue={(reviewedRequest) =>
           continueAfterContext7(reviewedRequest, githubPlan, webPlan, exaPlan)
@@ -1183,6 +1163,15 @@ function EnhancementWorkspace({
                 onAction={() => setShowFolderPicker(true)}
               />
             ) : null}
+            {projectContextState !== "disabled" &&
+            !projectDiscoveryStarted.current ? (
+              <Action
+                title="Load Saved Projects"
+                icon={Icon.Download}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
+                onAction={loadProjects}
+              />
+            ) : null}
             <Action.Push
               title="Review Cost and Privacy"
               icon={Icon.Shield}
@@ -1381,7 +1370,9 @@ function EnhancementWorkspace({
               ? "Finding projects on this MacBook and Mac Mini…"
               : projectDiscoveryError
                 ? `${projectDiscoveryError} You can still choose a MacBook folder.`
-                : "Optional. Project context is read-only and reviewed before anything is sent."
+                : projectDiscoveryStarted.current
+                  ? "Saved projects loaded. Project context remains read-only and is reviewed before anything is sent."
+                  : "No project scan has run. Choose Load Saved Projects or select an exact folder."
         }
       />
       {setupMode === "custom" ? (
@@ -1425,7 +1416,9 @@ function EnhancementWorkspace({
       <Form.Description
         title="Ready to Enhance"
         text={
-          setupMode === "smart"
+          !profileAvailable
+            ? `${profile.title} is Disabled. Your task is preserved; choose an enabled provider before enhancing.`
+            : setupMode === "smart"
             ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
             : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
         }
@@ -1446,9 +1439,27 @@ function AdvancedProviderSelection({
   onSelect: (profile: SelectableEnhancementProfileId) => void;
 }) {
   const { pop } = useNavigation();
-  const [profileId, setProfileId] =
-    useState<SelectableEnhancementProfileId>(selected);
-  const profile = getProviderEnhancementProfile(profileId);
+  const states = { anthropic: anthropicState, google: googleState };
+  const [profileId, setProfileId] = useState<
+    SelectableEnhancementProfileId | ""
+  >(enhancementProfileIsAvailable(selected, states) ? selected : "");
+  const profile = profileId
+    ? getProviderEnhancementProfile(profileId)
+    : undefined;
+
+  async function selectProvider() {
+    if (!profileId || !enhancementProfileIsAvailable(profileId, states)) {
+      await showToast(
+        Toast.Style.Failure,
+        "Choose an Enabled Provider",
+        "Disabled providers are shown for context but cannot be selected.",
+      );
+      return;
+    }
+    onSelect(profileId);
+    pop();
+  }
+
   return (
     <Form
       navigationTitle="Advanced Provider"
@@ -1457,10 +1468,7 @@ function AdvancedProviderSelection({
           <Action.SubmitForm
             title="Use This Provider"
             icon={Icon.Check}
-            onSubmit={() => {
-              onSelect(profileId);
-              pop();
-            }}
+            onSubmit={selectProvider}
           />
         </ActionPanel>
       }
@@ -1473,6 +1481,10 @@ function AdvancedProviderSelection({
           setProfileId(value as SelectableEnhancementProfileId)
         }
       >
+        <Form.Dropdown.Item
+          title="Choose an enabled provider…"
+          value=""
+        />
         <Form.Dropdown.Section title="OpenAI">
           <Form.Dropdown.Item
             title="Standard · GPT-5.6 Terra"
@@ -1484,19 +1496,27 @@ function AdvancedProviderSelection({
           />
         </Form.Dropdown.Section>
         <Form.Dropdown.Section title="Other Providers">
-          <Form.Dropdown.Item
-            title={`Claude Sonnet 5 · ${title(anthropicState)}`}
-            value="anthropic-sonnet-5-v1"
-          />
-          <Form.Dropdown.Item
-            title={`Gemini 3.5 Flash · ${title(googleState)}`}
-            value="google-gemini-3.5-flash-v1"
-          />
+          {anthropicState === "disabled" ? null : (
+            <Form.Dropdown.Item
+              title={`Claude Sonnet 5 · ${title(anthropicState)}`}
+              value="anthropic-sonnet-5-v1"
+            />
+          )}
+          {googleState === "disabled" ? null : (
+            <Form.Dropdown.Item
+              title={`Gemini 3.5 Flash · ${title(googleState)}`}
+              value="google-gemini-3.5-flash-v1"
+            />
+          )}
         </Form.Dropdown.Section>
       </Form.Dropdown>
       <Form.Description
-        title={profile.title}
-        text={`${profile.purpose} A failed request never falls back to another provider.`}
+        title={profile?.title ?? "Unavailable Providers"}
+        text={
+          profile
+            ? `${profile.purpose} A failed request never falls back to another provider.`
+            : `Claude Sonnet 5 is ${title(anthropicState)}. Gemini 3.5 Flash is ${title(googleState)}. Choose an enabled provider; the saved task is unchanged.`
+        }
       />
     </Form>
   );
@@ -1985,16 +2005,14 @@ function ProjectContextReview({
 function Context7PlanReview({
   request,
   plan,
-  configuredApiKey,
-  apiKeySource,
+  context7State,
   versionSource,
   onContinue,
   onCancelContinue,
 }: {
   request: EnhancementRequest;
   plan: Context7Plan;
-  configuredApiKey?: string;
-  apiKeySource?: string;
+  context7State: FeatureState;
   versionSource?: string;
   onContinue: (request: EnhancementRequest) => Promise<void>;
   onCancelContinue: () => void;
@@ -2005,6 +2023,19 @@ function Context7PlanReview({
 
   async function retrieve(apiKey?: string) {
     if (controller.current) return;
+    let approvedApiKey = apiKey?.trim();
+    if (!approvedApiKey) {
+      try {
+        approvedApiKey = context7ApiKeyForApprovedRequest(context7State);
+      } catch (error) {
+        await showToast(
+          Toast.Style.Failure,
+          "Context7 API Key Required",
+          error instanceof Error ? error.message : String(error),
+        );
+        return;
+      }
+    }
     const activeController = new AbortController();
     controller.current = activeController;
     setIsLoading(true);
@@ -2015,7 +2046,7 @@ function Context7PlanReview({
     );
     try {
       const result = await researchWithContext7(plan, {
-        ...(apiKey ? { apiKey } : {}),
+        apiKey: approvedApiKey,
         signal: activeController.signal,
       });
       if (activeController.signal.aborted) {
@@ -2053,9 +2084,7 @@ function Context7PlanReview({
     "**Cost:** Context7 does not expose a per-request price.",
     "## Query",
     indentCode(plan.query ?? "(missing query)"),
-    configuredApiKey
-      ? `A key from ${apiKeySource ?? "secure local configuration"} is ready.`
-      : "Enter a one-run Context7 key to continue.",
+    "The existing CONTEXT7_API_KEY environment value is read only after you choose Retrieve. You can instead enter a one-run key.",
   ].join("\n\n");
 
   return (
@@ -2071,27 +2100,16 @@ function Context7PlanReview({
               icon={Icon.XMarkCircle}
               onAction={() => controller.current?.abort()}
             />
-          ) : configuredApiKey ? (
+          ) : (
             <Action
               title="Retrieve Reviewed Documentation"
               icon={Icon.Download}
-              onAction={() => retrieve(configuredApiKey)}
-            />
-          ) : (
-            <Action.Push
-              title="Enter Context7 API Key"
-              icon={Icon.Key}
-              target={
-                <Context7ApiKeyForm
-                  onSubmit={retrieve}
-                  onCancel={() => controller.current?.abort()}
-                />
-              }
+              onAction={() => retrieve()}
             />
           )}
-          {!isLoading && configuredApiKey ? (
+          {!isLoading ? (
             <Action.Push
-              title="Use Different Context7 API Key"
+              title="Enter One-Run Context7 API Key"
               icon={Icon.Key}
               target={
                 <Context7ApiKeyForm
@@ -2099,13 +2117,6 @@ function Context7PlanReview({
                   onCancel={() => controller.current?.abort()}
                 />
               }
-            />
-          ) : null}
-          {!isLoading && !configuredApiKey ? (
-            <Action
-              title="Open Enhancement Preferences"
-              icon={Icon.Gear}
-              onAction={openCommandPreferences}
             />
           ) : null}
           <Action.Push

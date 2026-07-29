@@ -1,4 +1,5 @@
 import type { EnhancementInputSource } from "./enhancement.ts";
+import type { FeatureState } from "./features.ts";
 import type { ProjectContextBundle } from "./project-context.ts";
 import { sanitizeResearchQuery } from "./research-router.ts";
 import { containsLikelySecret } from "./secrets.ts";
@@ -10,6 +11,22 @@ const MAX_TOTAL_BYTES = 30_000;
 
 export const CONTEXT7_PRIVACY_DISCLOSURE =
   "Context7 receives only the displayed documentation query, library name or ID, an API key in the Authorization header, and connection metadata. Context7 says it stores formulated queries for retrieval benchmarking and may pass them to OpenAI, Google Gemini, or Anthropic for reranking. Prompt Studio removes fenced code, obvious local paths, URLs, email addresses, and detected secrets; review the exact displayed query. It does not send the project bundle or conversation, and it never places the key in returned sources.";
+
+export function context7ApiKeyForApprovedRequest(
+  state: FeatureState,
+  readEnvironment = () => process.env.CONTEXT7_API_KEY,
+): string {
+  if (state === "disabled") {
+    throw new Error("Context7 Research is Disabled.");
+  }
+  const apiKey = readEnvironment()?.trim();
+  if (!apiKey) {
+    throw new Error(
+      "CONTEXT7_API_KEY is missing. No Context7 request was made.",
+    );
+  }
+  return apiKey;
+}
 
 export interface Context7Plan {
   route: "none" | "context7";

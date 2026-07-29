@@ -162,6 +162,7 @@ import {
   type QmdRunner,
 } from "../src/core/qmd-search.ts";
 import {
+  claimProjectDiscovery,
   collectProjectContext,
   discoverGitProjects,
   discoverSshGitProjects,
@@ -173,6 +174,7 @@ import {
 } from "../src/core/project-context.ts";
 import {
   CONTEXT7_PRIVACY_DISCLOSURE,
+  context7ApiKeyForApprovedRequest,
   detectTechnicalLibrary,
   findContext7ProjectVersion,
   formulateDocumentationQuery,
@@ -215,6 +217,7 @@ import {
   GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT,
 } from "../src/core/google-enhancement.ts";
 import {
+  enhancementProfileIsAvailable,
   getProviderEnhancementProfile,
   providerPrivacyDisclosure,
 } from "../src/core/provider-profiles.ts";
@@ -2088,7 +2091,9 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
   assert.equal(
     manifest.commands
       ?.find((command) => command.name === "enhance-prompt")
-      ?.preferences?.some((preference) => preference.name === "openaiApiKey"),
+      ?.preferences?.some(
+        (preference) => preference.name === "openaiApiKey",
+      ) ?? false,
     false,
   );
   assert.deepEqual(
@@ -3082,6 +3087,47 @@ test("Raycast enhancement drafts restore only valid saved form values", () => {
     undefined,
   );
   assert.equal(parseEnhancementFormDraft("not json"), undefined);
+});
+
+test("optional enhancement capabilities stay inert until explicitly available", () => {
+  const states = { anthropic: "disabled", google: "preview" } as const;
+  assert.equal(
+    enhancementProfileIsAvailable("openai-standard-v1", states),
+    true,
+  );
+  assert.equal(
+    enhancementProfileIsAvailable("anthropic-sonnet-5-v1", states),
+    false,
+  );
+  assert.equal(
+    enhancementProfileIsAvailable("google-gemini-3.5-flash-v1", states),
+    true,
+  );
+
+  let credentialReads = 0;
+  const readCredential = () => {
+    credentialReads += 1;
+    return undefined;
+  };
+  assert.throws(
+    () => context7ApiKeyForApprovedRequest("disabled", readCredential),
+    /Disabled/,
+  );
+  assert.equal(credentialReads, 0);
+  assert.throws(
+    () => context7ApiKeyForApprovedRequest("preview", readCredential),
+    /CONTEXT7_API_KEY is missing/,
+  );
+  assert.equal(credentialReads, 1);
+  assert.equal(
+    context7ApiKeyForApprovedRequest("active", () => " context7-key "),
+    "context7-key",
+  );
+
+  const projectDiscovery = { current: false };
+  assert.equal(projectDiscovery.current, false);
+  assert.equal(claimProjectDiscovery(projectDiscovery), true);
+  assert.equal(claimProjectDiscovery(projectDiscovery), false);
 });
 
 test("updates preserve restorable history and confirmed deletion can remove the record", async () => {

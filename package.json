@@ -77,15 +77,6 @@
           "placeholder": "Rough thoughts",
           "required": false
         }
-      ],
-      "preferences": [
-        {
-          "name": "context7ApiKey",
-          "type": "password",
-          "required": false,
-          "title": "Context7 API Key",
-          "description": "Stored by Raycast in encrypted command-scoped storage; used only after an exact documentation query is reviewed"
-        }
       ]
     },
     {
