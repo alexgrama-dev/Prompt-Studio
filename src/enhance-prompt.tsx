@@ -2,6 +2,8 @@ import {
   Action,
   ActionPanel,
   Alert,
+  Clipboard,
+  closeMainWindow,
   confirmAlert,
   Detail,
   Form,
@@ -3216,6 +3218,11 @@ function EnhancementHistory({ directory }: { directory: string }) {
           }
           actions={
             <ActionPanel>
+              <Action
+                title="Paste Prompt"
+                icon={Icon.ArrowRightCircle}
+                onAction={() => pasteEnhancedPrompt(record.body)}
+              />
               <Action.CopyToClipboard
                 title="Copy Prompt"
                 content={record.body}
@@ -3223,6 +3230,7 @@ function EnhancementHistory({ directory }: { directory: string }) {
               <Action
                 title="Save to Prompt Library"
                 icon={Icon.CheckCircle}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
                 onAction={() => saveToLibrary(record)}
               />
             </ActionPanel>
@@ -3316,6 +3324,11 @@ function EnhancementPreview({
       }
       actions={
         <ActionPanel>
+          <Action
+            title="Paste Prompt"
+            icon={Icon.ArrowRightCircle}
+            onAction={() => pasteEnhancedPrompt(result.enhancedPrompt)}
+          />
           <Action.CopyToClipboard
             title="Copy Prompt"
             content={result.enhancedPrompt}
@@ -3323,11 +3336,13 @@ function EnhancementPreview({
           <Action
             title="Save to Prompt Library"
             icon={Icon.CheckCircle}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
             onAction={save}
           />
           <Action.Push
             title="Edit Before Saving"
             icon={Icon.Pencil}
+            shortcut={Keyboard.Shortcut.Common.Edit}
             target={
               <EnhancementEditor
                 request={request}
@@ -3341,6 +3356,7 @@ function EnhancementPreview({
           <Action.Push
             title="Review Enhancement Details"
             icon={Icon.Eye}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
             target={
               <Detail
                 navigationTitle="Enhancement Details"
@@ -3351,11 +3367,18 @@ function EnhancementPreview({
           <Action.CopyToClipboard
             title="Copy Hidden Search Terms"
             content={result.searchTerms.join("\n")}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "n" }}
           />
         </ActionPanel>
       }
     />
   );
+}
+
+async function pasteEnhancedPrompt(body: string) {
+  await closeMainWindow();
+  await Clipboard.paste(body);
+  await showHUD("Enhanced Prompt Pasted");
 }
 
 function EnhancementEditor({
