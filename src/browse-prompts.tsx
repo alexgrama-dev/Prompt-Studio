@@ -36,7 +36,11 @@ import {
   type PromptRecord,
   type PromptUpdate,
 } from "./core/prompt-store";
-import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
+import {
+  getFeatureStatus,
+  loadFeatureStatuses,
+  type FeatureState,
+} from "./core/features";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { currentProjectCommit } from "./core/project-context";
 import {
@@ -61,6 +65,10 @@ import {
   loadRememberedPlaceholderValues,
   saveRememberedPlaceholderValues,
 } from "./core/placeholder-values";
+import {
+  quickRatingEnabled,
+  recordLastLibraryPaste,
+} from "./core/last-library-paste";
 import {
   enhancePromptThoughtsLaunchContext,
   fallbackPromptDecision,
@@ -116,7 +124,8 @@ export default function BrowsePrompts({
   const [searchText, setSearchText] = useState(fallbackText ?? "");
   const [sqliteActive, setSqliteActive] = useState(false);
   const [qmdActive, setQmdActive] = useState(false);
-  const [feedbackEnabled, setFeedbackEnabled] = useState(false);
+  const [feedbackState, setFeedbackState] =
+    useState<FeatureState>("disabled");
   const [enhancementEnabled, setEnhancementEnabled] = useState(false);
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [indexedResults, setIndexedResults] = useState<SearchResult[]>();
@@ -147,9 +156,7 @@ export default function BrowsePrompts({
       const qmdIsEnabled =
         getFeatureStatus(statuses, "qmd-discovery").effectiveState !==
         "disabled";
-      setFeedbackEnabled(
-        getFeatureStatus(statuses, "feedback").effectiveState !== "disabled",
-      );
+      setFeedbackState(getFeatureStatus(statuses, "feedback").effectiveState);
       setEnhancementEnabled(
         getFeatureStatus(statuses, "openai-enhancement").effectiveState !==
           "disabled",
@@ -242,7 +249,7 @@ export default function BrowsePrompts({
         body,
         mode,
         shouldTrackPromptUsage(sqliteActive),
-        feedbackEnabled,
+        feedbackState,
       );
     if (decision.kind === "review") {
       setSelectedPromptId(decision.record.id);
@@ -267,7 +274,7 @@ export default function BrowsePrompts({
   }, [
     error,
     fallbackText,
-    feedbackEnabled,
+    feedbackState,
     loading,
     push,
     records,
@@ -468,6 +475,7 @@ export default function BrowsePrompts({
                   <Action
                     title="Open Extension Preferences"
                     icon={Icon.Gear}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
                     onAction={openExtensionPreferences}
                   />
                 </>
@@ -523,6 +531,7 @@ export default function BrowsePrompts({
                   <Action
                     title="Clear Search"
                     icon={Icon.XMarkCircle}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
                     onAction={() => setSearchText("")}
                   />
                 </>
@@ -536,6 +545,7 @@ export default function BrowsePrompts({
               <Action.Push
                 title="Prompt Studio Status"
                 icon={Icon.Gauge}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
                 target={<FeatureStatus />}
               />
             </ActionPanel>
@@ -551,7 +561,7 @@ export default function BrowsePrompts({
               searchText.trim() ? matchesById.get(record.id) : undefined
             }
             trackUsage={shouldTrackPromptUsage(sqliteActive)}
-            feedbackEnabled={feedbackEnabled}
+            feedbackState={feedbackState}
             currentProjectCommit={
               record.project
                 ? projectCommits.get(record.project.path)
@@ -616,14 +626,14 @@ function PromptItem({
   record,
   matchReason,
   trackUsage,
-  feedbackEnabled,
+  feedbackState,
   currentProjectCommit,
   onReload,
 }: {
   record: PromptRecord;
   matchReason: string | undefined;
   trackUsage: boolean;
-  feedbackEnabled: boolean;
+  feedbackState: FeatureState;
   currentProjectCommit: string | undefined;
   onReload: () => Promise<void>;
 }) {
@@ -698,9 +708,10 @@ function PromptItem({
   }
 
   const placeholders = extractPlaceholders(record.body);
+  const feedbackEnabled = quickRatingEnabled(feedbackState);
 
   async function usePrompt(body: string, mode: "paste" | "copy") {
-    await useLibraryPrompt(record, body, mode, trackUsage, feedbackEnabled);
+    await useLibraryPrompt(record, body, mode, trackUsage, feedbackState);
   }
 
   return (
@@ -881,11 +892,16 @@ async function useLibraryPrompt(
   body: string,
   mode: "paste" | "copy",
   trackUsage: boolean,
-  feedbackEnabled: boolean,
+  feedbackState: FeatureState,
 ) {
   if (mode === "paste") {
     await closeMainWindow();
     await Clipboard.paste(body);
+    await recordLastLibraryPaste(
+      raycastLocalStorage,
+      feedbackState,
+      record,
+    );
   } else {
     await Clipboard.copy(body);
   }
@@ -899,7 +915,9 @@ async function useLibraryPrompt(
     }
   }
   const nudge =
-    feedbackEnabled && useCount !== undefined && useCount % 5 === 0
+    quickRatingEnabled(feedbackState) &&
+    useCount !== undefined &&
+    useCount % 5 === 0
       ? ` · Used ${useCount} times — consider recording feedback`
       : "";
   if (mode === "paste") {
@@ -1019,7 +1037,7 @@ function PlaceholderForm({
 
   useEffect(() => {
     let cancelled = false;
-    void loadRememberedPlaceholderValues(placeholderValueStorage, record).then(
+    void loadRememberedPlaceholderValues(raycastLocalStorage, record).then(
       (saved) => {
         if (cancelled || Object.keys(saved).length === 0) return;
         setValues(saved);
@@ -1039,7 +1057,7 @@ function PlaceholderForm({
     await onUse(fillPlaceholders(record.body, values), mode);
     if (!remember) return;
     const result = await saveRememberedPlaceholderValues(
-      placeholderValueStorage,
+      raycastLocalStorage,
       record,
       values,
     );
@@ -1054,7 +1072,7 @@ function PlaceholderForm({
 
   async function forget() {
     const forgotten = await forgetRememberedPlaceholderValues(
-      placeholderValueStorage,
+      raycastLocalStorage,
       record.id,
     );
     if (!forgotten) {
@@ -1125,7 +1143,7 @@ function PlaceholderForm({
   );
 }
 
-const placeholderValueStorage = {
+const raycastLocalStorage = {
   async getItem(key: string) {
     return await LocalStorage.getItem<string>(key);
   },

@@ -142,6 +142,14 @@ import {
   loadRememberedPlaceholderValues,
   saveRememberedPlaceholderValues,
 } from "../src/core/placeholder-values.ts";
+import {
+  completeLastPasteRating,
+  lastLibraryPasteWasRated,
+  loadLastLibraryPaste,
+  quickRatingEnabled,
+  recordLastLibraryPaste,
+  resolveLastLibraryPaste,
+} from "../src/core/last-library-paste.ts";
 import { buildFreshnessWarning } from "../src/core/build-freshness.ts";
 import { executePromptStudioFeedbackTool } from "../src/core/mcp-feedback.ts";
 import {
@@ -6558,6 +6566,123 @@ test("remembered placeholder values stay prompt-scoped, current, and non-sensiti
     await forgetRememberedPlaceholderValues(failingStorage, prompt.id),
     false,
   );
+});
+
+test("last-paste ratings are capability-gated, retryable, and one-time", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-last-paste-"));
+  try {
+    const prompt = await createPrompt(directory, {
+      title: "Review the release",
+      body: "Review the release and report evidence.",
+      target: "codex",
+    });
+    const values = new Map<string, string>();
+    let reads = 0;
+    let writes = 0;
+    let removes = 0;
+    const storage = {
+      async getItem(key: string) {
+        reads += 1;
+        return values.get(key);
+      },
+      async setItem(key: string, value: string) {
+        writes += 1;
+        values.set(key, value);
+      },
+      async removeItem(key: string) {
+        removes += 1;
+        values.delete(key);
+      },
+    };
+
+    assert.equal(quickRatingEnabled("disabled"), false);
+    assert.equal(quickRatingEnabled("preview"), true);
+    assert.equal(quickRatingEnabled("active"), true);
+    assert.equal(
+      await recordLastLibraryPaste(
+        storage,
+        "disabled",
+        prompt,
+        new Date("2026-07-29T10:00:00.000Z"),
+      ),
+      "disabled",
+    );
+    assert.equal(await loadLastLibraryPaste(storage, "disabled"), undefined);
+    assert.deepEqual({ reads, writes, removes }, { reads: 0, writes: 0, removes: 0 });
+
+    assert.equal(
+      await recordLastLibraryPaste(
+        storage,
+        "preview",
+        prompt,
+        new Date("2026-07-29T10:01:00.000Z"),
+      ),
+      "saved",
+    );
+    const raw = [...values.values()][0] ?? "";
+    assert.doesNotMatch(raw, /Review the release and report evidence/);
+    const pointer = await loadLastLibraryPaste(storage, "active");
+    assert.ok(pointer);
+    assert.equal(pointer.promptId, prompt.id);
+    assert.equal(pointer.promptUpdatedAt, prompt.updatedAt);
+    assert.equal(pointer.pastedAt, "2026-07-29T10:01:00.000Z");
+    const updated = await updatePrompt(directory, prompt.id, {
+      title: prompt.title,
+      body: "Review the revised release.",
+      target: prompt.target,
+    });
+    const versions = await listPromptVersions(directory, prompt.id);
+    assert.equal(
+      resolveLastLibraryPaste(pointer, [updated, ...versions])?.body,
+      prompt.body,
+    );
+    assert.equal(lastLibraryPasteWasRated(pointer, []), false);
+
+    let clearAttempts = 0;
+    assert.equal(
+      await completeLastPasteRating(
+        async () => {
+          throw new Error("feedback write failed");
+        },
+        async () => {
+          clearAttempts += 1;
+          return true;
+        },
+      ),
+      "failed",
+    );
+    assert.equal(clearAttempts, 0);
+    assert.ok(await loadLastLibraryPaste(storage, "preview"));
+
+    const feedback = await createPromptUseFeedback(directory, {
+      prompt,
+      usedAt: pointer.pastedAt,
+      targetAgent: prompt.target,
+      verdict: "useful",
+    });
+    assert.equal(lastLibraryPasteWasRated(pointer, [feedback]), true);
+    assert.equal(
+      await completeLastPasteRating(
+        async () => undefined,
+        async () => false,
+      ),
+      "saved-pointer-retained",
+    );
+    assert.ok(await loadLastLibraryPaste(storage, "active"));
+    assert.equal(
+      await completeLastPasteRating(
+        async () => undefined,
+        async () => {
+          await storage.removeItem("prompt-studio.last-library-paste");
+          return true;
+        },
+      ),
+      "saved",
+    );
+    assert.equal(await loadLastLibraryPaste(storage, "active"), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("agent feedback tool is capability-gated, validated, capped, and append-only", async () => {
