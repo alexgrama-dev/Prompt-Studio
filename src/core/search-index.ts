@@ -225,18 +225,25 @@ export interface PromptUsage {
   lastUsedAt: string;
 }
 
-export function loadPromptUsage(
+export interface PromptUsageEvidence {
+  available: boolean;
+  usage: Map<string, PromptUsage>;
+}
+
+export function loadPromptUsageEvidence(
   path = defaultSearchIndexPath(),
-): Map<string, PromptUsage> {
+): PromptUsageEvidence {
   const usage = new Map<string, PromptUsage>();
-  let database: DatabaseSync;
+  if (!existsSync(path)) return { available: false, usage };
+  let database: DatabaseSync | undefined;
   try {
-    database = openHealthyDatabase(path);
-  } catch {
-    // ponytail: a missing or unhealthy index only loses ranking, never data.
-    return usage;
-  }
-  try {
+    database = new DatabaseSync(path, { readOnly: true, timeout: 5_000 });
+    const schemaVersion = Number(
+      database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+    );
+    if (schemaVersion !== SCHEMA_VERSION) {
+      return { available: false, usage };
+    }
     const rows = database
       .prepare(`SELECT prompt_id, use_count, last_used_at FROM usage`)
       .all() as Array<{
@@ -250,10 +257,19 @@ export function loadPromptUsage(
         lastUsedAt: String(row.last_used_at),
       });
     }
+    return { available: true, usage };
+  } catch {
+    // ponytail: a missing or unhealthy index only loses ranking, never data.
+    return { available: false, usage };
   } finally {
-    database.close();
+    database?.close();
   }
-  return usage;
+}
+
+export function loadPromptUsage(
+  path = defaultSearchIndexPath(),
+): Map<string, PromptUsage> {
+  return loadPromptUsageEvidence(path).usage;
 }
 
 export function rankRecordsByUsage<T extends { id: string; updatedAt: string }>(

@@ -60,22 +60,16 @@ import {
   SELECTABLE_ENHANCEMENT_PROFILE_IDS,
   type SelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
-import {
-  listMissedSearches,
-  tallyMissedSearches,
-} from "./missed-searches.ts";
-import {
-  DEFAULT_OVERLAP_THRESHOLD,
-  findPromptOverlaps,
-} from "./overlap.ts";
+import { listMissedSearches, tallyMissedSearches } from "./missed-searches.ts";
+import { DEFAULT_OVERLAP_THRESHOLD, findPromptOverlaps } from "./overlap.ts";
 import { fusePromptSearch, rebuildQmd, searchQmd } from "./qmd-search.ts";
 import {
   defaultSearchIndexPath,
   inspectSearchIndex,
+  loadPromptUsageEvidence,
   recordPromptUse,
   searchPrompts,
   type SearchFilters,
-  loadPromptUsage,
   type SearchResult,
 } from "./search-index.ts";
 import { buildFreshnessWarning } from "./build-freshness.ts";
@@ -560,8 +554,9 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
   assertPositionals(context.parsed, 0, 0);
   const library = await listPrompts(context.directory);
   const active = library.records.filter((record) => !record.archivedAt);
-  const usage = loadPromptUsage(context.searchIndexPath);
-  const usageAvailable = usage.size > 0 || activeIndexReadable(context);
+  const { usage, available: usageAvailable } = loadPromptUsageEvidence(
+    context.searchIndexPath,
+  );
   const feedback = await listPromptUseFeedback(context.directory);
   const missedSearches = tallyMissedSearches(
     await listMissedSearches(context.directory),
@@ -579,7 +574,9 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
         right.useCount - left.useCount ||
         (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? ""),
     );
-  const unused = ranked.filter((entry) => entry.useCount === 0);
+  const unused = usageAvailable
+    ? ranked.filter((entry) => entry.useCount === 0)
+    : [];
   const verdicts: Record<string, number> = {};
   const outcomes: Record<string, number> = {};
   for (const record of feedback.records) {
@@ -602,7 +599,7 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
         archived: library.records.length - active.length,
       },
       usageAvailable,
-      usage: ranked,
+      usage: usageAvailable ? ranked : [],
       zeroUse: unused.map((entry) => entry.id),
       feedback: {
         total: feedback.records.length,
@@ -614,8 +611,8 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
     human: [
       `Prompts: ${active.length} active, ${library.records.length - active.length} archived`,
       usageAvailable
-        ? `Used: ${ranked.filter((entry) => entry.useCount > 0).length} of ${active.length}`
-        : "Usage: index unavailable, counts show zero",
+        ? `Recorded usage: ${ranked.filter((entry) => entry.useCount > 0).length} of ${active.length}`
+        : "Recorded usage: unavailable; no use or zero-use totals inferred",
       ...ranked
         .filter((entry) => entry.useCount > 0)
         .slice(0, 10)
@@ -623,7 +620,9 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
           (entry) =>
             `  ${entry.useCount}x  ${entry.title}  (last ${entry.lastUsedAt ?? "unknown"})`,
         ),
-      `Zero use: ${unused.length ? unused.map((entry) => entry.title).join(", ") : "(none)"}`,
+      usageAvailable
+        ? `Recorded zero use: ${unused.length ? unused.map((entry) => entry.title).join(", ") : "(none)"}`
+        : "Recorded zero use: unavailable",
       `Feedback: ${feedback.records.length} records`,
       `  Verdicts: ${tally(verdicts)}`,
       `  Outcomes: ${tally(outcomes)}`,
@@ -638,7 +637,9 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
   };
 }
 
-async function overlapCommand(context: CommandContext): Promise<CommandOutcome> {
+async function overlapCommand(
+  context: CommandContext,
+): Promise<CommandOutcome> {
   assertPositionals(context.parsed, 0, 0);
   const rawThreshold = optionString(context.parsed, "threshold");
   const threshold = rawThreshold
@@ -675,14 +676,6 @@ async function overlapCommand(context: CommandContext): Promise<CommandOutcome> 
         ].join("\n")
       : `No overlapping prompts at similarity >= ${threshold}.`,
   };
-}
-
-function activeIndexReadable(context: CommandContext): boolean {
-  try {
-    return inspectSearchIndex(context.searchIndexPath).status !== "missing";
-  } catch {
-    return false;
-  }
 }
 
 async function createCommand(context: CommandContext): Promise<CommandOutcome> {

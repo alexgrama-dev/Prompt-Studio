@@ -6300,6 +6300,68 @@ test("stats reports usage, feedback tallies, zero-use prompts, and placeholder e
   }
 });
 
+test("stats does not infer zero-use prompts when usage evidence is unavailable", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-stats-no-usage-"),
+  );
+  const missingSearchIndex = join(directory, "missing", "search.sqlite");
+  try {
+    const prompt = await createPrompt(directory, {
+      title: "Feedback Without Usage",
+      body: "Use the recorded feedback without inventing a use count.",
+      target: "generic",
+    });
+    await createPromptUseFeedback(directory, {
+      prompt,
+      targetAgent: "codex",
+      verdict: "useful",
+      outcomeStatus: "succeeded",
+    });
+    const verification = {
+      status: "passed" as const,
+      checkedAt: "2026-07-21T12:00:00.000Z",
+      command: "pnpm check",
+    };
+    const statuses = resolveFeatureStatuses(
+      Object.fromEntries(
+        FEATURES.filter((feature) => feature.activationOrder > 0).map(
+          (feature) => [feature.id, { state: "active", verification }],
+        ),
+      ) as Parameters<typeof resolveFeatureStatuses>[0],
+    );
+
+    const stats = await executePromptStudioCli(
+      [
+        "stats",
+        "--json",
+        "--library",
+        directory,
+        "--search-index",
+        missingSearchIndex,
+      ],
+      { featureStatuses: statuses },
+    );
+    assert.equal(stats.exitCode, 0);
+    const payload = (
+      JSON.parse(stats.stdout) as {
+        data: {
+          usageAvailable: boolean;
+          usage: Array<{ id: string; useCount: number }>;
+          zeroUse: string[];
+          feedback: { total: number };
+        };
+      }
+    ).data;
+
+    assert.equal(payload.usageAvailable, false);
+    assert.deepEqual(payload.usage, []);
+    assert.deepEqual(payload.zeroUse, []);
+    assert.equal(payload.feedback.total, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("compiler 1.2.0 pins threshold preservation, conditional UI verification, and grounded metadata", () => {
   const base = enhancementCompilerInstructions({ target: "generic" });
   assert.match(base, /exact lower bounds/);
