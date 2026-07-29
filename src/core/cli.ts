@@ -38,10 +38,14 @@ import {
 } from "./feedback-store.ts";
 import {
   createPrompt,
+  enhancementHistoryDigest,
   listPrompts,
   listPromptsReadOnly,
+  recordEnhancementHistory,
   rebuildPromptSearchIndex,
+  resolvePromptSeed,
   resolvePromptDirectory,
+  saveEnhancementHistoryToLibrary,
   updatePrompt,
   type PromptDraft,
   type PromptRecord,
@@ -244,8 +248,10 @@ const COMMAND_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   enhance: new Set([
     "yes",
     "save",
+    "digest",
     "rough",
     "rough-file",
+    "seed-id",
     "target",
     "profile",
     "one-run-instruction",
@@ -1300,6 +1306,34 @@ async function optimizationCommand(
 async function enhanceCommand(
   context: CommandContext,
 ): Promise<CommandOutcome> {
+  if (context.parsed.options.has("save")) {
+    throw new CliError(
+      "TWO_STEP_SAVE_REQUIRED",
+      "Enhancement cannot generate and save to the prompt library in one call. Generate first, review the returned history id and digest, then run enhance save <history-id> --digest <digest> --yes.",
+      CLI_EXIT_CODES.usage,
+    );
+  }
+  if (context.parsed.positionals[0] === "save") {
+    assertPositionals(context.parsed, 2, 2);
+    requireYes(context.parsed, "save this reviewed enhancement history result");
+    const digest = optionString(context.parsed, "digest");
+    if (!digest || !/^[a-f0-9]{64}$/.test(digest)) {
+      throw new CliError(
+        "REVIEWED_DIGEST_REQUIRED",
+        "Enhancement save requires the exact 64-character digest returned by generate.",
+        CLI_EXIT_CODES.usage,
+      );
+    }
+    const saved = await saveEnhancementHistoryToLibrary(
+      context.directory,
+      context.parsed.positionals[1]!,
+      digest,
+    );
+    return {
+      data: { saved: recordSummary(saved) },
+      human: `Saved reviewed enhancement ${saved.id}  ${saved.title}`,
+    };
+  }
   assertPositionals(context.parsed, 0, 0);
   const profileId = selectedProfileId(
     optionString(context.parsed, "profile") ?? "openai-standard-v1",
@@ -1323,6 +1357,17 @@ async function enhanceCommand(
     context.parsed,
     "one-run-instruction",
   )?.trim();
+  const seedId = optionString(context.parsed, "seed-id")?.trim();
+  const seed = seedId
+    ? await resolvePromptSeed(context.directory, seedId)
+    : undefined;
+  if (seed && seed.body !== roughThoughts) {
+    throw new CliError(
+      "SEED_CHANGED",
+      "The saved idea text changed. Omit --seed-id or use the exact unchanged idea text.",
+      CLI_EXIT_CODES.validation,
+    );
+  }
   const request: EnhancementRequest = {
     roughThoughts,
     target,
@@ -1339,26 +1384,27 @@ async function enhanceCommand(
   }
   const apiKey = selectedProviderKey(profile.provider, context.options.env);
   const run = await runSelectedProvider(request, apiKey, context);
-  let saved: PromptRecord | undefined;
-  if (context.parsed.options.has("save")) {
-    saved = await createPrompt(
-      context.directory,
-      enhancementResultToPromptDraft(run, request),
-    );
-  }
+  const history = await recordEnhancementHistory(
+    context.directory,
+    enhancementResultToPromptDraft(run, request, {
+      thoughts: roughThoughts,
+      ...(seed ? { id: seed.id } : {}),
+    }),
+  );
+  const digest = enhancementHistoryDigest(history);
   return {
     data: {
       run,
-      saved: saved ? recordSummary(saved) : null,
+      history: { ...recordSummary(history), digest },
     },
     human: [
       run.result.enhancedPrompt,
       "",
       `Provider: ${title(run.profile.provider)} · ${run.profile.model} · ${run.profile.reasoningEffort}`,
       `Estimated actual cost: $${run.usage.estimatedCostUsd.toFixed(6)}`,
-      saved
-        ? `Saved: ${saved.id}  ${saved.title}`
-        : "Not saved. Add --save --yes to write the validated result.",
+      `Enhancement History: ${history.id}`,
+      `Reviewed content digest: ${digest}`,
+      `Review first. Then save with: enhance save ${history.id} --digest ${digest} --yes`,
     ].join("\n"),
   };
 }
@@ -2313,7 +2359,8 @@ Commands:
   optimization <operation>     Generate, evaluate, inspect, approve, or roll back proposals
   stats                        Show use counts, feedback tallies, zero-use prompts, and missed searches
   overlap                      Report near-duplicate active prompts; --threshold 0.2-0.95
-  enhance                      Enhance rough thoughts; requires --yes
+  enhance                      Generate a reviewed history result; requires --yes
+  enhance save <history-id>    Save reviewed history with --digest and --yes
 
 Global options:
   --json, -j                   Stable JSON envelope
@@ -2328,8 +2375,9 @@ Global options:
 
 Mutation and external-action rules:
   create, update, archive, and reindex require --yes.
-  enhance requires --yes before a provider call; add --save to persist the
-  validated result. Provider keys are read only from OPENAI_API_KEY,
+  enhance requires --yes before a provider call and always writes Enhancement
+  History first. A separate enhance save action requires its returned digest.
+  The old one-call --save option is rejected before key access. Provider keys are read only from OPENAI_API_KEY,
   ANTHROPIC_API_KEY, or GEMINI_API_KEY after activation and confirmation.
   API keys are never accepted as command-line options.
   feedback add, update, and delete require --yes. Feedback records stay local,

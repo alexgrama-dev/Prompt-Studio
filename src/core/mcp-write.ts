@@ -20,7 +20,11 @@ import {
 } from "./mcp-confirmation.ts";
 import {
   createPrompt,
+  enhancementHistoryDigest,
   listPromptsReadOnly,
+  recordEnhancementHistory,
+  resolvePromptSeed,
+  saveEnhancementHistoryToLibrary,
   updatePrompt,
   type PromptRecord,
   type PromptTarget,
@@ -38,6 +42,7 @@ export const MCP_MUTATION_TOOL_NAMES = [
   "prompt_studio_update",
   "prompt_studio_archive",
   "prompt_studio_enhance",
+  "prompt_studio_save_enhancement",
 ] as const;
 
 export type McpMutationToolName = (typeof MCP_MUTATION_TOOL_NAMES)[number];
@@ -292,15 +297,50 @@ function prepareMutation(
       },
     };
   }
+  if (tool === "prompt_studio_save_enhancement") {
+    const args = objectArguments(rawArguments, [
+      "historyId",
+      "contentDigest",
+      "confirmationToken",
+    ]);
+    const payload = {
+      historyId: selector(args.historyId),
+      contentDigest: digest(args.contentDigest),
+    };
+    const confirmationToken = token(args.confirmationToken);
+    return {
+      action: "save-enhancement",
+      requestDigest: mcpMutationRequestDigest("save-enhancement", payload),
+      ...(confirmationToken ? { confirmationToken } : {}),
+      run: async () => {
+        const record = await saveEnhancementHistoryToLibrary(
+          options.directory,
+          payload.historyId,
+          payload.contentDigest,
+        );
+        return mutationSuccess(
+          tool,
+          recordResult(record),
+          `Saved reviewed enhancement ${record.id}  ${record.title}`,
+        );
+      },
+    };
+  }
 
   const args = objectArguments(rawArguments, [
     "roughThoughts",
     "target",
     "profile",
     "oneRunInstruction",
+    "seedId",
     "save",
     "confirmationToken",
   ]);
+  if (args.save !== undefined && boolean(args.save, "save")) {
+    throw new Error(
+      "Two-step save required: generate without save, review the returned history id and digest, then call prompt_studio_save_enhancement.",
+    );
+  }
   const profileId = profile(args.profile);
   const selectedProfile = getProviderEnhancementProfile(profileId);
   requireFeature(
@@ -322,7 +362,9 @@ function prepareMutation(
             1_000,
           ),
         }),
-    save: boolean(args.save, "save", false),
+    ...(args.seedId === undefined
+      ? {}
+      : { seedId: selector(args.seedId) }),
   };
   rejectSensitivePayload(payload);
   const confirmationToken = token(args.confirmationToken);
@@ -331,6 +373,14 @@ function prepareMutation(
     requestDigest: mcpMutationRequestDigest("enhance", payload),
     ...(confirmationToken ? { confirmationToken } : {}),
     run: async (runSignal) => {
+      const seed = payload.seedId
+        ? await resolvePromptSeed(options.directory, payload.seedId)
+        : undefined;
+      if (seed && seed.body !== payload.roughThoughts) {
+        throw new Error(
+          "The saved idea text changed. Omit seedId or use the exact unchanged idea text.",
+        );
+      }
       const key = providerKeyFromEnvironment(
         selectedProfile.provider,
         options.env,
@@ -357,19 +407,21 @@ function prepareMutation(
         ...(compilerPolicy ? { compilerPolicy } : {}),
       });
       rejectSensitivePayload(run.result);
-      const saved = payload.save
-        ? await createPrompt(
-            options.directory,
-            enhancementResultToPromptDraft(run, request),
-          )
-        : undefined;
+      const history = await recordEnhancementHistory(
+        options.directory,
+        enhancementResultToPromptDraft(run, request, {
+          thoughts: payload.roughThoughts,
+          ...(seed ? { id: seed.id } : {}),
+        }),
+      );
+      const contentDigest = enhancementHistoryDigest(history);
       return mutationSuccess(
         tool,
         {
           run,
-          saved: saved ? recordResult(saved) : null,
+          history: { ...recordResult(history), contentDigest },
         },
-        `${run.result.enhancedPrompt}\n\n${saved ? `Saved ${saved.id}` : "Validated result was not saved."}`,
+        `${run.result.enhancedPrompt}\n\nEnhancement History: ${history.id}\nReviewed content digest: ${contentDigest}\nReview first, then call prompt_studio_save_enhancement.`,
       );
     },
   };
@@ -497,6 +549,16 @@ function token(value: unknown): string | undefined {
   return text(value, "confirmationToken", 32, 32);
 }
 
+function digest(value: unknown): string {
+  const selected = text(value, "contentDigest", 64, 64);
+  if (!/^[a-f0-9]{64}$/.test(selected)) {
+    throw new Error(
+      "contentDigest must be 64 lowercase hexadecimal characters.",
+    );
+  }
+  return selected;
+}
+
 function recordResult(record: PromptRecord): Record<string, unknown> {
   return {
     id: record.id,
@@ -540,7 +602,7 @@ function safeMutationError(error: unknown): { code: string; message: string } {
     return { code: "PROVIDER_KEY_MISSING", message };
   }
   if (
-    /must |requires |supported enhancement profile|Unknown tool argument/.test(
+    /must |required|requires |changed after review|supported enhancement profile|Unknown tool argument/.test(
       message,
     )
   ) {

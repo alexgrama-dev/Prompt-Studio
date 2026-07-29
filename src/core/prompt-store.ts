@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -72,6 +72,11 @@ export interface PromptSeedReference {
   id?: string;
 }
 
+export interface EnhancementHistoryReference {
+  id: string;
+  digest: string;
+}
+
 export interface PromptMetadata {
   schemaVersion: 1;
   id: string;
@@ -95,6 +100,7 @@ export interface PromptMetadata {
   enhancement?: EnhancementProvenance;
   ideaTitle?: IdeaTitleProvenance;
   seed?: PromptSeedReference;
+  enhancementHistory?: EnhancementHistoryReference;
 }
 
 export interface PromptRecord extends PromptMetadata {
@@ -120,6 +126,7 @@ export interface PromptDraft {
   enhancement?: EnhancementProvenance;
   ideaTitle?: IdeaTitleProvenance;
   seed?: PromptSeedReference;
+  enhancementHistory?: EnhancementHistoryReference;
 }
 
 export interface PromptUpdate extends Omit<PromptDraft, "ideaTitle"> {
@@ -261,6 +268,9 @@ export async function createPrompt(
     ...(draft.enhancement ? { enhancement: draft.enhancement } : {}),
     ...(draft.ideaTitle ? { ideaTitle: draft.ideaTitle } : {}),
     ...(draft.seed ? { seed: draft.seed } : {}),
+    ...(draft.enhancementHistory
+      ? { enhancementHistory: draft.enhancementHistory }
+      : {}),
   });
   const body = validateBody(draft.body);
   const filePath = join(
@@ -282,6 +292,59 @@ export async function recordEnhancementHistory(
   return createPrompt(enhancementHistoryDirectory(promptDirectory), draft, {
     syncSearchIndex: false,
   });
+}
+
+export function enhancementHistoryDigest(record: PromptRecord): string {
+  return createHash("sha256")
+    .update(JSON.stringify(promptRecordToDraft(record)))
+    .digest("hex");
+}
+
+export async function saveEnhancementHistoryToLibrary(
+  promptDirectory: string,
+  historyId: string,
+  reviewedDigest: string,
+  targetPromptId?: string,
+): Promise<PromptRecord> {
+  if (!UUID.test(historyId) || !/^[a-f0-9]{64}$/.test(reviewedDigest)) {
+    throw new Error(
+      "Enhancement history id and reviewed content digest are invalid.",
+    );
+  }
+  const history = await findPrompt(
+    enhancementHistoryDirectory(promptDirectory),
+    historyId,
+  );
+  const currentDigest = enhancementHistoryDigest(history);
+  if (currentDigest !== reviewedDigest) {
+    throw new Error(
+      "Enhancement History changed after review. Reload and review it again before saving.",
+    );
+  }
+  const library = await listPrompts(promptDirectory);
+  const linked = library.records.find(
+    (record) => record.enhancementHistory?.id === historyId,
+  );
+  const targeted = targetPromptId
+    ? library.records.find((record) => record.id === targetPromptId)
+    : undefined;
+  if (targetPromptId && !targeted) {
+    throw new Error(`Prompt not found: ${targetPromptId}.`);
+  }
+  if (linked && targeted && linked.id !== targeted.id) {
+    throw new Error(
+      "Enhancement History is already linked to a different library prompt.",
+    );
+  }
+  const existing = linked ?? targeted;
+  if (existing?.enhancementHistory?.digest === currentDigest) return existing;
+  const draft: PromptDraft = {
+    ...promptRecordToDraft(history),
+    enhancementHistory: { id: historyId, digest: currentDigest },
+  };
+  return existing
+    ? updatePrompt(promptDirectory, existing.id, draft)
+    : createPrompt(promptDirectory, draft);
 }
 
 export async function recordPromptSeed(
@@ -355,6 +418,9 @@ export async function updatePrompt(
     ...(update.enhancement ? { enhancement: update.enhancement } : {}),
     ...(update.ideaTitle ? { ideaTitle: update.ideaTitle } : {}),
     ...(update.seed ? { seed: update.seed } : {}),
+    ...(update.enhancementHistory
+      ? { enhancementHistory: update.enhancementHistory }
+      : {}),
   });
   const body = validateBody(update.body);
   await preserveVersion(directory, current);
@@ -522,6 +588,9 @@ export function promptRecordToDraft(record: PromptRecord): PromptDraft {
     ...(record.enhancement ? { enhancement: record.enhancement } : {}),
     ...(record.ideaTitle ? { ideaTitle: record.ideaTitle } : {}),
     ...(record.seed ? { seed: record.seed } : {}),
+    ...(record.enhancementHistory
+      ? { enhancementHistory: record.enhancementHistory }
+      : {}),
   };
 }
 
@@ -712,6 +781,11 @@ function validateMetadata(value: unknown): PromptMetadata {
   if (value.ideaTitle !== undefined)
     metadata.ideaTitle = ideaTitleProvenance(value.ideaTitle);
   if (value.seed !== undefined) metadata.seed = promptSeedReference(value.seed);
+  if (value.enhancementHistory !== undefined) {
+    metadata.enhancementHistory = enhancementHistoryReference(
+      value.enhancementHistory,
+    );
+  }
   return metadata;
 }
 
@@ -726,6 +800,25 @@ function promptSeedReference(value: unknown): PromptSeedReference {
     seed.id = id;
   }
   return seed;
+}
+
+function enhancementHistoryReference(
+  value: unknown,
+): EnhancementHistoryReference {
+  if (!isObject(value)) {
+    throw new Error("enhancementHistory must be an object.");
+  }
+  const id = requiredString(value.id, "enhancementHistory.id");
+  if (!UUID.test(id)) {
+    throw new Error("enhancementHistory.id must be a UUID.");
+  }
+  const digest = requiredString(value.digest, "enhancementHistory.digest");
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error(
+      "enhancementHistory.digest must be a SHA-256 hexadecimal digest.",
+    );
+  }
+  return { id, digest };
 }
 
 function projectBinding(value: unknown): ProjectBinding {

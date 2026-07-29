@@ -276,6 +276,7 @@ async function statusTool(
               "prompt_studio_update",
               "prompt_studio_archive",
               "prompt_studio_enhance",
+              "prompt_studio_save_enhancement",
             ]
           : []),
       ],

@@ -13,6 +13,7 @@ export const MCP_MUTATION_ACTIONS = [
   "update",
   "archive",
   "enhance",
+  "save-enhancement",
 ] as const;
 
 export type McpMutationAction = (typeof MCP_MUTATION_ACTIONS)[number];

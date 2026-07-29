@@ -53,3 +53,11 @@ export function parseEnhancementFormDraft(
     return;
   }
 }
+
+export function restorableEnhancementFormDraft(
+  stored: string | undefined,
+  explicitThoughts: string,
+): EnhancementFormDraft | undefined {
+  if (explicitThoughts.trim() || !stored) return;
+  return parseEnhancementFormDraft(stored);
+}

@@ -27,10 +27,7 @@ declare namespace Preferences {
   /** Preferences accessible in the `browse-prompts` command */
   export type BrowsePrompts = ExtensionPreferences & {}
   /** Preferences accessible in the `enhance-prompt` command */
-  export type EnhancePrompt = ExtensionPreferences & {
-  /** Context7 API Key - Stored by Raycast in encrypted command-scoped storage; used only after an exact documentation query is reviewed */
-  "context7ApiKey"?: string
-}
+  export type EnhancePrompt = ExtensionPreferences & {}
   /** Preferences accessible in the `idea-studio` command */
   export type IdeaStudio = ExtensionPreferences & {}
   /** Preferences accessible in the `menubar-prompts` command */

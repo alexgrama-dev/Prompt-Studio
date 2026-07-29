@@ -46,7 +46,12 @@ import {
   dispatchEnhancement,
 } from "./core/enhancement-dispatch";
 import {
-  parseEnhancementFormDraft,
+  enhancementRunWasCancelled,
+  finishEnhancementHistory,
+  type PendingEnhancementHistory,
+} from "./core/enhancement-completion";
+import {
+  restorableEnhancementFormDraft,
   type EnhancementFormDraft,
 } from "./core/enhancement-form-draft";
 import {
@@ -106,13 +111,14 @@ import {
 } from "./core/research-intent";
 import { mergeReviewedSources } from "./core/research-safety";
 import {
-  createPrompt,
+  enhancementHistoryDigest,
   enhancementHistoryDirectory,
   listPrompts,
-  promptRecordToDraft,
   recordEnhancementHistory,
   resolvePromptDirectory,
+  saveEnhancementHistoryToLibrary,
   updatePrompt,
+  type InvalidPrompt,
   type PromptRecord,
   type PromptSeedReference,
   type PromptTarget,
@@ -161,6 +167,14 @@ interface EditorValues {
   summary: string;
   target: PromptTarget;
   enhancedPrompt: string;
+}
+
+interface PendingEnhancement {
+  request: EnhancementRequest;
+  run: EnhancementRun;
+  directory: string;
+  seed: PromptSeedReference;
+  completion: PendingEnhancementHistory;
 }
 
 const RECENT_PROJECTS_KEY = "prompt-studio.recent-projects.v1";
@@ -310,6 +324,8 @@ function EnhancementWorkspace({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluationReport, setEvaluationReport] =
     useState<EnhancementEvaluationRun>();
+  const [pendingEnhancement, setPendingEnhancement] =
+    useState<PendingEnhancement>();
   const activeController = useRef<AbortController | undefined>(undefined);
   const evaluationController = useRef<AbortController | undefined>(undefined);
   const formDraftLoaded = useRef(false);
@@ -339,8 +355,7 @@ function EnhancementWorkspace({
   useEffect(() => {
     void LocalStorage.getItem<string>(ENHANCEMENT_FORM_DRAFT_KEY)
       .then((stored) => {
-        if (initialThoughts || !stored) return;
-        const draft = parseEnhancementFormDraft(stored);
+        const draft = restorableEnhancementFormDraft(stored, initialThoughts);
         if (!draft) return;
         setRoughThoughts(draft.roughThoughts);
         setTarget(draft.target);
@@ -965,37 +980,74 @@ function EnhancementWorkspace({
           ? { id: activeSeed.id }
           : {}),
       };
-      try {
-        await recordEnhancementHistory(
-          directory,
-          enhancementResultToPromptDraft(run, effectiveRequest, seed),
-        );
-        toast.style = Toast.Style.Success;
-        toast.title = "Enhancement Ready";
-        toast.message = "Saved to Enhancement History.";
-      } catch (historyError) {
-        toast.style = Toast.Style.Failure;
-        toast.title = "Enhancement Ready, History Save Failed";
-        toast.message =
-          historyError instanceof Error
-            ? historyError.message
-            : String(historyError);
-      }
+      const pending: PendingEnhancement = {
+        request: effectiveRequest,
+        run,
+        directory,
+        seed,
+        completion: {},
+      };
+      setPendingEnhancement(pending);
+      await completeEnhancement(pending, toast);
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = enhancementRunWasCancelled(error, controller.signal)
+        ? "Enhancement Cancelled"
+        : "Enhancement Failed";
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      activeController.current = undefined;
+      setIsLoading(false);
+    }
+  }
+
+  async function completeEnhancement(
+    pending: PendingEnhancement,
+    existingToast?: Awaited<ReturnType<typeof showToast>>,
+  ) {
+    const toast =
+      existingToast ??
+      (await showToast(
+        Toast.Style.Animated,
+        "Saving Enhancement History",
+        "The model request will not run again.",
+      ));
+    setIsLoading(true);
+    try {
+      const history = await finishEnhancementHistory(
+        pending.completion,
+        () =>
+          recordEnhancementHistory(
+            pending.directory,
+            enhancementResultToPromptDraft(
+              pending.run,
+              pending.request,
+              pending.seed,
+            ),
+          ),
+        () => LocalStorage.removeItem(ENHANCEMENT_FORM_DRAFT_KEY),
+      );
+      setPendingEnhancement(undefined);
+      toast.style = Toast.Style.Success;
+      toast.title = "Enhancement Ready";
+      toast.message = "Saved to Enhancement History.";
       push(
         <EnhancementPreview
-          request={effectiveRequest}
-          run={run}
-          directory={directory}
+          request={pending.request}
+          run={pending.run}
+          directory={pending.directory}
+          history={history}
           revisionOfPromptId={revisionOfPromptId}
-          seed={seed}
+          seed={pending.seed}
         />,
       );
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = "Enhancement Failed";
-      toast.message = error instanceof Error ? error.message : String(error);
+      toast.title = pending.completion.history
+        ? "Enhancement Saved, Draft Clear Failed"
+        : "Enhancement Ready, History Save Failed";
+      toast.message = `${error instanceof Error ? error.message : String(error)} Retry saves the completed result without another model request.`;
     } finally {
-      activeController.current = undefined;
       setIsLoading(false);
     }
   }
@@ -1131,6 +1183,14 @@ function EnhancementWorkspace({
             icon={Icon.Wand}
             onSubmit={submit}
           />
+          {pendingEnhancement ? (
+            <Action
+              title="Retry History Save"
+              icon={Icon.ArrowClockwise}
+              shortcut={Keyboard.Shortcut.Common.Refresh}
+              onAction={() => completeEnhancement(pendingEnhancement)}
+            />
+          ) : null}
           {isLoading ? (
             <Action
               title="Cancel Enhancement"
@@ -3159,12 +3219,16 @@ function ExaResearchSourceReview({
 
 function EnhancementHistory({ directory }: { directory: string }) {
   const [records, setRecords] = useState<PromptRecord[]>([]);
+  const [invalid, setInvalid] = useState<InvalidPrompt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     void listPrompts(enhancementHistoryDirectory(directory))
-      .then((library) => setRecords(library.records))
+      .then((library) => {
+        setRecords(library.records);
+        setInvalid(library.invalid);
+      })
       .catch((loadError: unknown) =>
         setError(
           loadError instanceof Error ? loadError.message : String(loadError),
@@ -3175,7 +3239,11 @@ function EnhancementHistory({ directory }: { directory: string }) {
 
   async function saveToLibrary(record: PromptRecord) {
     try {
-      await createPrompt(directory, promptRecordToDraft(record));
+      await saveEnhancementHistoryToLibrary(
+        directory,
+        record.id,
+        enhancementHistoryDigest(record),
+      );
       await showHUD("Prompt saved to library");
     } catch (saveError) {
       await showToast(
@@ -3189,10 +3257,10 @@ function EnhancementHistory({ directory }: { directory: string }) {
   return (
     <List
       isLoading={isLoading}
-      isShowingDetail={records.length > 0}
+      isShowingDetail={records.length + invalid.length > 0}
       searchBarPlaceholder="Search enhancement history…"
     >
-      {!isLoading && records.length === 0 ? (
+      {!isLoading && records.length + invalid.length === 0 ? (
         <List.EmptyView
           icon={Icon.Clock}
           title={error ? "History Unavailable" : "No Enhancements Yet"}
@@ -3248,6 +3316,37 @@ function EnhancementHistory({ directory }: { directory: string }) {
           }
         />
       ))}
+      {invalid.length > 0 ? (
+        <List.Section title="Needs Repair" subtitle={`${invalid.length}`}>
+          {invalid.map((item) => (
+            <List.Item
+              key={item.filePath}
+              icon={Icon.ExclamationMark}
+              title={item.filePath.split("/").at(-1) ?? item.filePath}
+              subtitle={item.error}
+              detail={
+                <List.Item.Detail
+                  markdown={`# Enhancement Needs Repair\n\n${escapeMarkdown(item.error)}\n\n${inlineCode(item.filePath)}`}
+                />
+              }
+              actions={
+                <ActionPanel>
+                  <Action.Open
+                    title="Open Enhancement File"
+                    target={item.filePath}
+                    shortcut={Keyboard.Shortcut.Common.Open}
+                  />
+                  <Action.ShowInFinder
+                    title="Show Enhancement in Finder"
+                    path={item.filePath}
+                    shortcut={Keyboard.Shortcut.Common.OpenWith}
+                  />
+                </ActionPanel>
+              }
+            />
+          ))}
+        </List.Section>
+      ) : null}
     </List>
   );
 }
@@ -3256,12 +3355,14 @@ function EnhancementPreview({
   request,
   run,
   directory,
+  history,
   revisionOfPromptId,
   seed,
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
   directory: string;
+  history: PromptRecord;
   revisionOfPromptId?: string | undefined;
   seed: PromptSeedReference;
 }) {
@@ -3283,14 +3384,13 @@ function EnhancementPreview({
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const draft = enhancementResultToPromptDraft(run, request, seed);
-      if (revisionOfPromptId) {
-        await updatePrompt(directory, revisionOfPromptId, draft);
-        await showHUD("Prompt revision saved");
-      } else {
-        await createPrompt(directory, draft);
-        await showHUD("Prompt saved");
-      }
+      await saveEnhancementHistoryToLibrary(
+        directory,
+        history.id,
+        enhancementHistoryDigest(history),
+        revisionOfPromptId,
+      );
+      await showHUD(revisionOfPromptId ? "Prompt revision saved" : "Prompt saved");
     } catch (error) {
       await showToast(
         Toast.Style.Failure,
@@ -3359,6 +3459,7 @@ function EnhancementPreview({
                 request={request}
                 run={run}
                 directory={directory}
+                history={history}
                 revisionOfPromptId={revisionOfPromptId}
                 seed={seed}
               />
@@ -3396,12 +3497,14 @@ function EnhancementEditor({
   request,
   run,
   directory,
+  history,
   revisionOfPromptId,
   seed,
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
   directory: string;
+  history: PromptRecord;
   revisionOfPromptId?: string | undefined;
   seed: PromptSeedReference;
 }) {
@@ -3419,13 +3522,21 @@ function EnhancementEditor({
       );
       const approvedRun: EnhancementRun = { ...run, result: edited };
       const draft = enhancementResultToPromptDraft(approvedRun, request, seed);
-      if (revisionOfPromptId) {
-        await updatePrompt(directory, revisionOfPromptId, draft);
-        await showHUD("Prompt revision saved");
-      } else {
-        await createPrompt(directory, draft);
-        await showHUD("Enhanced prompt saved");
-      }
+      const reviewedHistory = await updatePrompt(
+        enhancementHistoryDirectory(directory),
+        history.id,
+        draft,
+        { syncSearchIndex: false },
+      );
+      await saveEnhancementHistoryToLibrary(
+        directory,
+        reviewedHistory.id,
+        enhancementHistoryDigest(reviewedHistory),
+        revisionOfPromptId,
+      );
+      await showHUD(
+        revisionOfPromptId ? "Prompt revision saved" : "Enhanced prompt saved",
+      );
     } catch (error) {
       await showToast(
         Toast.Style.Failure,

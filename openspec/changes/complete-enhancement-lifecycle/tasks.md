@@ -3,12 +3,12 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 1. Implementation
 
-- [ ] 1.1 Add the completion-aware draft boundary, in-memory history retry, and explicit-launch priority with focused coverage in `test/core.test.mts`
-- [ ] 1.2 Add one digest-checked, repeat-safe history-to-library path and cover unchanged restart saves plus one normal version for an approved edit
-- [ ] 1.3 Show invalid Seed Inbox and Enhancement History records with recovery actions while preserving valid and invalid files
-- [ ] 1.4 Report cancellation truthfully and cover cancellation, provider failure, validation failure, and history-write failure
-- [ ] 1.5 Make CLI enhancement history-first and two-step, preserving original-thought and unchanged seed evidence with focused coverage
-- [ ] 1.6 Make MCP enhancement history-first and two-step, rejecting one-call save before credential access or model cost with focused coverage
+- [x] 1.1 Add the completion-aware draft boundary, in-memory history retry, and explicit-launch priority with focused coverage in `test/core.test.mts`
+- [x] 1.2 Add one digest-checked, repeat-safe history-to-library path and cover unchanged restart saves plus one normal version for an approved edit
+- [x] 1.3 Show invalid Seed Inbox and Enhancement History records with recovery actions while preserving valid and invalid files
+- [x] 1.4 Report cancellation truthfully and cover cancellation, provider failure, validation failure, and history-write failure
+- [x] 1.5 Make CLI enhancement history-first and two-step, preserving original-thought and unchanged seed evidence with focused coverage
+- [x] 1.6 Make MCP enhancement history-first and two-step, rejecting one-call save before credential access or model cost with focused coverage
 
 ## 2. Verification
 

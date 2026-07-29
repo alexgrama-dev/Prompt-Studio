@@ -79,7 +79,14 @@ import {
   type EnhancementRequest,
   type EnhancementResult,
 } from "../src/core/enhancement.ts";
-import { parseEnhancementFormDraft } from "../src/core/enhancement-form-draft.ts";
+import {
+  parseEnhancementFormDraft,
+  restorableEnhancementFormDraft,
+} from "../src/core/enhancement-form-draft.ts";
+import {
+  enhancementRunWasCancelled,
+  finishEnhancementHistory,
+} from "../src/core/enhancement-completion.ts";
 import {
   generateIdeaTitle,
   validateIdeaTitle,
@@ -102,6 +109,7 @@ import {
   createPrompt,
   consolidateExactIdeaDuplicates,
   deletePrompt,
+  enhancementHistoryDigest,
   enhancementHistoryDirectory,
   findExactIdeaDuplicates,
   listPrompts,
@@ -114,9 +122,11 @@ import {
   resolvePromptSeed,
   resolvePromptDirectory,
   restorePromptVersion,
+  saveEnhancementHistoryToLibrary,
   serializePrompt,
   updatePrompt,
   updatePromptSeed,
+  type PromptRecord,
 } from "../src/core/prompt-store.ts";
 import { createPromptStudioMcpServer } from "../mcp/server.mts";
 import {
@@ -2866,13 +2876,48 @@ test("completed enhancements stay in history until explicitly saved to the libra
       thoughts: "Keep this rough thought.",
     });
 
-    const saved = await createPrompt(
+    const reviewedDigest = enhancementHistoryDigest(historical);
+    const saved = await saveEnhancementHistoryToLibrary(
       directory,
-      promptRecordToDraft(historical),
+      historical.id,
+      reviewedDigest,
     );
     assert.equal(saved.body, historical.body);
     assert.deepEqual(saved.seed, historical.seed);
     assert.equal((await listPrompts(directory)).records.length, 1);
+    const repeated = await saveEnhancementHistoryToLibrary(
+      directory,
+      historical.id,
+      reviewedDigest,
+    );
+    assert.equal(repeated.id, saved.id);
+    assert.equal((await listPromptVersions(directory, saved.id)).length, 0);
+
+    const editedHistory = await updatePrompt(
+      enhancementHistoryDirectory(directory),
+      historical.id,
+      {
+        ...promptRecordToDraft(historical),
+        body: "Persist this reviewed edit.",
+      },
+      { syncSearchIndex: false },
+    );
+    await assert.rejects(
+      saveEnhancementHistoryToLibrary(
+        directory,
+        historical.id,
+        reviewedDigest,
+      ),
+      /changed after review/,
+    );
+    const updated = await saveEnhancementHistoryToLibrary(
+      directory,
+      historical.id,
+      enhancementHistoryDigest(editedHistory),
+    );
+    assert.equal(updated.id, saved.id);
+    assert.equal(updated.body, "Persist this reviewed edit.");
+    assert.equal((await listPromptVersions(directory, saved.id)).length, 1);
     assert.equal(
       (await listPrompts(enhancementHistoryDirectory(directory))).records
         .length,
@@ -3087,6 +3132,121 @@ test("Raycast enhancement drafts restore only valid saved form values", () => {
     undefined,
   );
   assert.equal(parseEnhancementFormDraft("not json"), undefined);
+  assert.equal(
+    restorableEnhancementFormDraft(JSON.stringify(draft), "Explicit task"),
+    undefined,
+  );
+  assert.deepEqual(
+    restorableEnhancementFormDraft(JSON.stringify(draft), ""),
+    draft,
+  );
+});
+
+test("enhancement completion clears drafts only after durable history and retries without a model call", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-completion-boundary-"),
+  );
+  try {
+    let historyWrites = 0;
+    let draftClears = 0;
+    const pending: { history?: PromptRecord } = {};
+    const writeHistory = async () => {
+      historyWrites += 1;
+      return recordEnhancementHistory(directory, {
+        title: "Retryable Result",
+        body: "Keep the generated result in memory.",
+        target: "codex",
+        seed: { thoughts: "Keep the original thought." },
+      });
+    };
+    await assert.rejects(
+      finishEnhancementHistory(
+        pending,
+        async () => {
+          historyWrites += 1;
+          throw new Error("history unavailable");
+        },
+        async () => {
+          draftClears += 1;
+        },
+      ),
+      /history unavailable/,
+    );
+    assert.equal(historyWrites, 1);
+    assert.equal(draftClears, 0);
+
+    await assert.rejects(
+      finishEnhancementHistory(pending, writeHistory, async () => {
+        draftClears += 1;
+        throw new Error("draft clear failed");
+      }),
+      /draft clear failed/,
+    );
+    assert.equal(historyWrites, 2);
+    assert.equal(draftClears, 1);
+    const completed = await finishEnhancementHistory(
+      pending,
+      writeHistory,
+      async () => {
+        draftClears += 1;
+      },
+    );
+    assert.equal(historyWrites, 2);
+    assert.equal(draftClears, 2);
+    assert.equal(completed.seed?.thoughts, "Keep the original thought.");
+
+    const controller = new AbortController();
+    controller.abort();
+    assert.equal(
+      enhancementRunWasCancelled(new Error("provider failed"), controller.signal),
+      true,
+    );
+    assert.equal(
+      enhancementRunWasCancelled(new Error("validation failed")),
+      false,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("invalid idea and enhancement files stay visible beside valid records", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-hidden-repair-"),
+  );
+  try {
+    await recordPromptSeed(directory, {
+      title: "Valid Idea",
+      body: "Keep this valid idea.",
+      target: "codex",
+    });
+    await recordEnhancementHistory(directory, {
+      title: "Valid Enhancement",
+      body: "Keep this valid enhancement.",
+      target: "codex",
+      seed: { thoughts: "Keep this valid idea." },
+    });
+    await writeFile(
+      join(promptSeedDirectory(directory), "broken-idea.md"),
+      "not prompt metadata",
+    );
+    await writeFile(
+      join(enhancementHistoryDirectory(directory), "broken-enhancement.md"),
+      "not prompt metadata",
+    );
+    const ideas = await listPrompts(promptSeedDirectory(directory));
+    const enhancements = await listPrompts(
+      enhancementHistoryDirectory(directory),
+    );
+    assert.equal(ideas.records.length, 1);
+    assert.equal(ideas.invalid.length, 1);
+    assert.match(ideas.invalid[0]?.error ?? "", /metadata header/);
+    assert.equal(enhancements.records.length, 1);
+    assert.equal(enhancements.invalid.length, 1);
+    assert.match(enhancements.invalid[0]?.error ?? "", /metadata header/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("optional enhancement capabilities stay inert until explicitly available", () => {
@@ -4328,6 +4488,13 @@ test("CLI validation and reindex use stable exit codes and explicit mutation con
 test("CLI enhancement requires explicit provider confirmation and never exposes or falls back from its key", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-cli-enhance-"));
   const statuses = cliPreviewStatuses();
+  const roughThoughts =
+    "Diagnose the intermittent API failure without inventing evidence.";
+  const seed = await recordPromptSeed(directory, {
+    title: "Diagnose the API failure",
+    body: roughThoughts,
+    target: "codex",
+  });
   let calls = 0;
   const fetcher = (async (_input: unknown, init?: RequestInit) => {
     calls += 1;
@@ -4348,7 +4515,9 @@ test("CLI enhancement requires explicit provider confirmation and never exposes 
     "--profile",
     "anthropic-sonnet-5-v1",
     "--rough",
-    "Diagnose the intermittent API failure without inventing evidence.",
+    roughThoughts,
+    "--seed-id",
+    seed.id,
   ];
   try {
     const rejectedKeyArgument = await executePromptStudioCli(
@@ -4391,18 +4560,69 @@ test("CLI enhancement requires explicit provider confirmation and never exposes 
     assert.equal(preview.stdout.includes("anthropic-cli-secret"), false);
     assert.equal(calls, 1);
     assert.equal((await listPrompts(directory)).records.length, 0);
+    const previewData = (
+      JSON.parse(preview.stdout) as {
+        data: { history: { id: string; digest: string } };
+      }
+    ).data.history;
+    const history = (
+      await listPrompts(enhancementHistoryDirectory(directory))
+    ).records;
+    assert.equal(history.length, 1);
+    assert.equal(history[0]?.seed?.id, seed.id);
+    assert.equal(history[0]?.seed?.thoughts, roughThoughts);
 
-    const saved = await executePromptStudioCli([...args, "--yes", "--save"], {
+    const oneCallSave = await executePromptStudioCli(
+      [...args, "--yes", "--save"],
+      {
+        featureStatuses: statuses,
+        env: { ANTHROPIC_API_KEY: "anthropic-cli-secret" },
+        providerFetchers: { anthropic: fetcher },
+      },
+    );
+    assert.equal(oneCallSave.exitCode, CLI_EXIT_CODES.usage);
+    assert.match(oneCallSave.stdout, /TWO_STEP_SAVE_REQUIRED/);
+    assert.equal(calls, 1);
+
+    const saved = await executePromptStudioCli(
+      [
+        "enhance",
+        "save",
+        previewData.id,
+        "--digest",
+        previewData.digest,
+        "--yes",
+        "--json",
+        "--library",
+        directory,
+      ],
+      {
       featureStatuses: statuses,
-      env: { ANTHROPIC_API_KEY: "anthropic-cli-secret" },
-      providerFetchers: { anthropic: fetcher },
-    });
+      },
+    );
     assert.equal(saved.exitCode, 0);
     assert.equal(saved.stdout.includes("anthropic-cli-secret"), false);
-    assert.equal(calls, 2);
+    assert.equal(calls, 1);
     const records = (await listPrompts(directory)).records;
     assert.equal(records.length, 1);
     assert.equal(records[0]?.enhancement?.provider, "anthropic");
+    const repeated = await executePromptStudioCli(
+      [
+        "enhance",
+        "save",
+        previewData.id,
+        "--digest",
+        previewData.digest,
+        "--yes",
+        "--json",
+        "--library",
+        directory,
+      ],
+      { featureStatuses: statuses },
+    );
+    assert.equal(repeated.exitCode, 0);
+    assert.equal((await listPrompts(directory)).records.length, 1);
+    assert.equal((await listPromptVersions(directory, records[0]!.id)).length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -5678,6 +5898,7 @@ test("confirmation-gated MCP mutations create, version, archive, and enhance wit
         "prompt_studio_update",
         "prompt_studio_archive",
         "prompt_studio_enhance",
+        "prompt_studio_save_enhancement",
       ],
     );
     assert.equal(
@@ -5686,7 +5907,10 @@ test("confirmation-gated MCP mutations create, version, archive, and enhance wit
     );
     for (const tool of tools.tools.slice(4)) {
       assert.equal(tool.annotations?.readOnlyHint, false);
-      assert.equal(tool.annotations?.idempotentHint, false);
+      assert.equal(
+        tool.annotations?.idempotentHint,
+        tool.name === "prompt_studio_save_enhancement",
+      );
     }
 
     const createArguments = {
@@ -5888,26 +6112,51 @@ test("confirmation-gated MCP mutations create, version, archive, and enhance wit
     assert.notEqual(enhanced.isError, true);
     assert.equal(providerCalls, 1);
     assert.equal((await listPrompts(directory)).records.length, 2);
+    const enhancedData = mcpStructuredData(enhanced);
+    const enhancementHistory = enhancedData.history as {
+      id: string;
+      contentDigest: string;
+    };
+    assert.equal(
+      (
+        await listPrompts(enhancementHistoryDirectory(directory))
+      ).records.length,
+      1,
+    );
 
     const saveArguments = { ...enhanceArguments, save: true };
-    const saveRequest = await callMcpTool(
+    const oneCallSave = await callMcpTool(
       connection.client,
       "prompt_studio_enhance",
       saveArguments,
     );
+    assert.equal(oneCallSave.isError, true);
+    assert.match(mcpText(oneCallSave), /Two-step save required/);
+    assert.equal(providerCalls, 1);
+    assert.equal((await listPrompts(directory)).records.length, 2);
+
+    const saveHistoryArguments = {
+      historyId: enhancementHistory.id,
+      contentDigest: enhancementHistory.contentDigest,
+    };
+    const saveRequest = await callMcpTool(
+      connection.client,
+      "prompt_studio_save_enhancement",
+      saveHistoryArguments,
+    );
     const saveToken = await authorizeMcpMutation(
       statuses,
       confirmationDirectory,
-      "enhance",
+      "save-enhancement",
       mcpConfirmationDigest(saveRequest),
     );
     const saved = await callMcpTool(
       connection.client,
-      "prompt_studio_enhance",
-      { ...saveArguments, confirmationToken: saveToken },
+      "prompt_studio_save_enhancement",
+      { ...saveHistoryArguments, confirmationToken: saveToken },
     );
     assert.notEqual(saved.isError, true);
-    assert.equal(providerCalls, 2);
+    assert.equal(providerCalls, 1);
     assert.equal((await listPrompts(directory)).records.length, 3);
 
     const auditText = JSON.stringify(audits);

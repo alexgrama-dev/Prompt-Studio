@@ -370,7 +370,7 @@ function registerMutationTools(
     {
       title: "Enhance Prompt Thoughts",
       description:
-        "Send reviewed rough thoughts to the explicitly selected provider, validate the structured result, and optionally save it after Alex issues a one-time token for this exact request digest. The provider key comes only from the MacBook process environment.",
+        "Send reviewed rough thoughts to the explicitly selected provider, validate the structured result, and write it to Enhancement History after Alex issues a one-time token for this exact request digest. It never saves to the main prompt library. The provider key comes only from the MacBook process environment.",
       inputSchema: z
         .object({
           roughThoughts: z.string().min(1).max(20_000),
@@ -384,6 +384,12 @@ function registerMutationTools(
             ])
             .optional(),
           oneRunInstruction: z.string().min(1).max(1_000).optional(),
+          seedId: z
+            .string()
+            .min(8)
+            .max(64)
+            .regex(/^[a-f0-9-]+$/i)
+            .optional(),
           save: z.boolean().optional(),
           confirmationToken: z.string().length(32).optional(),
         })
@@ -398,6 +404,40 @@ function registerMutationTools(
       toolResponse(
         await executePromptStudioMutationTool(
           "prompt_studio_enhance",
+          arguments_,
+          options,
+          extra.signal,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "prompt_studio_save_enhancement",
+    {
+      title: "Save Reviewed Enhancement",
+      description:
+        "Save one reviewed Enhancement History result to the main library using its exact history id and content digest after Alex issues a one-time token. Repeating the unchanged save returns the same prompt.",
+      inputSchema: z
+        .object({
+          historyId: z
+            .string()
+            .min(8)
+            .max(64)
+            .regex(/^[a-f0-9-]+$/i),
+          contentDigest: z.string().regex(/^[a-f0-9]{64}$/),
+          confirmationToken: z.string().length(32).optional(),
+        })
+        .strict(),
+      outputSchema: mutationOutputSchema,
+      annotations: {
+        ...localMutationAnnotations,
+        idempotentHint: true,
+      },
+    },
+    async (arguments_, extra) =>
+      toolResponse(
+        await executePromptStudioMutationTool(
+          "prompt_studio_save_enhancement",
           arguments_,
           options,
           extra.signal,
