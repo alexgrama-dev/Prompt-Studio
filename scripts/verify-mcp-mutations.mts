@@ -136,6 +136,7 @@ try {
     "prompt_studio_update",
     "prompt_studio_archive",
     "prompt_studio_enhance",
+    "prompt_studio_save_enhancement",
     "prompt_studio_record_feedback",
   ]);
   assert.equal(
@@ -207,10 +208,66 @@ try {
       data: { id: string };
     }) ?? { data: { id: "" } }
   ).data.id;
-  const feedbackRecorded = await request(6, "tools/call", {
+  const saveArguments = {
+    historyId: "123e4567-e89b-12d3-a456-426614174000",
+    contentDigest: "0".repeat(64),
+  };
+  const saveRequested = await request(6, "tools/call", {
+    name: "prompt_studio_save_enhancement",
+    arguments: saveArguments,
+  });
+  assert.equal(toolResult(saveRequested).isError, true);
+  const saveDigest = confirmationDigest(toolText(saveRequested));
+  const saveAuthorization = await runExternal(
+    process.execPath,
+    [
+      cliPath,
+      "authorize-mcp",
+      "save-enhancement",
+      saveDigest,
+      "--json",
+      "--yes",
+      "--feature-config",
+      featureConfig,
+      "--confirmation-dir",
+      confirmationDirectory,
+    ],
+    { encoding: "utf8" },
+  );
+  const saveToken = (
+    JSON.parse(saveAuthorization.stdout) as {
+      data: { token: string };
+    }
+  ).data.token;
+  const missingHistory = await request(7, "tools/call", {
+    name: "prompt_studio_save_enhancement",
+    arguments: { ...saveArguments, confirmationToken: saveToken },
+  });
+  assert.equal(toolResult(missingHistory).isError, true);
+  assert.match(toolText(missingHistory), /PROMPT_NOT_FOUND/);
+  assert.deepEqual(await readdir(confirmationDirectory), []);
+  assert.equal(
+    (await readdir(library)).filter((name) => name.endsWith(".md")).length,
+    1,
+  );
+
+  const retrieved = await request(8, "tools/call", {
+    name: "prompt_studio_get",
+    arguments: { id: promptId },
+  });
+  assert.notEqual(toolResult(retrieved).isError, true);
+  const versionToken = (
+    (toolResult(retrieved).structuredContent as {
+      data: { versionToken: string };
+    }) ?? { data: { versionToken: "" } }
+  ).data.versionToken;
+  assert.match(versionToken, /^v1:[a-f0-9]{64}$/);
+
+  const feedbackRecorded = await request(9, "tools/call", {
     name: "prompt_studio_record_feedback",
     arguments: {
       id: promptId,
+      versionToken,
       verdict: "useful",
       outcomeStatus: "succeeded",
       targetAgent: "claude-code",
@@ -223,10 +280,11 @@ try {
   );
   assert.equal(feedbackFiles.length, 1);
 
-  const feedbackRejected = await request(7, "tools/call", {
+  const feedbackRejected = await request(10, "tools/call", {
     name: "prompt_studio_record_feedback",
     arguments: {
       id: promptId,
+      versionToken,
       verdict: "amazing",
       outcomeStatus: "succeeded",
       targetAgent: "claude-code",
@@ -258,6 +316,7 @@ try {
         confirmationRequired: true,
         exactRequestAuthorized: true,
         tokenReused: false,
+        reviewedEnhancementSaveGated: true,
         promptCount: 1,
         agentFeedbackRecorded: true,
         invalidFeedbackRejected: true,
