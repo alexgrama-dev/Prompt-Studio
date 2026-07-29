@@ -12,11 +12,16 @@ Date: 2026-07-29
 
 ## Automated Evidence
 
-- `pnpm test`: 83 passed, 0 failed.
+- `pnpm test`: 85 passed, 0 failed.
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed with zero warnings.
+- `pnpm check`: passed on the Mac Mini.
+- `pnpm check:store`: passed.
+- `openspec validate --all --strict`: 20 passed, 0 failed.
 
-## Device Evidence Still Required
+## MacBook Evidence
 
-- MacBook Raycast render and interaction check.
-- Mac Mini full `pnpm check`, Store check, and strict OpenSpec validation.
+- Enhance Prompt opened with No Project and stated that no project scan had run.
+- The Context action group exposed Use Smart Defaults, Choose Project Folder, Load Saved Projects, and Review Cost and Privacy.
+- The first render did not contact the configured SSH project or request a Context7 credential.
+- Current provider settings are Active, so the Disabled-provider render and an intentional SSH failure remain automated checks.

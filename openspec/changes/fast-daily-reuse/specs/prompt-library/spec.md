@@ -10,7 +10,7 @@ identifier matches MAY resolve directly. Title and alias matches SHALL resolve
 only when exactly one active record matches. Partial, semantic, body, tag,
 search-term, archived, ambiguous, and placeholder-bearing matches SHALL NOT
 paste without review. For an exact query of `q` characters, the repeatable path
-SHALL fall from `q + 15` keys to `q + 2` keys.
+SHALL fall from `q + 15` keys to no more than `q + 2` keys.
 
 #### Scenario: Launch one exact prompt from fallback search
 

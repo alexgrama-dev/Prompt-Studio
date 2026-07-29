@@ -14,7 +14,7 @@ Each implementation task is complete only after `pnpm test`,
 
 - [ ] 2.1 Verify draft clearing, cancellation, repeat-safe save, Seed Inbox, and Enhancement History in Raycast on the MacBook
 - [ ] 2.2 Verify the two-step CLI and MCP enhancement flow on the MacBook
-- [ ] 2.3 Pass `pnpm check` on the Mac Mini mirror
-- [ ] 2.4 Pass `pnpm check:store`
-- [ ] 2.5 Pass `openspec validate --all --strict`
-- [ ] 2.6 Record dated evidence in `docs/verification/2026-07-29-complete-enhancement-lifecycle.md`
+- [x] 2.3 Pass `pnpm check` on the Mac Mini mirror
+- [x] 2.4 Pass `pnpm check:store`
+- [x] 2.5 Pass `openspec validate --all --strict`
+- [x] 2.6 Record dated evidence in `docs/verification/2026-07-29-complete-enhancement-lifecycle.md`

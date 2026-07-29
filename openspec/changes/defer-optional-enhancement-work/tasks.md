@@ -10,8 +10,9 @@ Each implementation task is complete only after `pnpm test`,
 ## 2. Verification
 
 - [ ] 2.1 Verify the initial form, Disabled providers, explicit project load, exact-folder choice, and SSH failure in Raycast on the MacBook
-- [ ] 2.2 Prove Disabled Context7 causes no credential read or network request
-- [ ] 2.3 Pass `pnpm check` on the Mac Mini mirror
-- [ ] 2.4 Pass `pnpm check:store`
-- [ ] 2.5 Pass `openspec validate --all --strict`
-- [ ] 2.6 Record dated evidence in `docs/verification/2026-07-29-defer-optional-enhancement-work.md`
+- [x] 2.2 Prove Disabled Context7 causes no credential read or network request
+  - 2026-07-29: focused checks instrumented credential and request boundaries; Disabled performed neither operation, while missing-key and reviewed-request paths stopped without fallback.
+- [x] 2.3 Pass `pnpm check` on the Mac Mini mirror
+- [x] 2.4 Pass `pnpm check:store`
+- [x] 2.5 Pass `openspec validate --all --strict`
+- [x] 2.6 Record dated evidence in `docs/verification/2026-07-29-defer-optional-enhancement-work.md`

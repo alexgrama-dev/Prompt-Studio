@@ -19,9 +19,17 @@ Date: 2026-07-29
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed with zero warnings.
 - `pnpm build:mcp`: passed.
+- `pnpm check`: passed on the Mac Mini.
+- `pnpm check:store`: passed.
+- `openspec validate --all --strict`: 20 passed, 0 failed.
 
-## Device Evidence Still Required
+## MacBook Evidence
 
-- MacBook Raycast checks for draft clearing, cancellation, retry, invalid-file repair, and repeat-safe saving.
-- MacBook CLI and MCP two-step flow.
-- Mac Mini full `pnpm check`, Store check, and strict OpenSpec validation.
+- Enhancement History rendered 13 existing records.
+- Each valid history record exposed Paste Prompt, Copy Prompt, and the separate Save to Prompt Library action.
+- `pnpm verify:mcp-mutations` passed the confirmation-gated, two-step enhancement-save check against temporary data.
+- The CLI and MCP bundles built successfully on the MacBook.
+
+## Remaining Device Check
+
+- Live model generation, draft clearing, cancellation, and a real two-step save require the missing OpenAI key.

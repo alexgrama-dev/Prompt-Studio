@@ -8,7 +8,7 @@ Each implementation task is complete only after `pnpm test`,
 - [x] 1.2 Render exact results before QMD work, complete an Active stale refresh afterward, and cover Disabled, unavailable, stale, and failure cases in `test/core.test.mts`
   - 2026-07-29: Disabled, stale-refresh, unavailable, and failure branches passed in the QMD checks; `pnpm test` passed 71/71, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [x] 1.3 Calibrate one semantic rule with the named positive and negative controls and add focused automated coverage
-  - 2026-07-29: the real MacBook collection scored the positive control at 0.554 and the strongest negative at 0.408; the 0.48 confidence rule retained the positive and rejected all three negatives. `pnpm test` passed 72/72, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
+  - 2026-07-29: a later live prompt exposed generic vector-query inflation. Removing that generic text produced relevant scores of 0.430 and 0.376 and a strongest negative of 0.210. The 0.35 rule retained both relevant prompts and rejected all three controls. `pnpm test` passed 85/85, and `pnpm typecheck` and `pnpm lint` exited 0.
 - [x] 1.4 Add distinct empty, no-result, and load-failure states with explicit recovery routes and prove they create no authoritative record
   - 2026-07-29: pure state checks distinguish loading, load failure, empty library, no result, and filtered-empty states; Enhance and Idea Studio handoffs preserve the exact query and call no save function. `pnpm test` passed 77/77, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [x] 1.5 Remove MCP missed-search mutation while retaining the privacy-safe audit log and cover the read-only contract
@@ -23,8 +23,9 @@ Each implementation task is complete only after `pnpm test`,
 ## 2. Verification
 
 - [ ] 2.1 Verify all changed Raycast states and the named controls against the real MacBook QMD collection
-- [ ] 2.2 Verify CLI and MCP fallback, read-only behavior, version-bound feedback, and stale-build warning on the MacBook
-- [ ] 2.3 Pass `pnpm check` on the Mac Mini mirror
-- [ ] 2.4 Pass `pnpm check:store`
-- [ ] 2.5 Pass `openspec validate --all --strict`
-- [ ] 2.6 Record dated evidence in `docs/verification/2026-07-29-search-runtime-reliability.md`
+- [x] 2.2 Verify CLI and MCP fallback, read-only behavior, version-bound feedback, and stale-build warning on the MacBook
+  - 2026-07-29: a missing-index CLI search returned the Markdown result without creating the index; the MCP mutation verifier passed its version-bound feedback and confirmation checks; the installed CLI symlink reported and then cleared a deliberately induced stale-build warning.
+- [x] 2.3 Pass `pnpm check` on the Mac Mini mirror
+- [x] 2.4 Pass `pnpm check:store`
+- [x] 2.5 Pass `openspec validate --all --strict`
+- [x] 2.6 Record dated evidence in `docs/verification/2026-07-29-search-runtime-reliability.md`

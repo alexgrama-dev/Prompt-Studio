@@ -18,9 +18,10 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 2. Verification
 
-- [ ] 2.1 Snapshot real MacBook seed, enhancement-history, and linked-prompt counts before and after any confirmed duplicate migration
+- [x] 2.1 Snapshot real MacBook seed, enhancement-history, and linked-prompt counts before and after any confirmed duplicate migration
+  - 2026-07-29: the MacBook had 14 main prompts, 8 ideas, 13 enhancement-history records, and zero exact duplicate groups. No migration ran, so all counts remained unchanged.
 - [ ] 2.2 Verify the three Raycast entries plus AI title generation and review, manual fallback, repeat save, edit, search, shallow submenus, repair, history failure, duplicate review, delete confirmation, and enhancement handoff on the MacBook
-- [ ] 2.3 Pass `pnpm check` on the Mac Mini mirror
-- [ ] 2.4 Pass `pnpm check:store`
-- [ ] 2.5 Pass `openspec validate --all --strict`
-- [ ] 2.6 Record dated evidence in `docs/verification/2026-07-29-rough-ideas-workflow.md`
+- [x] 2.3 Pass `pnpm check` on the Mac Mini mirror
+- [x] 2.4 Pass `pnpm check:store`
+- [x] 2.5 Pass `openspec validate --all --strict`
+- [x] 2.6 Record dated evidence in `docs/verification/2026-07-29-rough-ideas-workflow.md`
