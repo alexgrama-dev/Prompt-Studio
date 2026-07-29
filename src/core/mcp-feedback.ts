@@ -9,7 +9,14 @@ import {
 } from "./feedback-store.ts";
 import { getFeatureStatus, type FeatureStatus } from "./features.ts";
 import type { McpAuditWriter } from "./mcp-read.ts";
-import { listPromptsReadOnly } from "./prompt-store.ts";
+import {
+  listPromptVersions,
+  listPromptsReadOnly,
+} from "./prompt-store.ts";
+import {
+  resolvePromptVersion,
+  validPromptVersionToken,
+} from "./prompt-version.ts";
 
 export const MCP_FEEDBACK_TOOL_NAME = "prompt_studio_record_feedback" as const;
 
@@ -60,12 +67,14 @@ export async function executePromptStudioFeedbackTool(
 
     const args = objectArguments(rawArguments, [
       "id",
+      "versionToken",
       "verdict",
       "outcomeStatus",
       "targetAgent",
       "note",
     ]);
     const id = selector(args.id);
+    const versionToken = promptVersionArgument(args.versionToken);
     const verdict = enumeration(args.verdict, "verdict", FEEDBACK_VERDICTS);
     const outcomeStatus = enumeration(
       args.outcomeStatus,
@@ -110,12 +119,22 @@ export async function executePromptStudioFeedbackTool(
         "Feedback is recorded only for active prompts.",
       );
     }
+    const version = resolvePromptVersion(
+      [record, ...(await listPromptVersions(options.directory, record.id))],
+      versionToken,
+    );
+    if (!version) {
+      throw new FeedbackToolError(
+        "PROMPT_VERSION_MISMATCH",
+        "The version token does not match an available current or historical prompt version. Retrieve the prompt again before recording feedback.",
+      );
+    }
     throwIfAborted(signal);
 
     const stored = await createPromptUseFeedback(
       options.directory,
       {
-        prompt: record,
+        prompt: version,
         targetAgent,
         verdict,
         outcomeStatus,
@@ -140,12 +159,12 @@ export async function executePromptStudioFeedbackTool(
       tool: MCP_FEEDBACK_TOOL_NAME,
       data: {
         feedbackId: stored.id,
-        promptId: record.id,
+        promptId: version.id,
         promptUpdatedAt: stored.prompt.promptUpdatedAt,
         verdict,
         outcomeStatus,
       },
-      text: `Recorded ${verdict} / ${outcomeStatus} feedback ${stored.id} for ${record.title}`,
+      text: `Recorded ${verdict} / ${outcomeStatus} feedback ${stored.id} for ${version.title}`,
     };
   } catch (error) {
     const failure =
@@ -243,6 +262,16 @@ function enumeration<T extends string>(
     "INVALID_ARGUMENTS",
     `${name} must be one of: ${allowed.join(", ")}.`,
   );
+}
+
+function promptVersionArgument(value: unknown): string {
+  if (!validPromptVersionToken(value)) {
+    throw new FeedbackToolError(
+      "INVALID_ARGUMENTS",
+      "versionToken must be the v1 token returned by prompt_studio_get.",
+    );
+  }
+  return value;
 }
 
 function optionalNote(value: unknown): string | undefined {

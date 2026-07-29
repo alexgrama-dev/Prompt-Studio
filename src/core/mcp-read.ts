@@ -10,6 +10,7 @@ import {
 } from "./prompt-store.ts";
 import { buildFreshnessWarning } from "./build-freshness.ts";
 import { extractPlaceholders } from "./placeholders.ts";
+import { promptVersionToken } from "./prompt-version.ts";
 import { containsLikelySecret } from "./secrets.ts";
 import {
   inspectSearchIndex,
@@ -516,6 +517,7 @@ async function getTool(
   const placeholders = extractPlaceholders(record.body);
   const data: Record<string, unknown> = {
     id: record.id,
+    versionToken: promptVersionToken(record),
     title: redactLocalPaths(record.title),
     summary: redactLocalPaths(record.summary),
     body,
@@ -556,6 +558,7 @@ async function getTool(
     `# ${String(data.title)}`,
     "",
     `Prompt ID: ${record.id}`,
+    `Version token: ${String(data.versionToken)}`,
     `Target: ${record.target}`,
     `Tags: ${record.tags.join(", ") || "(none)"}`,
     placeholders.length

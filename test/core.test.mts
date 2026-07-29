@@ -150,6 +150,7 @@ import {
   recordLastLibraryPaste,
   resolveLastLibraryPaste,
 } from "../src/core/last-library-paste.ts";
+import { promptVersionToken } from "../src/core/prompt-version.ts";
 import { buildFreshnessWarning } from "../src/core/build-freshness.ts";
 import { executePromptStudioFeedbackTool } from "../src/core/mcp-feedback.ts";
 import {
@@ -5368,6 +5369,7 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
       );
       assert.equal(String(getData.body).includes(homedir()), false);
       assert.match(String(getData.body), /~\/Developer\/private\/cache\.ts/);
+      assert.match(String(getData.versionToken), /^v1:[a-f0-9]{64}$/);
       assert.equal(JSON.stringify(getData).includes(directory), false);
       assert.equal(JSON.stringify(getData).includes(searchIndexPath), false);
       assert.equal(
@@ -6737,6 +6739,7 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
       },
       recordsPerHour: 2,
     };
+    const versionOneToken = promptVersionToken(prompt);
 
     const disabled = await executePromptStudioFeedbackTool(
       {
@@ -6751,9 +6754,18 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     assert.equal(disabled.code, "FEATURE_DISABLED");
     assert.equal((await listPromptUseFeedback(directory)).records.length, 0);
 
+    const updated = await updatePrompt(directory, prompt.id, {
+      title: prompt.title,
+      body: "Review the updated change and report evidence.",
+      target: prompt.target,
+    });
+    const currentToken = promptVersionToken(updated);
+    assert.notEqual(currentToken, versionOneToken);
+
     const recorded = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
+        versionToken: versionOneToken,
         verdict: "useful",
         outcomeStatus: "succeeded",
         targetAgent: "claude-code",
@@ -6766,10 +6778,13 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     assert.equal(stored.records.length, 1);
     assert.equal(stored.records[0]?.verdict, "useful");
     assert.equal(stored.records[0]?.outcome?.status, "succeeded");
+    assert.equal(stored.records[0]?.prompt.promptUpdatedAt, prompt.updatedAt);
+    assert.equal(stored.records[0]?.prompt.body, prompt.body);
 
     const badVerdict = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
+        versionToken: currentToken,
         verdict: "amazing",
         outcomeStatus: "succeeded",
         targetAgent: "claude-code",
@@ -6783,6 +6798,7 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     const secretNote = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
+        versionToken: currentToken,
         verdict: "useful",
         outcomeStatus: "succeeded",
         targetAgent: "claude-code",
@@ -6796,6 +6812,11 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     const toArchived = await executePromptStudioFeedbackTool(
       {
         id: archived.id,
+        versionToken: promptVersionToken(
+          (await listPrompts(directory)).records.find(
+            (record) => record.id === archived.id,
+          )!,
+        ),
         verdict: "useful",
         outcomeStatus: "succeeded",
         targetAgent: "generic",
@@ -6805,9 +6826,24 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     assert.equal(toArchived.ok, false);
     assert.equal(toArchived.code, "PROMPT_ARCHIVED");
 
+    const mismatched = await executePromptStudioFeedbackTool(
+      {
+        id: prompt.id,
+        versionToken: `v1:${"0".repeat(64)}`,
+        verdict: "useful",
+        outcomeStatus: "succeeded",
+        targetAgent: "codex",
+      },
+      options,
+    );
+    assert.equal(mismatched.ok, false);
+    assert.equal(mismatched.code, "PROMPT_VERSION_MISMATCH");
+    assert.equal((await listPromptUseFeedback(directory)).records.length, 1);
+
     const second = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
+        versionToken: currentToken,
         verdict: "not-useful",
         outcomeStatus: "failed",
         targetAgent: "codex",
@@ -6818,6 +6854,7 @@ test("agent feedback tool is capability-gated, validated, capped, and append-onl
     const capped = await executePromptStudioFeedbackTool(
       {
         id: prompt.id,
+        versionToken: currentToken,
         verdict: "useful",
         outcomeStatus: "succeeded",
         targetAgent: "codex",
