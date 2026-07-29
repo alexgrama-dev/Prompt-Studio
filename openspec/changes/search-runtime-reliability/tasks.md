@@ -7,7 +7,8 @@ Each implementation task is complete only after `pnpm test`,
   - 2026-07-29: missing, stale, corrupt, combined-filter, ranking, CLI, MCP, and Store fallback checks passed; `pnpm test` passed 71/71, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [x] 1.2 Render exact results before QMD work, complete an Active stale refresh afterward, and cover Disabled, unavailable, stale, and failure cases in `test/core.test.mts`
   - 2026-07-29: Disabled, stale-refresh, unavailable, and failure branches passed in the QMD checks; `pnpm test` passed 71/71, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
-- [ ] 1.3 Calibrate one semantic rule with the named positive and negative controls and add focused automated coverage
+- [x] 1.3 Calibrate one semantic rule with the named positive and negative controls and add focused automated coverage
+  - 2026-07-29: the real MacBook collection scored the positive control at 0.554 and the strongest negative at 0.408; the 0.48 confidence rule retained the positive and rejected all three negatives. `pnpm test` passed 72/72, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [ ] 1.4 Add distinct empty, no-result, and load-failure states with explicit recovery routes and prove they create no authoritative record
 - [ ] 1.5 Remove MCP missed-search mutation while retaining the privacy-safe audit log and cover the read-only contract
 - [ ] 1.6 Return one prompt version token, bind feedback to its exact current or historical version, and cover update and mismatch cases

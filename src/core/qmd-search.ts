@@ -18,6 +18,7 @@ import { promptLibraryFingerprint, type SearchResult } from "./search-index.ts";
 const execFileAsync = promisify(execFile);
 const QMD_INDEX = "prompt-studio";
 const QMD_COLLECTION = "prompt-studio";
+const QMD_SEMANTIC_CONFIDENCE = 0.48;
 const UUID =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -370,7 +371,7 @@ export async function searchQmd(
   const raw = parseQmdResults(result.stdout);
   return raw.flatMap((item) => {
     const id = item.file.match(UUID)?.[0];
-    if (!id || item.semanticScore < 0.35) return [];
+    if (!id || item.semanticScore < QMD_SEMANTIC_CONFIDENCE) return [];
     return [
       {
         id,

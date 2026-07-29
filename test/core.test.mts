@@ -3405,6 +3405,53 @@ test("QMD refresh, health, parsing, and deterministic result fusion work through
   }
 });
 
+test("QMD semantic confidence keeps the recorded coding match and rejects unrelated controls", async () => {
+  const promptId = "207727d0-2762-4748-8f84-96146408a843";
+  const observedScores = new Map([
+    [
+      "find the underlying cause before making a small repair",
+      0.5539740920066833,
+    ],
+    ["zzqvplmokn", 0.40752243995666504],
+    ["organize my spice rack", 0.3899409770965576],
+    ["make blueberry pancakes", 0.3895223140716553],
+  ]);
+  const runner: QmdRunner = async (_executable, args) => {
+    const query = [...observedScores.keys()].find((candidate) =>
+      args[3]?.includes(candidate),
+    );
+    assert.ok(query);
+    return {
+      stdout: JSON.stringify([
+        {
+          file: `qmd://prompt-studio/diagnose--${promptId}.md?index=prompt-studio`,
+          score: 1,
+          explain: { vectorScores: [observedScores.get(query)] },
+        },
+      ]),
+      stderr: "",
+    };
+  };
+
+  assert.equal(
+    (
+      await searchQmd(
+        "find the underlying cause before making a small repair",
+        "fake-qmd",
+        runner,
+      )
+    )[0]?.id,
+    promptId,
+  );
+  for (const query of [
+    "zzqvplmokn",
+    "organize my spice rack",
+    "make blueberry pancakes",
+  ]) {
+    assert.deepEqual(await searchQmd(query, "fake-qmd", runner), []);
+  }
+});
+
 test("project discovery and context collection stay inside configured roots and leave Git untouched", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-project-"));
   const root = join(directory, "configured");
