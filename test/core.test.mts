@@ -7066,6 +7066,45 @@ test("stats does not infer zero-use prompts when usage evidence is unavailable",
   }
 });
 
+test("stats skips feedback-owned files when feedback is disabled", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-stats-disabled-feedback-"),
+  );
+  try {
+    await createPrompt(directory, {
+      title: "Local CLI Prompt",
+      body: "Report prompt statistics.",
+      target: "generic",
+    });
+    await writeFile(
+      join(directory, ".feedback"),
+      "This file makes feedback reads fail with ENOTDIR.",
+    );
+
+    const stats = await executePromptStudioCli(
+      ["stats", "--json", "--library", directory],
+      { featureStatuses: cliPreviewStatuses() },
+    );
+    assert.equal(stats.exitCode, 0);
+    const payload = (
+      JSON.parse(stats.stdout) as {
+        data: {
+          feedbackAvailable: boolean;
+          feedback: { total: number | null };
+          missedSearchesAvailable: boolean;
+          missedSearches: unknown[];
+        };
+      }
+    ).data;
+    assert.equal(payload.feedbackAvailable, false);
+    assert.equal(payload.feedback.total, null);
+    assert.equal(payload.missedSearchesAvailable, false);
+    assert.deepEqual(payload.missedSearches, []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("compiler 1.2.0 pins threshold preservation, conditional UI verification, and grounded metadata", () => {
   const base = enhancementCompilerInstructions({ target: "generic" });
   assert.match(base, /exact lower bounds/);

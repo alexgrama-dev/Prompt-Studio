@@ -562,10 +562,15 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
   const { usage, available: usageAvailable } = loadPromptUsageEvidence(
     context.searchIndexPath,
   );
-  const feedback = await listPromptUseFeedback(context.directory);
-  const missedSearches = tallyMissedSearches(
-    await listMissedSearches(context.directory),
-  );
+  const feedbackAvailable =
+    getFeatureStatus(context.statuses, "feedback").effectiveState !==
+    "disabled";
+  const feedback = feedbackAvailable
+    ? await listPromptUseFeedback(context.directory)
+    : undefined;
+  const missedSearches = feedbackAvailable
+    ? tallyMissedSearches(await listMissedSearches(context.directory))
+    : [];
 
   const ranked = active
     .map((record) => ({
@@ -584,7 +589,7 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
     : [];
   const verdicts: Record<string, number> = {};
   const outcomes: Record<string, number> = {};
-  for (const record of feedback.records) {
+  for (const record of feedback?.records ?? []) {
     verdicts[record.verdict] = (verdicts[record.verdict] ?? 0) + 1;
     const status = record.outcome?.status ?? "unrecorded";
     outcomes[status] = (outcomes[status] ?? 0) + 1;
@@ -606,11 +611,13 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
       usageAvailable,
       usage: usageAvailable ? ranked : [],
       zeroUse: unused.map((entry) => entry.id),
+      feedbackAvailable,
       feedback: {
-        total: feedback.records.length,
+        total: feedback ? feedback.records.length : null,
         verdicts,
         outcomes,
       },
+      missedSearchesAvailable: feedbackAvailable,
       missedSearches: missedSearches.slice(0, 20),
     },
     human: [
@@ -628,16 +635,23 @@ async function statsCommand(context: CommandContext): Promise<CommandOutcome> {
       usageAvailable
         ? `Recorded zero use: ${unused.length ? unused.map((entry) => entry.title).join(", ") : "(none)"}`
         : "Recorded zero use: unavailable",
-      `Feedback: ${feedback.records.length} records`,
-      `  Verdicts: ${tally(verdicts)}`,
-      `  Outcomes: ${tally(outcomes)}`,
-      `Missed searches: ${missedSearches.length ? `${missedSearches.length} distinct queries with no match` : "(none)"}`,
-      ...missedSearches
-        .slice(0, 5)
-        .map(
-          (entry) =>
-            `  ${entry.count}x  "${entry.query}"  (last ${entry.lastAt})`,
-        ),
+      ...(feedback
+        ? [
+            `Feedback: ${feedback.records.length} records`,
+            `  Verdicts: ${tally(verdicts)}`,
+            `  Outcomes: ${tally(outcomes)}`,
+            `Missed searches: ${missedSearches.length ? `${missedSearches.length} distinct queries with no match` : "(none)"}`,
+            ...missedSearches
+              .slice(0, 5)
+              .map(
+                (entry) =>
+                  `  ${entry.count}x  "${entry.query}"  (last ${entry.lastAt})`,
+              ),
+          ]
+        : [
+            "Feedback: unavailable while Outcome Feedback is Disabled",
+            "Missed searches: unavailable while Outcome Feedback is Disabled",
+          ]),
     ].join("\n"),
   };
 }
