@@ -708,65 +708,62 @@ function PromptItem({
               />
             </>
           )}
-          <Action.Push
-            title="Edit Prompt"
+          <ActionPanel.Submenu
+            title="Manage Prompt"
             icon={Icon.Pencil}
-            target={<EditPrompt record={record} onReload={onReload} />}
-          />
-          <Action.Push
-            title="Save Existing Prompt"
-            icon={Icon.Plus}
-            shortcut={Keyboard.Shortcut.Common.New}
-            target={
-              <CreateFromLibrary directory={directory} onCreate={onReload} />
-            }
-          />
-          {feedbackEnabled ? (
-            <>
-              <Action.Push
-                title="Record Prompt Feedback"
-                icon={Icon.Gauge}
-                target={
-                  <CreateFeedback
-                    directory={directory}
-                    record={record}
-                    currentProjectCommit={currentProjectCommit}
-                  />
-                }
-              />
-              <Action.Push
-                title="Review Prompt Feedback"
-                icon={Icon.Eye}
-                target={<PromptFeedback />}
-              />
-              <Action
-                title="Improve from Feedback"
-                icon={Icon.Wand}
-                onAction={improveFromFeedback}
-              />
-            </>
-          ) : null}
-          <ActionPanel.Section>
+            shortcut={{ modifiers: ["cmd"], key: "m" }}
+          >
+            <Action.Push
+              title="Edit Prompt"
+              icon={Icon.Pencil}
+              shortcut={Keyboard.Shortcut.Common.Edit}
+              target={<EditPrompt record={record} onReload={onReload} />}
+            />
+            <Action.Push
+              title="Save Existing Prompt"
+              icon={Icon.Plus}
+              shortcut={Keyboard.Shortcut.Common.New}
+              target={
+                <CreateFromLibrary directory={directory} onCreate={onReload} />
+              }
+            />
             <Action
               title={
                 record.favorite ? "Remove from Favorites" : "Add to Favorites"
               }
               icon={Icon.Star}
+              shortcut={Keyboard.Shortcut.Common.Pin}
               onAction={() => updateFlags({ favorite: !record.favorite })}
             />
             <Action
               title={record.archivedAt ? "Unarchive Prompt" : "Archive Prompt"}
               icon={Icon.Tray}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
               onAction={() => updateFlags({ archived: !record.archivedAt })}
             />
             <Action
               title="Duplicate Prompt"
               icon={Icon.Duplicate}
+              shortcut={Keyboard.Shortcut.Common.Duplicate}
               onAction={duplicate}
             />
+            <Action
+              title="Delete Prompt"
+              icon={Icon.Trash}
+              style={Action.Style.Destructive}
+              shortcut={Keyboard.Shortcut.Common.Remove}
+              onAction={remove}
+            />
+          </ActionPanel.Submenu>
+          <ActionPanel.Submenu
+            title="Review"
+            icon={Icon.Eye}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+          >
             <Action.Push
               title="View Version History"
               icon={Icon.Clock}
+              shortcut={{ modifiers: ["cmd"], key: "h" }}
               target={
                 <VersionHistory
                   directory={directory}
@@ -775,26 +772,64 @@ function PromptItem({
                 />
               }
             />
-          </ActionPanel.Section>
-          <ActionPanel.Section>
+            {feedbackEnabled ? (
+              <>
+                <Action.Push
+                  title="Record Prompt Feedback"
+                  icon={Icon.Gauge}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "f" }}
+                  target={
+                    <CreateFeedback
+                      directory={directory}
+                      record={record}
+                      currentProjectCommit={currentProjectCommit}
+                    />
+                  }
+                />
+                <Action.Push
+                  title="Review Prompt Feedback"
+                  icon={Icon.Eye}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+                  target={<PromptFeedback />}
+                />
+                <Action
+                  title="Improve from Feedback"
+                  icon={Icon.Wand}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
+                  onAction={improveFromFeedback}
+                />
+              </>
+            ) : null}
+          </ActionPanel.Submenu>
+          <ActionPanel.Submenu
+            title="System"
+            icon={Icon.Gear}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
+          >
             <Action.Push
               title="Prompt Studio Status"
               icon={Icon.Gauge}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
               target={<FeatureStatus />}
             />
-            <Action.ShowInFinder path={record.filePath} />
+            <Action
+              title="Open Extension Preferences"
+              icon={Icon.Gear}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+              onAction={openExtensionPreferences}
+            />
+            <Action.ShowInFinder
+              title="Show Prompt in Finder"
+              path={record.filePath}
+              shortcut={Keyboard.Shortcut.Common.OpenWith}
+            />
             <Action
               title="Reload Prompt Library"
               icon={Icon.ArrowClockwise}
+              shortcut={Keyboard.Shortcut.Common.Refresh}
               onAction={onReload}
             />
-            <Action
-              title="Delete Prompt"
-              icon={Icon.Trash}
-              style={Action.Style.Destructive}
-              onAction={remove}
-            />
-          </ActionPanel.Section>
+          </ActionPanel.Submenu>
         </ActionPanel>
       }
     />

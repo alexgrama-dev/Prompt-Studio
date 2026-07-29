@@ -7,6 +7,7 @@ import {
   Form,
   getPreferenceValues,
   Icon,
+  Keyboard,
   launchCommand,
   LaunchType,
   List,
@@ -130,6 +131,7 @@ import {
   type WebResearchPlan,
   type WebResearchResult,
 } from "./core/web-research";
+import FeatureStatus from "./feature-status";
 
 interface Preferences {
   libraryDirectory?: string;
@@ -1154,81 +1156,107 @@ function EnhancementWorkspace({
               onAction={cancel}
             />
           ) : null}
-          <Action
-            title="Open in Idea Studio"
-            icon={Icon.LightBulb}
-            onAction={() =>
-              launchCommand({
-                name: "idea-studio",
-                type: LaunchType.UserInitiated,
-                context: ideaStudioLaunchContext(roughThoughts, target),
-              })
-            }
-          />
-          <Action
-            title={
-              setupMode === "smart"
-                ? "Customize Enhancement"
-                : "Use Smart Defaults"
-            }
-            icon={setupMode === "smart" ? Icon.Gear : Icon.Wand}
-            onAction={() =>
-              setSetupMode(setupMode === "smart" ? "custom" : "smart")
-            }
-          />
-          {projectContextState !== "disabled" && !showFolderPicker ? (
+          <ActionPanel.Submenu
+            title="Context"
+            icon={Icon.Folder}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
+          >
             <Action
-              title="Choose Project Folder"
-              icon={Icon.Folder}
-              onAction={() => setShowFolderPicker(true)}
+              title={
+                setupMode === "smart"
+                  ? "Customize Enhancement"
+                  : "Use Smart Defaults"
+              }
+              icon={setupMode === "smart" ? Icon.Gear : Icon.Wand}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "u" }}
+              onAction={() =>
+                setSetupMode(setupMode === "smart" ? "custom" : "smart")
+              }
             />
-          ) : null}
-          <Action.Push
-            title="Enhancement History"
-            icon={Icon.Clock}
-            target={
-              <EnhancementHistory
-                directory={resolvePromptDirectory(preferences.libraryDirectory)}
+            {projectContextState !== "disabled" && !showFolderPicker ? (
+              <Action
+                title="Choose Project Folder"
+                icon={Icon.Folder}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "j" }}
+                onAction={() => setShowFolderPicker(true)}
               />
-            }
-          />
-          <Action.Push
-            title="Advanced Provider"
+            ) : null}
+            <Action.Push
+              title="Review Cost and Privacy"
+              icon={Icon.Shield}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
+              target={
+                <Detail
+                  navigationTitle="Enhancement Setup"
+                  markdown={enhancementSetupMarkdown(
+                    profile,
+                    estimatedCost,
+                    effectiveResearchLevel,
+                  )}
+                />
+              }
+            />
+          </ActionPanel.Submenu>
+          <ActionPanel.Submenu
+            title="Saved Work"
+            icon={Icon.Bookmark}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "w" }}
+          >
+            <Action
+              title="Open in Idea Studio"
+              icon={Icon.LightBulb}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
+              onAction={() =>
+                launchCommand({
+                  name: "idea-studio",
+                  type: LaunchType.UserInitiated,
+                  context: ideaStudioLaunchContext(roughThoughts, target),
+                })
+              }
+            />
+            <Action.Push
+              title="Enhancement History"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
+              target={
+                <EnhancementHistory
+                  directory={resolvePromptDirectory(
+                    preferences.libraryDirectory,
+                  )}
+                />
+              }
+            />
+          </ActionPanel.Submenu>
+          <ActionPanel.Submenu
+            title="System"
             icon={Icon.Gear}
-            target={
-              <AdvancedProviderSelection
-                selected={profileId}
-                anthropicState={anthropicState}
-                googleState={googleState}
-                onSelect={setProfileId}
-              />
-            }
-          />
-          <Action.Push
-            title="Review Cost and Privacy"
-            icon={Icon.Shield}
-            target={
-              <Detail
-                navigationTitle="Enhancement Setup"
-                markdown={enhancementSetupMarkdown(
-                  profile,
-                  estimatedCost,
-                  effectiveResearchLevel,
-                )}
-              />
-            }
-          />
-          <ActionPanel.Section>
+            shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
+          >
+            <Action.Push
+              title="Advanced Provider"
+              icon={Icon.Gear}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
+              target={
+                <AdvancedProviderSelection
+                  selected={profileId}
+                  anthropicState={anthropicState}
+                  googleState={googleState}
+                  onSelect={setProfileId}
+                />
+              }
+            />
             {isEvaluating ? (
               <Action
                 title="Cancel Quality Evaluation"
                 icon={Icon.XMarkCircle}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
                 onAction={() => evaluationController.current?.abort()}
               />
             ) : (
               <Action
                 title={`Run ${profile.title} Quality Evaluation`}
                 icon={Icon.Gauge}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
                 onAction={runActivationEvaluation}
               />
             )}
@@ -1237,20 +1265,29 @@ function EnhancementWorkspace({
                 <Action.Push
                   title="Review Quality Evaluation"
                   icon={Icon.Eye}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
                   target={<EvaluationReview path={evaluationReport.path} />}
                 />
                 <Action.ShowInFinder
                   title="Show Latest Evaluation Report"
                   path={evaluationReport.path}
+                  shortcut={Keyboard.Shortcut.Common.OpenWith}
                 />
               </>
             ) : null}
-          </ActionPanel.Section>
-          <Action
-            title="Open Enhancement Preferences"
-            icon={Icon.Gear}
-            onAction={openCommandPreferences}
-          />
+            <Action.Push
+              title="Prompt Studio Status"
+              icon={Icon.Gauge}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
+              target={<FeatureStatus />}
+            />
+            <Action
+              title="Open Enhancement Preferences"
+              icon={Icon.Gear}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+              onAction={openCommandPreferences}
+            />
+          </ActionPanel.Submenu>
         </ActionPanel>
       }
     >
