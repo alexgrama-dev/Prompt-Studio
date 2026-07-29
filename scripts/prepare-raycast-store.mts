@@ -32,6 +32,7 @@ const sourceFiles = [
   "src/core/project-context.ts",
   "src/core/prompt-store.ts",
   "src/core/qmd-search.ts",
+  "src/core/record-search.ts",
   "src/core/secrets.ts",
   "src/feature-status.tsx",
   "src/feedback-form.tsx",

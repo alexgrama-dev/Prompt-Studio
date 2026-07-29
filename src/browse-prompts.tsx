@@ -25,7 +25,6 @@ import {
   createPrompt,
   deletePrompt,
   duplicatePrompt,
-  ensurePromptSearchIndex,
   listPrompts,
   listPromptVersions,
   resolvePromptDirectory,
@@ -41,8 +40,10 @@ import { currentProjectCommit } from "./core/project-context";
 import { ensureQmd, fusePromptSearch, searchQmd } from "./core/qmd-search";
 import {
   defaultSearchIndexPath,
+  inspectSearchIndex,
   loadPromptUsage,
   recordPromptUse,
+  searchPromptRecords,
   searchPrompts,
   shouldTrackPromptUsage,
   type SearchFilters,
@@ -114,10 +115,13 @@ export default function BrowsePrompts({
       const resolvedDirectory =
         directory ?? resolvePromptDirectory(preferences.libraryDirectory);
       const statuses = await loadFeatureStatuses();
-      const indexIsActive =
-        getFeatureStatus(statuses, "sqlite-search").effectiveState === "active";
-      if (indexIsActive) await ensurePromptSearchIndex(resolvedDirectory);
       const library = await listPrompts(resolvedDirectory);
+      const indexIsConfigured =
+        getFeatureStatus(statuses, "sqlite-search").effectiveState === "active";
+      const indexIsReady =
+        indexIsConfigured &&
+        !inspectSearchIndex(defaultSearchIndexPath(), library.records)
+          .needsRebuild;
       const projectContextEnabled =
         getFeatureStatus(statuses, "project-context").effectiveState !==
         "disabled";
@@ -148,7 +152,7 @@ export default function BrowsePrompts({
       }
       setRecords(library.records);
       setInvalid(library.invalid);
-      setSqliteActive(indexIsActive);
+      setSqliteActive(indexIsReady);
       setQmdActive(qmdIsReady);
       if (projectContextEnabled) {
         const paths = [
@@ -199,56 +203,54 @@ export default function BrowsePrompts({
   }, [load]);
 
   useEffect(() => {
-    if (!sqliteActive) {
-      setIndexedResults(undefined);
+    let cancelled = false;
+    const filters = searchFilters(filter, records.length);
+    let exact: SearchResult[];
+    if (sqliteActive) {
+      try {
+        exact = searchPrompts(searchText, filters, defaultSearchIndexPath());
+      } catch (searchError) {
+        exact = searchPromptRecords(records, searchText, filters);
+        setSqliteActive(false);
+        void showToast(
+          Toast.Style.Failure,
+          "SQLite Search Unavailable",
+          `Using Markdown search. ${searchError instanceof Error ? searchError.message : String(searchError)}`,
+        );
+      }
+    } else {
+      exact = searchPromptRecords(records, searchText, filters);
+    }
+    setIndexedResults(exact);
+    if (!qmdActive || searchText.trim().length < 2) {
+      setSemanticSearching(false);
       return;
     }
-    let cancelled = false;
-    try {
-      const exact = searchPrompts(
-        searchText,
-        searchFilters(filter, records.length),
-        defaultSearchIndexPath(),
-      );
-      setIndexedResults(exact);
-      if (!qmdActive || searchText.trim().length < 2) {
-        setSemanticSearching(false);
-        return;
-      }
-      setSemanticSearching(true);
-      void searchQmd(searchText, preferences.qmdExecutable)
-        .then((semantic) => {
-          if (cancelled) return;
-          const recordsById = new Map(
-            records.map((record) => [record.id, record]),
-          );
-          const filteredSemantic = semantic.filter((result) => {
-            const record = recordsById.get(result.id);
-            return record ? recordMatchesFilter(record, filter) : false;
-          });
-          setIndexedResults(fusePromptSearch(exact, filteredSemantic));
-        })
-        .catch((qmdError: unknown) => {
-          if (cancelled) return;
-          setQmdActive(false);
-          void showToast(
-            Toast.Style.Failure,
-            "Meaning Search Unavailable",
-            `Using SQLite exact search. ${qmdError instanceof Error ? qmdError.message : String(qmdError)}`,
-          );
-        })
-        .finally(() => {
-          if (!cancelled) setSemanticSearching(false);
+    setSemanticSearching(true);
+    void searchQmd(searchText, preferences.qmdExecutable)
+      .then((semantic) => {
+        if (cancelled) return;
+        const recordsById = new Map(
+          records.map((record) => [record.id, record]),
+        );
+        const filteredSemantic = semantic.filter((result) => {
+          const record = recordsById.get(result.id);
+          return record ? recordMatchesFilter(record, filter) : false;
         });
-    } catch (searchError) {
-      setSqliteActive(false);
-      setIndexedResults(undefined);
-      void showToast(
-        Toast.Style.Failure,
-        "SQLite Search Unavailable",
-        `Using built-in exact search instead. ${searchError instanceof Error ? searchError.message : String(searchError)}`,
-      );
-    }
+        setIndexedResults(fusePromptSearch(exact, filteredSemantic));
+      })
+      .catch((qmdError: unknown) => {
+        if (cancelled) return;
+        setQmdActive(false);
+        void showToast(
+          Toast.Style.Failure,
+          "Meaning Search Unavailable",
+          `Using local search. ${qmdError instanceof Error ? qmdError.message : String(qmdError)}`,
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setSemanticSearching(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -262,7 +264,7 @@ export default function BrowsePrompts({
   ]);
 
   const visible = useMemo(() => {
-    if (sqliteActive && indexedResults) {
+    if (indexedResults) {
       const byId = new Map(records.map((record) => [record.id, record]));
       return indexedResults.flatMap((result) => {
         const record = byId.get(result.id);
@@ -270,7 +272,7 @@ export default function BrowsePrompts({
       });
     }
     return records.filter((record) => recordMatchesFilter(record, filter));
-  }, [filter, indexedResults, records, sqliteActive]);
+  }, [filter, indexedResults, records]);
   const matchesById = useMemo(
     () =>
       new Map(
@@ -301,7 +303,7 @@ export default function BrowsePrompts({
     <List
       isLoading={loading || semanticSearching}
       isShowingDetail={visible.length + invalid.length > 0}
-      filtering={!sqliteActive}
+      filtering={false}
       {...(selectedPromptId ? { selectedItemId: selectedPromptId } : {})}
       onSelectionChange={(nextId) =>
         setSelectedPromptId((currentId) =>
@@ -512,7 +514,10 @@ function PromptItem({
   async function improveFromFeedback() {
     try {
       const feedback = await listPromptUseFeedback(directory);
-      const candidates = feedbackRevisionCandidates(feedback.records, record.id);
+      const candidates = feedbackRevisionCandidates(
+        feedback.records,
+        record.id,
+      );
       if (candidates.length === 0) {
         await showToast(
           Toast.Style.Failure,

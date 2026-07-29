@@ -4,6 +4,9 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { PromptRecord } from "./prompt-store.ts";
+import { searchPromptRecords } from "./record-search.ts";
+
+export { searchPromptRecords } from "./record-search.ts";
 
 const SCHEMA_VERSION = 4;
 
@@ -464,6 +467,23 @@ export function searchPrompts(
   } finally {
     database.close();
   }
+}
+
+export function searchAvailablePrompts(
+  records: readonly PromptRecord[],
+  query: string,
+  filters: SearchFilters = {},
+  path = defaultSearchIndexPath(),
+): SearchResult[] {
+  const health = inspectSearchIndex(path, [...records]);
+  if (!health.needsRebuild) {
+    try {
+      return searchPrompts(query, filters, path);
+    } catch {
+      // The Markdown fallback below remains read-only.
+    }
+  }
+  return searchPromptRecords(records, query, filters);
 }
 
 export function inspectSearchIndex(

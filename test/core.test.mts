@@ -120,6 +120,8 @@ import {
   recordPromptUse,
   rebuildSearchIndex,
   removeSearchRecord,
+  searchAvailablePrompts,
+  searchPromptRecords,
   searchPrompts,
   upsertSearchRecord,
 } from "../src/core/search-index.ts";
@@ -3016,6 +3018,39 @@ test("SQLite search rebuilds from Markdown and ranks exact metadata above body t
     await writeFile(filePath, serializePrompt(metadata, body), "utf8");
 
     const library = await listPrompts(directory);
+    const fallbackResults = searchPromptRecords(
+      library.records,
+      "endpoint failure",
+    );
+    assert.deepEqual(
+      fallbackResults.slice(0, 2).map((result) => result.id),
+      [titleMatch.id, bodyMatch.id],
+    );
+    assert.deepEqual(fallbackResults[0]?.matchedBy, ["title"]);
+    assert.equal(
+      searchPromptRecords(
+        [
+          enriched,
+          { ...enriched, id: "wrong-target", target: "codex" },
+          {
+            ...enriched,
+            id: "wrong-project",
+            project: { ...enriched.project, path: "/work/other" },
+          },
+          { ...enriched, id: "wrong-tag", tags: ["reporting"] },
+          { ...enriched, id: "not-favorite", favorite: false },
+        ],
+        "campaign mismatch",
+        {
+          target: "generic",
+          projectPath: "/work/digital-benchmarks",
+          tag: "reconciliation",
+          favorite: true,
+        },
+      )[0]?.id,
+      projectMatch.id,
+    );
+
     const health = rebuildSearchIndex(library.records, databasePath);
     assert.equal(health.status, "healthy");
     assert.equal(health.recordCount, 3);
@@ -3129,12 +3164,25 @@ test("SQLite search rebuild preserves recorded prompt usage", async () => {
     const beforeAutomaticRebuild = loadPromptUsage(databasePath).get(prompt.id);
     const changedRecords = records.map((record) =>
       record.id === prompt.id
-        ? { ...record, updatedAt: "2026-07-29T19:30:00.000Z" }
+        ? {
+            ...record,
+            title: "Changed Fallback Title",
+            updatedAt: "2026-07-29T19:30:00.000Z",
+          }
         : record,
     );
     assert.equal(
       inspectSearchIndex(databasePath, changedRecords).needsRebuild,
       true,
+    );
+    assert.equal(
+      searchAvailablePrompts(
+        changedRecords,
+        "Changed Fallback Title",
+        {},
+        databasePath,
+      )[0]?.id,
+      prompt.id,
     );
 
     ensureSearchIndex(changedRecords, databasePath);
@@ -3177,6 +3225,11 @@ test("a rebuild leaves an unreadable index unchanged", async () => {
     assert.deepEqual(
       (await readdir(directory)).filter((name) => name.includes(".rebuild-")),
       [],
+    );
+    assert.equal(
+      searchAvailablePrompts(records, "Repair Fixture", {}, databasePath)[0]
+        ?.id,
+      records[0]?.id,
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -3644,15 +3697,14 @@ test("the local CLI shares create, list, search, get, copy, update, and archive 
     const searchPayload = JSON.parse(search.stdout) as {
       data: { matches: Array<{ id: string; matchedBy: string[] }> };
     };
-    const directSearch = searchPrompts(
-      "flaky cache",
-      { limit: 20 },
-      searchIndex,
-    );
+    await assert.rejects(lstat(searchIndex), /ENOENT/);
+    const directSearch = searchPromptRecords(coreRecords, "flaky cache", {
+      limit: 20,
+    });
     assert.deepEqual(
       searchPayload.data.matches.map((match) => match.id),
       directSearch.map((match) => match.id),
-      "the CLI and Raycast search are ordered by the same SQLite results",
+      "the CLI and Raycast search are ordered by the same Markdown fallback",
     );
     assert.deepEqual(
       searchPayload.data.matches.find((match) => match.id === created.id)
@@ -4868,8 +4920,13 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
         "prompt_studio_search",
         { query: "flaky cache" },
       );
-      assert.equal(unavailableSearch.isError, true);
-      assert.match(mcpText(unavailableSearch), /INDEX_UNAVAILABLE/);
+      assert.notEqual(unavailableSearch.isError, true);
+      assert.equal(
+        (
+          mcpStructuredData(unavailableSearch).matches as Array<{ id: string }>
+        )[0]?.id,
+        primary.id,
+      );
       await assert.rejects(lstat(searchIndexPath), /ENOENT/);
 
       await rebuildSearchIndex(
@@ -4951,12 +5008,9 @@ test("the read-only MCP validates protocol calls, bounds output, redacts paths, 
       assert.equal(auditText.includes("flaky cache"), false);
       assert.equal(auditText.includes(primary.id), false);
       assert.equal(auditText.includes(directory), false);
-      assert.ok(
-        audits.some(
-          (event) =>
-            event.tool === "prompt_studio_search" &&
-            event.errorCode === "INDEX_UNAVAILABLE",
-        ),
+      assert.equal(
+        audits.some((event) => event.errorCode === "INDEX_UNAVAILABLE"),
+        false,
       );
       assert.ok(
         audits.filter((event) => event.outcome === "success").length >= 3,

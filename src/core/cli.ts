@@ -39,6 +39,7 @@ import {
 import {
   createPrompt,
   listPrompts,
+  listPromptsReadOnly,
   rebuildPromptSearchIndex,
   resolvePromptDirectory,
   updatePrompt,
@@ -68,7 +69,7 @@ import {
   inspectSearchIndex,
   loadPromptUsageEvidence,
   recordPromptUse,
-  searchPrompts,
+  searchAvailablePrompts,
   type SearchFilters,
   type SearchResult,
 } from "./search-index.ts";
@@ -469,8 +470,7 @@ async function searchCommand(context: CommandContext): Promise<CommandOutcome> {
       CLI_EXIT_CODES.usage,
     );
   }
-  const library = await listPrompts(context.directory);
-  await ensureExactSearch(context, library.records);
+  const library = await listPromptsReadOnly(context.directory);
   const target = optionalTarget(optionString(context.parsed, "target"));
   const projectPath = optionString(context.parsed, "project");
   const filters: SearchFilters = {
@@ -483,7 +483,12 @@ async function searchCommand(context: CommandContext): Promise<CommandOutcome> {
     ...(projectPath ? { projectPath } : {}),
     ...(context.parsed.options.has("favorite") ? { favorite: true } : {}),
   };
-  const exact = searchPrompts(query, filters, context.searchIndexPath);
+  const exact = searchAvailablePrompts(
+    library.records,
+    query,
+    filters,
+    context.searchIndexPath,
+  );
   let results: SearchResult[] = exact;
   if (context.parsed.options.has("meaning")) {
     requireFeature(context.statuses, "qmd-discovery", "QMD Semantic Discovery");
@@ -1688,15 +1693,6 @@ function feedbackPatchFromInput(
     );
   }
   return patch;
-}
-
-async function ensureExactSearch(
-  context: CommandContext,
-  records: PromptRecord[],
-): Promise<void> {
-  const health = inspectSearchIndex(context.searchIndexPath, records);
-  if (!health.needsRebuild) return;
-  await rebuildPromptSearchIndex(context.directory, context.searchIndexPath);
 }
 
 function requireFeature(

@@ -9,6 +9,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { PromptRecord } from "./prompt-store.ts";
+export { searchPromptRecords } from "./record-search.ts";
 
 const USAGE_SCHEMA_VERSION = 1;
 const SQLITE_UNAVAILABLE =

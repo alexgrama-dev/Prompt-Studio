@@ -3,7 +3,8 @@ Each implementation task is complete only after `pnpm test`,
 
 ## 1. Implementation
 
-- [ ] 1.1 Add shared Markdown fallback across Raycast, CLI, and MCP with parity for filters and ranking, no read-only rebuild, and focused index-failure coverage in `test/core.test.mts`
+- [x] 1.1 Add shared Markdown fallback across Raycast, CLI, and MCP with parity for filters and ranking, no read-only rebuild, and focused index-failure coverage in `test/core.test.mts`
+  - 2026-07-29: missing, stale, corrupt, combined-filter, ranking, CLI, MCP, and Store fallback checks passed; `pnpm test` passed 71/71, `pnpm typecheck` exited 0, and `pnpm lint` exited 0.
 - [ ] 1.2 Render exact results before QMD work, complete an Active stale refresh afterward, and cover Disabled, unavailable, stale, and failure cases in `test/core.test.mts`
 - [ ] 1.3 Calibrate one semantic rule with the named positive and negative controls and add focused automated coverage
 - [ ] 1.4 Add distinct empty, no-result, and load-failure states with explicit recovery routes and prove they create no authoritative record

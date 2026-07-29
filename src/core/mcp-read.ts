@@ -14,7 +14,7 @@ import { extractPlaceholders } from "./placeholders.ts";
 import { containsLikelySecret } from "./secrets.ts";
 import {
   inspectSearchIndex,
-  searchPrompts,
+  searchAvailablePrompts,
   type SearchFilters,
 } from "./search-index.ts";
 
@@ -417,13 +417,6 @@ async function searchTool(
     false,
   );
   const library = await readLibrary(options.directory, signal);
-  const health = inspectSearchIndex(options.searchIndexPath, library.records);
-  if (health.needsRebuild) {
-    throw new McpReadError(
-      "INDEX_UNAVAILABLE",
-      "Exact search is unavailable or stale. Rebuild it explicitly with `prompt-studio reindex --yes` after Activation 11 is enabled.",
-    );
-  }
   const filters: SearchFilters = {
     includeArchived,
     limit,
@@ -431,15 +424,12 @@ async function searchTool(
     ...(tag ? { tag } : {}),
     ...(favoriteOnly ? { favorite: true } : {}),
   };
-  let indexed;
-  try {
-    indexed = searchPrompts(query, filters, options.searchIndexPath);
-  } catch {
-    throw new McpReadError(
-      "INDEX_UNAVAILABLE",
-      "Exact search could not read its local index. No prompt content was returned.",
-    );
-  }
+  const indexed = searchAvailablePrompts(
+    library.records,
+    query,
+    filters,
+    options.searchIndexPath,
+  );
   throwIfAborted(signal);
   const byId = new Map(library.records.map((record) => [record.id, record]));
   let sensitiveExcluded = 0;
