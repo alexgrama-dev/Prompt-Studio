@@ -29,7 +29,8 @@ Date: 2026-07-30
 - CodeRabbit CLI 0.7.1 passed all nine doctor checks, but repeated light and
   normal review attempts were rejected by the service rate limit because the
   authenticated GitHub organization has no assigned seat. No CodeRabbit
-  findings were returned or claimed.
+  findings were returned or claimed. Waiting through the reported refill did
+  not unlock a review; the service reset the wait under the same seat policy.
 
 ## MacBook Pro Evidence
 
@@ -49,7 +50,16 @@ Date: 2026-07-30
 Computer Use reached macOS Screen Sharing, but the MacBook requires a separate
 username and password. The prompt was cancelled without reading or changing
 credentials. Coast Local is installed on the MacBook, but its immediate screen
-capture did not return. No screenshot or action-panel rendering is claimed from
-those blocked paths. The source contract regression, successful MacBook build,
-live Raycast development process, and error-free command launch are the current
-evidence for the changed panels.
+capture did not return.
+
+The MacBook's bundled Codex Computer Use service was then started and reached
+directly over the existing SSH channel. Its MCP client exposed the expected
+accessibility tools, but `list_apps` returned macOS error `-1743`
+(`errAEEventNotPermitted`) and Raycast state capture timed out. macOS therefore
+needs the user to allow the signed `Codex Computer Use` helper under Privacy &
+Security > Automation before direct inspection can continue.
+
+No screenshot or action-panel rendering is claimed from the blocked paths. The
+source contract regression, successful MacBook build, live Raycast development
+process, and error-free command launch are the current evidence for the changed
+panels.
