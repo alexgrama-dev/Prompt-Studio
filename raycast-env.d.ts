@@ -15,7 +15,7 @@ type ExtensionPreferences = {
   /** Project Roots - Folders Prompt Studio may scan for saved Git repositories; you can also choose one exact repo directly in Enhance Prompt */
   "projectRoots": string,
   /** Mac Mini Project Root - Optional read-only SSH source in host:path form; leave blank to disable */
-  "sshProjectRoot"?: string,
+  "sshProjectRoot": string,
   /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Idea Studio; read only after an explicit OpenAI action */
   "openaiApiKey"?: string
 }
@@ -54,4 +54,3 @@ declare namespace Arguments {
   /** Arguments passed to the `menubar-prompts` command */
   export type MenubarPrompts = {}
 }
-
