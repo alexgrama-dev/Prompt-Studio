@@ -54,3 +54,4 @@ declare namespace Arguments {
   /** Arguments passed to the `menubar-prompts` command */
   export type MenubarPrompts = {}
 }
+
