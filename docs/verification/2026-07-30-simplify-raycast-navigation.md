@@ -43,7 +43,7 @@ Date: 2026-07-30
   runtime active from `/Users/alexgrama/Developer/prompt-studio`.
 - The generated `raycast-env.d.ts` output was copied back into source control;
   its Mac Mini and MacBook SHA-256 checksums match.
-- The MacBook checkout is clean at `30d077b`.
+- The MacBook checkout is clean and matches `origin/main`.
 
 ## Rendered UI Boundary
 
