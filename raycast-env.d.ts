@@ -30,6 +30,8 @@ declare namespace Preferences {
   export type EnhancePrompt = ExtensionPreferences & {}
   /** Preferences accessible in the `idea-studio` command */
   export type IdeaStudio = ExtensionPreferences & {}
+  /** Preferences accessible in the `quick-capture` command */
+  export type QuickCapture = ExtensionPreferences & {}
   /** Preferences accessible in the `menubar-prompts` command */
   export type MenubarPrompts = ExtensionPreferences & {}
 }
@@ -46,6 +48,13 @@ declare namespace Arguments {
   export type IdeaStudio = {
   /** Idea to capture */
   "idea": string
+}
+  /** Arguments passed to the `quick-capture` command */
+  export type QuickCapture = {
+  /** Text to capture */
+  "text": string,
+  /** Item type */
+  "kind": "next-prompt" | "keep" | "idea"
 }
   /** Arguments passed to the `menubar-prompts` command */
   export type MenubarPrompts = {}

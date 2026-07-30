@@ -1,0 +1,120 @@
+## ADDED Requirements
+
+### Requirement: Typed local capture items
+
+Idea Studio SHALL support Next Prompt, Keep, and Idea items in local seed
+Markdown. The item kind and optional completion time SHALL be validated before
+write. Seed Markdown without capture metadata SHALL remain valid and SHALL
+behave as an active Idea without an automatic rewrite.
+
+#### Scenario: Read an earlier idea
+
+- **WHEN** Idea Studio reads valid seed Markdown without capture metadata
+- **THEN** it treats the record as an active Idea
+- **AND** it does not rewrite the file
+
+#### Scenario: Save a typed item
+
+- **WHEN** the user reviews and saves a Next Prompt, Keep, or Idea
+- **THEN** Prompt Studio writes the selected kind to that seed Markdown
+- **AND** writes no completion time for an active item
+
+### Requirement: Three capture queue sections
+
+Idea Studio SHALL group active Next Prompt items under Up Next. It SHALL group
+active Keep and Idea items under Saved for Later. It SHALL group every completed
+item under Completed. Invalid seed Markdown SHALL remain visible under Needs
+Repair. Search SHALL continue to cover title, body, target, aliases, and kind.
+
+#### Scenario: Open the capture queue
+
+- **WHEN** valid items of every kind and state exist
+- **THEN** active Next Prompt items appear under Up Next
+- **AND** active Keep and Idea items appear under Saved for Later
+- **AND** completed items appear under Completed
+- **AND** no record appears in more than one section
+
+### Requirement: Separate paste and completion
+
+Every valid capture item SHALL offer a native Paste action that inserts the
+exact body into the frontmost application and writes no prompt or completion
+state. Completing an item SHALL require a separate action that records a
+completion time. A completed item SHALL offer Restore, which removes the
+completion time without changing its kind, body, identity, or links.
+
+#### Scenario: Paste a next prompt
+
+- **WHEN** the user chooses Paste for an active Next Prompt
+- **THEN** Raycast inserts the exact captured body into the frontmost application
+- **AND** the item remains active under Up Next
+
+#### Scenario: Complete and restore an item
+
+- **WHEN** the user chooses Complete
+- **THEN** the same item moves to Completed with a completion time
+- **WHEN** the user later chooses Restore
+- **THEN** the same item returns to the section selected by its kind
+
+### Requirement: Manual selected-text and clipboard capture
+
+Idea Studio SHALL retain manual capture and SHALL offer a Capture Clipboard
+action that reads current plain text only after the user selects that action.
+The capture form SHALL preserve the exact text and let the user review its kind,
+target, and title before saving. The auxiliary Quick Capture command SHALL use
+explicit argument text when present, otherwise selected text when available,
+otherwise clipboard text. It SHALL default to Next Prompt and MAY use another
+capture kind only when the user explicitly selects it. It SHALL make no network,
+provider, credential, project, background, usage, or feedback work.
+
+#### Scenario: Capture clipboard text with review
+
+- **WHEN** the user chooses Capture Clipboard and plain text exists
+- **THEN** Idea Studio opens a form containing that exact text
+- **AND** writes nothing until the user chooses Save
+
+#### Scenario: Run Quick Capture
+
+- **WHEN** Quick Capture receives explicit text, selected text, or clipboard text
+- **THEN** it saves one repeat-safe local item using the selected kind or Next Prompt by default
+- **AND** reports whether the item was saved or reused
+- **AND** performs no network request
+
+#### Scenario: Quick Capture has no text
+
+- **WHEN** explicit text, selected text, and clipboard text are all unavailable
+- **THEN** Quick Capture writes nothing
+- **AND** tells the user to enter, select, or copy text
+
+### Requirement: Repeat-safe direct prompt conversion
+
+Every valid capture item SHALL offer Convert to Prompt. A review form SHALL show
+editable title, body, and target before saving. The saved library prompt SHALL
+link to the canonical seed identity. Repeating conversion for the same seed
+SHALL return the same library prompt without creating another prompt or version.
+
+#### Scenario: Convert one captured item
+
+- **WHEN** the user reviews and saves a captured item as a prompt
+- **THEN** Prompt Studio creates one main-library prompt with that reviewed content
+- **AND** links it to the captured item's canonical seed identity
+
+#### Scenario: Repeat conversion
+
+- **WHEN** the same captured item is converted again
+- **THEN** Prompt Studio returns the existing linked library prompt
+- **AND** creates no duplicate prompt or version
+
+### Requirement: Complete native queue actions
+
+Idea Studio SHALL keep Paste, Complete or Restore, Enhance, and Generate Title
+at the first action level. Capture and edit actions SHALL use one Capture
+submenu. Conversion and duplicate review SHALL use one Organize submenu.
+Deletion SHALL retain confirmation. Every changed action SHALL display a native
+or explicit conflict-free shortcut. No submenu SHALL contain another submenu.
+
+#### Scenario: Review an item action panel
+
+- **WHEN** the user opens an active or completed item action panel
+- **THEN** Paste and Complete or Restore are separate actions
+- **AND** every action displays a shortcut
+- **AND** destructive actions require confirmation

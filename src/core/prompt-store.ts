@@ -29,6 +29,18 @@ const UUID =
 export const PROMPT_TARGETS = ["generic", "codex", "claude-code"] as const;
 export type PromptTarget = (typeof PROMPT_TARGETS)[number];
 
+export const PROMPT_CAPTURE_KINDS = [
+  "next-prompt",
+  "keep",
+  "idea",
+] as const;
+export type PromptCaptureKind = (typeof PROMPT_CAPTURE_KINDS)[number];
+
+export interface PromptCapture {
+  kind: PromptCaptureKind;
+  completedAt?: string;
+}
+
 export interface ProjectBinding {
   name: string;
   path: string;
@@ -99,6 +111,7 @@ export interface PromptMetadata {
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
   ideaTitle?: IdeaTitleProvenance;
+  capture?: PromptCapture;
   seed?: PromptSeedReference;
   enhancementHistory?: EnhancementHistoryReference;
 }
@@ -125,6 +138,7 @@ export interface PromptDraft {
   sources?: PromptSource[];
   enhancement?: EnhancementProvenance;
   ideaTitle?: IdeaTitleProvenance;
+  capture?: PromptCapture;
   seed?: PromptSeedReference;
   enhancementHistory?: EnhancementHistoryReference;
 }
@@ -267,6 +281,7 @@ export async function createPrompt(
     ...(draft.sources ? { sources: draft.sources } : {}),
     ...(draft.enhancement ? { enhancement: draft.enhancement } : {}),
     ...(draft.ideaTitle ? { ideaTitle: draft.ideaTitle } : {}),
+    ...(draft.capture ? { capture: draft.capture } : {}),
     ...(draft.seed ? { seed: draft.seed } : {}),
     ...(draft.enhancementHistory
       ? { enhancementHistory: draft.enhancementHistory }
@@ -349,14 +364,19 @@ export async function saveEnhancementHistoryToLibrary(
 
 export async function recordPromptSeed(
   promptDirectory: string,
-  draft: Pick<PromptDraft, "title" | "body" | "target" | "ideaTitle">,
+  draft: Pick<
+    PromptDraft,
+    "title" | "body" | "target" | "ideaTitle" | "capture"
+  >,
 ): Promise<PromptRecord> {
   const directory = promptSeedDirectory(promptDirectory);
   const normalizedBody = normalizeIdeaText(draft.body);
+  const kind = draft.capture?.kind ?? "idea";
   const existing = (await listPrompts(directory)).records
     .filter(
       (record) =>
         record.target === draft.target &&
+        promptCaptureKind(record) === kind &&
         normalizeIdeaText(record.body) === normalizedBody,
     )
     .sort(
@@ -364,7 +384,17 @@ export async function recordPromptSeed(
         left.createdAt.localeCompare(right.createdAt) ||
         left.id.localeCompare(right.id),
     )[0];
-  if (existing) return existing;
+  if (existing) {
+    if (draft.capture && !existing.capture) {
+      return updatePromptSeed(promptDirectory, existing.id, {
+        title: existing.title,
+        body: existing.body,
+        target: existing.target,
+        capture: draft.capture,
+      });
+    }
+    return existing;
+  }
 
   return createPrompt(
     directory,
@@ -417,6 +447,7 @@ export async function updatePrompt(
     ...(update.sources ? { sources: update.sources } : {}),
     ...(update.enhancement ? { enhancement: update.enhancement } : {}),
     ...(update.ideaTitle ? { ideaTitle: update.ideaTitle } : {}),
+    ...(update.capture ? { capture: update.capture } : {}),
     ...(update.seed ? { seed: update.seed } : {}),
     ...(update.enhancementHistory
       ? { enhancementHistory: update.enhancementHistory }
@@ -435,7 +466,10 @@ export async function updatePrompt(
 export async function updatePromptSeed(
   promptDirectory: string,
   id: string,
-  draft: Pick<PromptDraft, "title" | "body" | "target" | "ideaTitle">,
+  draft: Pick<
+    PromptDraft,
+    "title" | "body" | "target" | "ideaTitle" | "capture"
+  >,
 ): Promise<PromptRecord> {
   const directory = promptSeedDirectory(promptDirectory);
   const current = await findPrompt(directory, id);
@@ -451,6 +485,7 @@ export async function updatePromptSeed(
       favorite: current.favorite,
       ideaTitle:
         draft.ideaTitle ?? (titleChanged ? null : (current.ideaTitle ?? null)),
+      ...(draft.capture ? { capture: draft.capture } : {}),
     },
     { syncSearchIndex: false },
   );
@@ -458,6 +493,43 @@ export async function updatePromptSeed(
 
 export function normalizeIdeaText(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+}
+
+export function promptCaptureKind(
+  record: Pick<PromptRecord, "capture">,
+): PromptCaptureKind {
+  return record.capture?.kind ?? "idea";
+}
+
+export function promptCaptureSection(
+  record: Pick<PromptRecord, "capture">,
+): "up-next" | "saved-for-later" | "completed" {
+  if (record.capture?.completedAt) return "completed";
+  return promptCaptureKind(record) === "next-prompt"
+    ? "up-next"
+    : "saved-for-later";
+}
+
+export async function setPromptSeedCompleted(
+  promptDirectory: string,
+  id: string,
+  completed: boolean,
+): Promise<PromptRecord> {
+  const current = await resolvePromptSeed(promptDirectory, id);
+  if (Boolean(current.capture?.completedAt) === completed) return current;
+  return updatePrompt(
+    promptSeedDirectory(promptDirectory),
+    current.id,
+    {
+      ...promptRecordToDraft(current),
+      favorite: current.favorite,
+      capture: {
+        kind: promptCaptureKind(current),
+        ...(completed ? { completedAt: new Date().toISOString() } : {}),
+      },
+    },
+    { syncSearchIndex: false },
+  );
 }
 
 export async function findExactIdeaDuplicates(
@@ -470,7 +542,7 @@ export async function findExactIdeaDuplicates(
   ]);
   const grouped = new Map<string, PromptRecord[]>();
   for (const idea of ideas.records) {
-    const key = `${idea.target}\0${normalizeIdeaText(idea.body)}`;
+    const key = `${idea.target}\0${promptCaptureKind(idea)}\0${normalizeIdeaText(idea.body)}`;
     grouped.set(key, [...(grouped.get(key) ?? []), idea]);
   }
   return [...grouped.values()].flatMap((records) => {
@@ -554,6 +626,23 @@ export async function resolvePromptSeed(
   return resolved;
 }
 
+export async function savePromptSeedToLibrary(
+  promptDirectory: string,
+  seedId: string,
+  reviewed: Pick<PromptDraft, "title" | "body" | "target">,
+): Promise<PromptRecord> {
+  const seed = await resolvePromptSeed(promptDirectory, seedId);
+  const identifiers = new Set([seed.id, ...seed.aliases]);
+  const existing = (await listPrompts(promptDirectory)).records.find(
+    (record) => record.seed?.id && identifiers.has(record.seed.id),
+  );
+  if (existing) return existing;
+  return createPrompt(promptDirectory, {
+    ...reviewed,
+    seed: { id: seed.id, thoughts: seed.body },
+  });
+}
+
 export async function duplicatePrompt(
   directory: string,
   id: string,
@@ -587,6 +676,7 @@ export function promptRecordToDraft(record: PromptRecord): PromptDraft {
     ...(record.sources ? { sources: record.sources } : {}),
     ...(record.enhancement ? { enhancement: record.enhancement } : {}),
     ...(record.ideaTitle ? { ideaTitle: record.ideaTitle } : {}),
+    ...(record.capture ? { capture: record.capture } : {}),
     ...(record.seed ? { seed: record.seed } : {}),
     ...(record.enhancementHistory
       ? { enhancementHistory: record.enhancementHistory }
@@ -780,6 +870,8 @@ function validateMetadata(value: unknown): PromptMetadata {
     metadata.enhancement = enhancementProvenance(value.enhancement);
   if (value.ideaTitle !== undefined)
     metadata.ideaTitle = ideaTitleProvenance(value.ideaTitle);
+  if (value.capture !== undefined)
+    metadata.capture = promptCapture(value.capture);
   if (value.seed !== undefined) metadata.seed = promptSeedReference(value.seed);
   if (value.enhancementHistory !== undefined) {
     metadata.enhancementHistory = enhancementHistoryReference(
@@ -800,6 +892,20 @@ function promptSeedReference(value: unknown): PromptSeedReference {
     seed.id = id;
   }
   return seed;
+}
+
+function promptCapture(value: unknown): PromptCapture {
+  if (!isObject(value)) throw new Error("capture must be an object.");
+  const kind = requiredString(value.kind, "capture.kind");
+  if (!PROMPT_CAPTURE_KINDS.includes(kind as PromptCaptureKind)) {
+    throw new Error(`Unsupported capture kind: ${kind}.`);
+  }
+  return {
+    kind: kind as PromptCaptureKind,
+    ...(value.completedAt !== undefined
+      ? { completedAt: timestamp(value.completedAt, "capture.completedAt") }
+      : {}),
+  };
 }
 
 function enhancementHistoryReference(

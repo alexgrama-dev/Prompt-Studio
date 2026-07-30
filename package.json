@@ -82,7 +82,7 @@
     {
       "name": "idea-studio",
       "title": "Idea Studio",
-      "description": "Capture, title, organize, and enhance prompt ideas",
+      "description": "Capture, queue, paste, complete, and reuse AI work",
       "mode": "view",
       "arguments": [
         {
@@ -90,6 +90,40 @@
           "type": "text",
           "placeholder": "Idea to capture",
           "required": false
+        }
+      ]
+    },
+    {
+      "name": "quick-capture",
+      "title": "Quick Capture",
+      "description": "Save explicit, selected, or clipboard text to Idea Studio",
+      "mode": "no-view",
+      "arguments": [
+        {
+          "name": "text",
+          "type": "text",
+          "placeholder": "Text to capture",
+          "required": false
+        },
+        {
+          "name": "kind",
+          "type": "dropdown",
+          "placeholder": "Item type",
+          "required": false,
+          "data": [
+            {
+              "title": "Next Prompt",
+              "value": "next-prompt"
+            },
+            {
+              "title": "Keep",
+              "value": "keep"
+            },
+            {
+              "title": "Idea",
+              "value": "idea"
+            }
+          ]
         }
       ]
     },

@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   Alert,
+  Clipboard,
   Color,
   confirmAlert,
   Detail,
@@ -18,6 +19,7 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { captureKindTitle } from "./core/capture-queue";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
 import { generateIdeaTitle, validateIdeaTitle } from "./core/idea-title";
@@ -32,14 +34,19 @@ import {
   enhancementHistoryDirectory,
   findExactIdeaDuplicates,
   listPrompts,
+  promptCaptureKind,
+  promptCaptureSection,
   promptSeedDirectory,
   recordPromptSeed,
   resolvePromptDirectory,
+  savePromptSeedToLibrary,
+  setPromptSeedCompleted,
   updatePromptSeed,
   type ExactIdeaDuplicateGroup,
   type IdeaTitleProvenance,
   type InvalidPrompt,
   type PromptRecord,
+  type PromptCaptureKind,
   type PromptTarget,
 } from "./core/prompt-store";
 
@@ -80,6 +87,7 @@ export default function IdeaStudio(props: {
     <CreateIdeaForm
       directory={directory}
       initialIdea={initialIdea}
+      initialKind="idea"
       {...(props.launchContext?.target
         ? { initialTarget: props.launchContext.target }
         : {})}
@@ -90,6 +98,7 @@ export default function IdeaStudio(props: {
 }
 
 function IdeaInbox({ directory }: { directory: string }) {
+  const { push } = useNavigation();
   const [ideas, setIdeas] = useState<PromptRecord[]>([]);
   const [invalid, setInvalid] = useState<InvalidPrompt[]>([]);
   const [history, setHistory] = useState<PromptRecord[]>([]);
@@ -127,23 +136,49 @@ function IdeaInbox({ directory }: { directory: string }) {
     void load();
   }, [load]);
 
+  async function captureClipboard() {
+    const text = await Clipboard.readText();
+    if (!text?.trim()) {
+      await showToast(
+        Toast.Style.Failure,
+        "Clipboard Has No Plain Text",
+        "Copy text, then choose Capture Clipboard again.",
+      );
+      return;
+    }
+    push(
+      <CreateIdeaForm
+        directory={directory}
+        initialIdea={text}
+        initialKind="keep"
+        onSaved={load}
+      />,
+    );
+  }
+
   const grouped = useMemo(() => {
-    if (historyError) return { ready: ideas, enhanced: [] };
     return {
-      ready: ideas.filter((idea) => enhancementCount(idea, history) === 0),
-      enhanced: ideas.filter((idea) => enhancementCount(idea, history) > 0),
+      upNext: ideas.filter(
+        (idea) => promptCaptureSection(idea) === "up-next",
+      ),
+      savedForLater: ideas.filter(
+        (idea) => promptCaptureSection(idea) === "saved-for-later",
+      ),
+      completed: ideas.filter(
+        (idea) => promptCaptureSection(idea) === "completed",
+      ),
     };
-  }, [history, historyError, ideas]);
+  }, [ideas]);
   const emptyTitle = ideaError
     ? "Idea Studio Unavailable"
     : searchText.trim()
-      ? "No Matching Ideas"
-      : "No Ideas Yet";
+      ? "No Matching Captures"
+      : "No Captured Items Yet";
   const emptyDescription =
     ideaError ??
     (searchText.trim()
-      ? `No saved idea matches “${searchText.trim()}”.`
-      : "Capture a thought now; nothing is sent to a model until you choose Generate AI Title.");
+      ? `No captured item matches “${searchText.trim()}”.`
+      : "Capture a next prompt, something to keep, or an idea. Everything stays local until you choose an explicit action.");
 
   return (
     <List
@@ -151,7 +186,7 @@ function IdeaInbox({ directory }: { directory: string }) {
       isShowingDetail={ideas.length + invalid.length > 0}
       filtering={{ keepSectionOrder: true }}
       onSearchTextChange={setSearchText}
-      searchBarPlaceholder="Search ideas…"
+      searchBarPlaceholder="Search captured items…"
     >
       {!loading && ideas.length + invalid.length === 0 ? (
         <List.EmptyView
@@ -174,28 +209,29 @@ function IdeaInbox({ directory }: { directory: string }) {
                   />
                 </>
               ) : (
-                <Action.Push
-                  title="Create Idea"
-                  icon={Icon.Plus}
-                  shortcut={Keyboard.Shortcut.Common.New}
-                  target={
-                    <CreateIdeaForm directory={directory} onSaved={load} />
-                  }
-                />
+                <>
+                  <Action.Push
+                    title="Capture Item"
+                    icon={Icon.Plus}
+                    shortcut={Keyboard.Shortcut.Common.New}
+                    target={
+                      <CreateIdeaForm directory={directory} onSaved={load} />
+                    }
+                  />
+                  <Action
+                    title="Capture Clipboard"
+                    icon={Icon.Clipboard}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+                    onAction={captureClipboard}
+                  />
+                </>
               )}
             </ActionPanel>
           }
         />
       ) : null}
-      <List.Section
-        title={historyError ? "Ideas" : "Ready to Enhance"}
-        subtitle={
-          historyError
-            ? `Enhancement status unavailable · ${ideas.length}`
-            : `${grouped.ready.length}`
-        }
-      >
-        {grouped.ready.map((idea) => (
+      <List.Section title="Up Next" subtitle={`${grouped.upNext.length}`}>
+        {grouped.upNext.map((idea) => (
           <IdeaItem
             key={idea.id}
             directory={directory}
@@ -207,19 +243,35 @@ function IdeaInbox({ directory }: { directory: string }) {
           />
         ))}
       </List.Section>
-      {!historyError ? (
-        <List.Section title="Enhanced" subtitle={`${grouped.enhanced.length}`}>
-          {grouped.enhanced.map((idea) => (
-            <IdeaItem
-              key={idea.id}
-              directory={directory}
-              idea={idea}
-              enhancementCount={enhancementCount(idea, history)}
-              onReload={load}
-            />
-          ))}
-        </List.Section>
-      ) : null}
+      <List.Section
+        title="Saved for Later"
+        subtitle={`${grouped.savedForLater.length}`}
+      >
+        {grouped.savedForLater.map((idea) => (
+          <IdeaItem
+            key={idea.id}
+            directory={directory}
+            idea={idea}
+            {...(historyError
+              ? {}
+              : { enhancementCount: enhancementCount(idea, history) })}
+            onReload={load}
+          />
+        ))}
+      </List.Section>
+      <List.Section title="Completed" subtitle={`${grouped.completed.length}`}>
+        {grouped.completed.map((idea) => (
+          <IdeaItem
+            key={idea.id}
+            directory={directory}
+            idea={idea}
+            {...(historyError
+              ? {}
+              : { enhancementCount: enhancementCount(idea, history) })}
+            onReload={load}
+          />
+        ))}
+      </List.Section>
       {invalid.length > 0 ? (
         <List.Section title="Needs Repair" subtitle={`${invalid.length}`}>
           {invalid.map((item) => (
@@ -242,30 +294,42 @@ function IdeaItem({
   enhancementCount?: number;
   onReload: () => Promise<void>;
 }) {
+  const kind = promptCaptureKind(idea);
+  const completed = promptCaptureSection(idea) === "completed";
   return (
     <List.Item
       id={idea.id}
-      icon={{
-        source: count ? Icon.CheckCircle : Icon.LightBulb,
-        tintColor: count ? Color.Green : Color.Yellow,
-      }}
+      icon={captureIcon(kind, completed)}
       title={idea.title}
       subtitle={oneLine(idea.body)}
-      keywords={[idea.body, idea.target, ...idea.aliases]}
+      keywords={[
+        idea.body,
+        idea.target,
+        captureKindTitle(kind),
+        ...idea.aliases,
+      ]}
       accessories={[
-        {
-          text:
-            count === undefined
-              ? "Status unavailable"
-              : targetTitle(idea.target),
-        },
-        ...(idea.ideaTitle ? [{ tag: "AI title" }] : []),
+        { tag: captureKindTitle(kind) },
+        { text: targetTitle(idea.target) },
+        ...(count && !completed ? [{ text: `${count} enhanced` }] : []),
       ]}
       detail={
         <List.Item.Detail
           markdown={`# ${idea.title}\n\n${idea.body}`}
           metadata={
             <List.Item.Detail.Metadata>
+              <List.Item.Detail.Metadata.Label
+                title="Type"
+                text={captureKindTitle(kind)}
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Status"
+                text={
+                  completed && idea.capture?.completedAt
+                    ? `Completed ${new Date(idea.capture.completedAt).toLocaleString()}`
+                    : "Active"
+                }
+              />
               <List.Item.Detail.Metadata.Label
                 title="Target"
                 text={targetTitle(idea.target)}
@@ -305,6 +369,7 @@ function IdeaActions({
   onReload: () => Promise<void>;
 }) {
   const { push } = useNavigation();
+  const completed = promptCaptureSection(idea) === "completed";
 
   async function enhance() {
     await launchCommand({
@@ -324,6 +389,7 @@ function IdeaActions({
           target={idea.target}
           title={result.title}
           provenance={result.provenance}
+          kind={promptCaptureKind(idea)}
           existing={idea}
           onSaved={onReload}
         />,
@@ -337,13 +403,50 @@ function IdeaActions({
     }
   }
 
+  async function toggleCompleted() {
+    try {
+      await setPromptSeedCompleted(directory, idea.id, !completed);
+      await onReload();
+      await showToast(
+        Toast.Style.Success,
+        completed ? "Item Restored" : "Item Completed",
+      );
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        completed ? "Could Not Restore Item" : "Could Not Complete Item",
+        errorMessage(error),
+      );
+    }
+  }
+
+  async function captureClipboard() {
+    const text = await Clipboard.readText();
+    if (!text?.trim()) {
+      await showToast(
+        Toast.Style.Failure,
+        "Clipboard Has No Plain Text",
+        "Copy text, then choose Capture Clipboard again.",
+      );
+      return;
+    }
+    push(
+      <CreateIdeaForm
+        directory={directory}
+        initialIdea={text}
+        initialKind="keep"
+        onSaved={onReload}
+      />,
+    );
+  }
+
   async function remove() {
     const confirmed = await confirmAlert({
       title: `Delete “${idea.title}”?`,
       message:
-        "This removes the idea file. Existing prompts and enhancement history remain unchanged.",
+        "This removes the captured item file. Existing prompts and enhancement history remain unchanged.",
       primaryAction: {
-        title: "Delete Idea",
+        title: "Delete Item",
         style: Alert.ActionStyle.Destructive,
       },
     });
@@ -353,11 +456,11 @@ function IdeaActions({
         syncSearchIndex: false,
       });
       await onReload();
-      await showToast(Toast.Style.Success, "Idea Deleted");
+      await showToast(Toast.Style.Success, "Item Deleted");
     } catch (error) {
       await showToast(
         Toast.Style.Failure,
-        "Could Not Delete Idea",
+        "Could Not Delete Item",
         errorMessage(error),
       );
     }
@@ -365,7 +468,23 @@ function IdeaActions({
 
   return (
     <ActionPanel>
-      <Action title="Enhance Idea" icon={Icon.Wand} onAction={enhance} />
+      <Action.Paste
+        title="Paste in Active App"
+        content={idea.body}
+        icon={Icon.ArrowRightCircle}
+      />
+      <Action
+        title={completed ? "Restore Item" : "Complete Item"}
+        icon={completed ? Icon.ArrowClockwise : Icon.CheckCircle}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+        onAction={toggleCompleted}
+      />
+      <Action
+        title="Enhance Item"
+        icon={Icon.Wand}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+        onAction={enhance}
+      />
       <Action
         title={idea.ideaTitle ? "Regenerate AI Title" : "Generate AI Title"}
         icon={Icon.Stars}
@@ -373,18 +492,24 @@ function IdeaActions({
         onAction={generateTitle}
       />
       <ActionPanel.Submenu
-        title="Idea"
-        icon={Icon.LightBulb}
+        title="Capture"
+        icon={Icon.Plus}
         shortcut={{ modifiers: ["cmd"], key: "i" }}
       >
         <Action.Push
-          title="Create Idea"
+          title="Capture Item"
           icon={Icon.Plus}
           shortcut={Keyboard.Shortcut.Common.New}
           target={<CreateIdeaForm directory={directory} onSaved={onReload} />}
         />
+        <Action
+          title="Capture Clipboard"
+          icon={Icon.Clipboard}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+          onAction={captureClipboard}
+        />
         <Action.Push
-          title="Edit Idea"
+          title="Edit Item"
           icon={Icon.Pencil}
           shortcut={Keyboard.Shortcut.Common.Edit}
           target={
@@ -396,9 +521,9 @@ function IdeaActions({
           }
         />
         <Action.CopyToClipboard
-          title="Copy Idea"
+          title="Copy Item"
           content={idea.body}
-          shortcut={{ modifiers: ["cmd"], key: "c" }}
+          shortcut={Keyboard.Shortcut.Common.Copy}
         />
       </ActionPanel.Submenu>
       <ActionPanel.Submenu
@@ -406,6 +531,18 @@ function IdeaActions({
         icon={Icon.Folder}
         shortcut={{ modifiers: ["cmd", "shift"], key: "z" }}
       >
+        <Action.Push
+          title="Convert to Prompt"
+          icon={Icon.Document}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
+          target={
+            <ConvertToPromptForm
+              directory={directory}
+              item={idea}
+              onSaved={onReload}
+            />
+          }
+        />
         <Action.Push
           title="Review Exact Duplicates"
           icon={Icon.MagnifyingGlass}
@@ -415,7 +552,7 @@ function IdeaActions({
           }
         />
         <Action
-          title="Delete Idea"
+          title="Delete Item"
           icon={Icon.Trash}
           style={Action.Style.Destructive}
           shortcut={{ modifiers: ["ctrl"], key: "x" }}
@@ -429,16 +566,19 @@ function IdeaActions({
 function CreateIdeaForm({
   directory,
   initialIdea = "",
+  initialKind = "idea",
   initialTarget = "codex",
   onSaved,
 }: {
   directory: string;
   initialIdea?: string;
+  initialKind?: PromptCaptureKind;
   initialTarget?: PromptTarget;
   onSaved?: () => Promise<void>;
 }) {
   const { push } = useNavigation();
   const [idea, setIdea] = useState(initialIdea);
+  const [kind, setKind] = useState<PromptCaptureKind>(initialKind);
   const [target, setTarget] = useState<PromptTarget>(initialTarget);
   const [loading, setLoading] = useState(false);
 
@@ -453,6 +593,7 @@ function CreateIdeaForm({
           target={target}
           title={result.title}
           provenance={result.provenance}
+          kind={kind}
           {...(onSaved ? { onSaved } : {})}
         />,
       );
@@ -470,23 +611,26 @@ function CreateIdeaForm({
   return (
     <Form
       isLoading={loading}
-      navigationTitle="Create Idea"
+      navigationTitle="Capture Item"
       actions={
         <ActionPanel>
           <Action
             title="Generate AI Title"
             icon={Icon.Stars}
+            shortcut={{ modifiers: ["cmd"], key: "g" }}
             onAction={generate}
           />
           <Action.Push
             title="Use Manual Title"
             icon={Icon.Pencil}
+            shortcut={{ modifiers: ["cmd"], key: "m" }}
             target={
               <IdeaReviewForm
                 directory={directory}
                 idea={idea}
                 target={target}
                 title=""
+                kind={kind}
                 {...(onSaved ? { onSaved } : {})}
               />
             }
@@ -502,11 +646,12 @@ function CreateIdeaForm({
     >
       <Form.TextArea
         id="idea"
-        title="Idea"
-        placeholder="What do you want the future prompt to accomplish?"
+        title="Content"
+        placeholder="A next prompt, useful answer, link, or idea"
         value={idea}
         onChange={setIdea}
       />
+      <CaptureKindDropdown value={kind} onChange={setKind} />
       <Form.Dropdown
         id="target"
         title="Target"
@@ -519,7 +664,7 @@ function CreateIdeaForm({
       </Form.Dropdown>
       <Form.Description
         title="AI Title Privacy"
-        text="Generate AI Title sends this exact idea and selected target to OpenAI. Nothing is saved until you review the title and choose Save Idea."
+        text="Generate AI Title sends this exact content and selected target to OpenAI. Nothing is saved until you review the title and choose Save Item."
       />
     </Form>
   );
@@ -530,6 +675,7 @@ function IdeaReviewForm({
   idea,
   target,
   title: initialTitle,
+  kind,
   provenance,
   existing,
   onSaved,
@@ -538,6 +684,7 @@ function IdeaReviewForm({
   idea: string;
   target: PromptTarget;
   title: string;
+  kind: PromptCaptureKind;
   provenance?: IdeaTitleProvenance;
   existing?: PromptRecord;
   onSaved?: () => Promise<void>;
@@ -556,26 +703,33 @@ function IdeaReviewForm({
             title: validatedTitle,
             body: idea,
             target,
+            capture: {
+              kind,
+              ...(existing.capture?.completedAt
+                ? { completedAt: existing.capture.completedAt }
+                : {}),
+            },
             ...(provenance ? { ideaTitle: provenance } : {}),
           })
         : await recordPromptSeed(directory, {
             title: validatedTitle,
             body: idea,
             target,
+            capture: { kind },
             ...(provenance ? { ideaTitle: provenance } : {}),
           });
       await onSaved?.();
       await showHUD(
         existing
-          ? "Idea updated"
+          ? "Item updated"
           : record.body === idea && record.title !== validatedTitle
-            ? "Existing idea reused"
-            : "Idea saved",
+            ? "Existing item reused"
+            : "Item saved",
       );
     } catch (error) {
       await showToast(
         Toast.Style.Failure,
-        "Could Not Save Idea",
+        "Could Not Save Item",
         errorMessage(error),
       );
     } finally {
@@ -586,12 +740,13 @@ function IdeaReviewForm({
   return (
     <Form
       isLoading={loading}
-      navigationTitle="Review Idea"
+      navigationTitle="Review Capture"
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Save Idea"
+            title="Save Item"
             icon={Icon.Check}
+            shortcut={Keyboard.Shortcut.Common.Save}
             onSubmit={save}
           />
         </ActionPanel>
@@ -604,11 +759,12 @@ function IdeaReviewForm({
         value={title}
         onChange={setTitle}
       />
-      <Form.Description title="Idea" text={idea} />
+      <Form.Description title="Content" text={idea} />
+      <Form.Description title="Type" text={captureKindTitle(kind)} />
       <Form.Description title="Target" text={targetTitle(target)} />
       <Form.Description
         title="Save"
-        text="The title is editable. Save Idea writes the first Markdown record; going back writes nothing."
+        text="The title is editable. Save Item writes the first Markdown record; going back writes nothing."
       />
     </Form>
   );
@@ -626,6 +782,9 @@ function EditIdeaForm({
   const { pop } = useNavigation();
   const [idea, setIdea] = useState(existing.body);
   const [title, setTitle] = useState(existing.title);
+  const [kind, setKind] = useState<PromptCaptureKind>(
+    promptCaptureKind(existing),
+  );
   const [target, setTarget] = useState<PromptTarget>(existing.target);
   const [loading, setLoading] = useState(false);
 
@@ -637,14 +796,20 @@ function EditIdeaForm({
         title: validatedTitle,
         body: idea,
         target,
+        capture: {
+          kind,
+          ...(existing.capture?.completedAt
+            ? { completedAt: existing.capture.completedAt }
+            : {}),
+        },
       });
       await onSaved();
-      await showToast(Toast.Style.Success, "Idea Updated");
+      await showToast(Toast.Style.Success, "Item Updated");
       pop();
     } catch (error) {
       await showToast(
         Toast.Style.Failure,
-        "Could Not Update Idea",
+        "Could Not Update Item",
         errorMessage(error),
       );
     } finally {
@@ -655,12 +820,13 @@ function EditIdeaForm({
   return (
     <Form
       isLoading={loading}
-      navigationTitle="Edit Idea"
+      navigationTitle="Edit Item"
       actions={
         <ActionPanel>
           <Action.SubmitForm
             title="Save Changes"
             icon={Icon.Check}
+            shortcut={Keyboard.Shortcut.Common.Save}
             onSubmit={save}
           />
         </ActionPanel>
@@ -672,7 +838,13 @@ function EditIdeaForm({
         value={title}
         onChange={setTitle}
       />
-      <Form.TextArea id="idea" title="Idea" value={idea} onChange={setIdea} />
+      <Form.TextArea
+        id="idea"
+        title="Content"
+        value={idea}
+        onChange={setIdea}
+      />
+      <CaptureKindDropdown value={kind} onChange={setKind} />
       <Form.Dropdown
         id="target"
         title="Target"
@@ -683,6 +855,111 @@ function EditIdeaForm({
         <Form.Dropdown.Item value="codex" title="Codex" />
         <Form.Dropdown.Item value="claude-code" title="Claude Code" />
       </Form.Dropdown>
+    </Form>
+  );
+}
+
+function CaptureKindDropdown({
+  value,
+  onChange,
+}: {
+  value: PromptCaptureKind;
+  onChange: (value: PromptCaptureKind) => void;
+}) {
+  return (
+    <Form.Dropdown
+      id="kind"
+      title="Type"
+      value={value}
+      onChange={(next) => onChange(next as PromptCaptureKind)}
+    >
+      <Form.Dropdown.Item
+        value="next-prompt"
+        title="Next Prompt"
+        icon={Icon.ArrowRightCircle}
+      />
+      <Form.Dropdown.Item value="keep" title="Keep" icon={Icon.Bookmark} />
+      <Form.Dropdown.Item value="idea" title="Idea" icon={Icon.LightBulb} />
+    </Form.Dropdown>
+  );
+}
+
+function ConvertToPromptForm({
+  directory,
+  item,
+  onSaved,
+}: {
+  directory: string;
+  item: PromptRecord;
+  onSaved: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [body, setBody] = useState(item.body);
+  const [target, setTarget] = useState<PromptTarget>(item.target);
+  const [loading, setLoading] = useState(false);
+
+  async function save() {
+    setLoading(true);
+    try {
+      await savePromptSeedToLibrary(directory, item.id, {
+        title: validateManualIdeaTitle(title),
+        body,
+        target,
+      });
+      await onSaved();
+      await showHUD("Prompt available in library");
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Convert Item",
+        errorMessage(error),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={loading}
+      navigationTitle="Convert to Prompt"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Save Prompt"
+            icon={Icon.Check}
+            shortcut={Keyboard.Shortcut.Common.Save}
+            onSubmit={save}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField
+        id="title"
+        title="Title"
+        value={title}
+        onChange={setTitle}
+      />
+      <Form.TextArea
+        id="body"
+        title="Prompt"
+        value={body}
+        onChange={setBody}
+      />
+      <Form.Dropdown
+        id="target"
+        title="Target"
+        value={target}
+        onChange={(value) => setTarget(value as PromptTarget)}
+      >
+        <Form.Dropdown.Item value="generic" title="Generic" />
+        <Form.Dropdown.Item value="codex" title="Codex" />
+        <Form.Dropdown.Item value="claude-code" title="Claude Code" />
+      </Form.Dropdown>
+      <Form.Description
+        title="Source"
+        text={`This prompt will link to “${item.title}”. Repeating Save Prompt reuses the same library prompt.`}
+      />
     </Form>
   );
 }
@@ -716,7 +993,7 @@ function DuplicateReview({
   async function consolidate(group: ExactIdeaDuplicateGroup) {
     const confirmed = await confirmAlert({
       title: `Keep “${group.retained.title}” and remove ${group.removed.length}?`,
-      message: `${group.linkedEnhancementCount} enhancement-history and ${group.linkedPromptCount} prompt links will keep resolving through the retained idea. Those linked records are not rewritten or deleted.`,
+      message: `${group.linkedEnhancementCount} enhancement-history and ${group.linkedPromptCount} prompt links will keep resolving through the retained item. Those linked records are not rewritten or deleted.`,
       primaryAction: {
         title: "Consolidate Exact Duplicates",
         style: Alert.ActionStyle.Destructive,
@@ -734,7 +1011,7 @@ function DuplicateReview({
     } catch (consolidationError) {
       await showToast(
         Toast.Style.Failure,
-        "Could Not Consolidate Ideas",
+        "Could Not Consolidate Items",
         errorMessage(consolidationError),
       );
     }
@@ -752,7 +1029,7 @@ function DuplicateReview({
           title={error ? "Duplicate Review Unavailable" : "No Exact Duplicates"}
           description={
             error ??
-            "Ideas match only when their normalized text and target are identical."
+            "Items match only when their normalized text, target, and type are identical."
           }
           actions={
             <ActionPanel>
@@ -799,6 +1076,7 @@ function DuplicateReview({
                 title="Consolidate This Group"
                 icon={Icon.Link}
                 style={Action.Style.Destructive}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
                 onAction={() => consolidate(group)}
               />
               <Action
@@ -829,7 +1107,7 @@ function InvalidIdeaItem({
       subtitle={item.error}
       detail={
         <List.Item.Detail
-          markdown={`# Idea Needs Repair\n\n${item.error}\n\n\`${item.filePath}\``}
+          markdown={`# Capture Needs Repair\n\n${item.error}\n\n\`${item.filePath}\``}
         />
       }
       actions={
@@ -840,12 +1118,12 @@ function InvalidIdeaItem({
             shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
           >
             <Action.Open
-              title="Open Idea File"
+              title="Open Capture File"
               target={item.filePath}
               shortcut={Keyboard.Shortcut.Common.Open}
             />
             <Action.ShowInFinder
-              title="Show Idea in Finder"
+              title="Show Capture in Finder"
               path={item.filePath}
               shortcut={Keyboard.Shortcut.Common.OpenWith}
             />
@@ -895,6 +1173,19 @@ function targetTitle(target: PromptTarget): string {
   if (target === "claude-code") return "Claude Code";
   if (target === "codex") return "Codex";
   return "Generic";
+}
+
+function captureIcon(kind: PromptCaptureKind, completed: boolean) {
+  if (completed) {
+    return { source: Icon.CheckCircle, tintColor: Color.Green };
+  }
+  if (kind === "next-prompt") {
+    return { source: Icon.ArrowRightCircle, tintColor: Color.Blue };
+  }
+  if (kind === "keep") {
+    return { source: Icon.Bookmark, tintColor: Color.Orange };
+  }
+  return { source: Icon.LightBulb, tintColor: Color.Yellow };
 }
 
 function oneLine(value: string): string {

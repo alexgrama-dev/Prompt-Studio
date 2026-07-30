@@ -17,7 +17,7 @@ user-facing labels.
 ### Requirement: Visible local Idea Studio
 
 Prompt Studio SHALL expose Idea Studio as a top-level Raycast command. Opening
-the command without text SHALL show a searchable inbox. Opening it with optional
+the command without text SHALL show a searchable queue. Opening it with optional
 text SHALL show an explicit-save form prefilled with that text and SHALL NOT
 save automatically. Listing, editing, and repair SHALL remain available without
 an enabled model provider.
@@ -25,8 +25,8 @@ an enabled model provider.
 #### Scenario: Open the inbox
 
 - **WHEN** the user opens Idea Studio without text
-- **THEN** Raycast shows searchable Ready to Enhance and Enhanced sections
-- **AND** the user can create a new idea with Command-N
+- **THEN** Raycast shows searchable Up Next, Saved for Later, and Completed sections
+- **AND** the user can capture a new item with Command-N
 
 #### Scenario: Capture from Root Search
 
@@ -79,15 +79,15 @@ request SHALL be stored outside the normal idea record.
 
 ### Requirement: Repeat-safe editable ideas
 
-Saving a rough idea SHALL preserve its exact text and target in the existing
-local Markdown seed store. A save whose normalized text and target exactly
-match an unconsolidated idea SHALL return that existing idea instead of writing
-a duplicate. The user SHALL be able to edit one idea while retaining its
-identity.
+Saving a captured item SHALL preserve its exact text, target, and capture kind
+in the existing local Markdown seed store. A save whose normalized text,
+target, and capture kind exactly match an unconsolidated item SHALL return that
+existing item instead of writing a duplicate. The user SHALL be able to edit
+one item while retaining its identity.
 
 #### Scenario: Save the same idea twice
 
-- **WHEN** the normalized text and target exactly match an existing idea
+- **WHEN** the normalized text, target, and capture kind exactly match an existing item
 - **THEN** Prompt Studio returns the existing identifier
 - **AND** writes no second seed file
 
@@ -99,13 +99,13 @@ identity.
 
 ### Requirement: Explicit duplicate consolidation
 
-Prompt Studio SHALL identify historical duplicates only when normalized text
-and target match exactly. It SHALL preview each group, the retained record, the
-records removed, and the number of linked enhancement and prompt records before
-asking for confirmation. After confirmation, the oldest record SHALL retain the
-removed identifiers as aliases and the duplicate seed files SHALL be removed.
-Existing enhancement-history and main-prompt records SHALL not be rewritten,
-deleted, or recounted.
+Prompt Studio SHALL identify historical duplicates only when normalized text,
+target, and capture kind match exactly. It SHALL preview each group, the
+retained record, the records removed, and the number of linked enhancement and
+prompt records before asking for confirmation. After confirmation, the oldest
+record SHALL retain the removed identifiers as aliases and the duplicate seed
+files SHALL be removed. Existing enhancement-history and main-prompt records
+SHALL not be rewritten, deleted, or recounted.
 
 #### Scenario: Review duplicates
 
@@ -149,33 +149,34 @@ Repair with Open File and Show in Finder actions.
 
 ### Requirement: Explicit enhancement handoff
 
-Pressing Enter on a valid Idea Studio record SHALL open Enhance Prompt with the exact
-idea text, target, and canonical seed identity. It SHALL not make a model
-request until the user explicitly submits the enhancement form. Editing the
-text after handoff SHALL clear the seed link as specified by Saved prompt seeds.
+Choosing Enhance Item on a valid Idea Studio record SHALL open Enhance Prompt
+with the exact item text, target, and canonical seed identity. It SHALL not make
+a model request until the user explicitly submits the enhancement form. Editing
+the text after handoff SHALL clear the seed link as specified by Saved prompt
+seeds.
 
 #### Scenario: Enhance one idea
 
-- **WHEN** the user presses Enter on a valid Idea Studio record
+- **WHEN** the user chooses Enhance Item on a valid Idea Studio record
 - **THEN** Enhance Prompt opens with its text and target
 - **AND** no model request starts
 - **AND** a later unchanged result links to the canonical idea
 
 ### Requirement: Complete Idea Studio actions
 
-The Idea Studio list, create form, title review, edit form, duplicate review, repair state,
-and Enhance Prompt idea actions SHALL use plain-language labels and a native or
-explicit conflict-free shortcut for every action. Deletion and consolidation
-SHALL retain confirmation. The primary Enhance or Generate Title action SHALL
-stay at the first level. Create and Edit SHALL appear in an Idea submenu,
-duplicate review and deletion SHALL appear in an Organize submenu, and recovery
-actions SHALL appear in a Repair submenu. No submenu SHALL contain another
-submenu.
+The Idea Studio list, capture form, title review, edit form, duplicate review,
+repair state, and Enhance Prompt item actions SHALL use plain-language labels
+and a native or explicit conflict-free shortcut for every action. Deletion and
+consolidation SHALL retain confirmation. Paste, Complete or Restore, Enhance,
+and Generate Title SHALL stay at the first level. Capture and Edit SHALL appear
+in a Capture submenu, conversion and duplicate review SHALL appear in an
+Organize submenu, and recovery actions SHALL appear in a Repair submenu. No
+submenu SHALL contain another submenu.
 
 #### Scenario: Review Rough Ideas actions
 
 - **WHEN** the user opens an Idea Studio action panel changed by this work
-- **THEN** the primary action uses Enter
+- **THEN** Paste is the primary Enter action
 - **AND** create uses Command-N and edit uses Command-E
 - **AND** every remaining action displays a shortcut
 - **AND** destructive actions require confirmation

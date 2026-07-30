@@ -84,6 +84,11 @@ import {
   restorableEnhancementFormDraft,
 } from "../src/core/enhancement-form-draft.ts";
 import {
+  captureKindTitle,
+  captureTextFromSources,
+  captureTitleFromText,
+} from "../src/core/capture-queue.ts";
+import {
   enhancementRunWasCancelled,
   finishEnhancementHistory,
 } from "../src/core/enhancement-completion.ts";
@@ -115,6 +120,8 @@ import {
   listPrompts,
   listPromptVersions,
   parsePrompt,
+  promptCaptureKind,
+  promptCaptureSection,
   promptSeedDirectory,
   promptRecordToDraft,
   recordEnhancementHistory,
@@ -123,7 +130,9 @@ import {
   resolvePromptDirectory,
   restorePromptVersion,
   saveEnhancementHistoryToLibrary,
+  savePromptSeedToLibrary,
   serializePrompt,
+  setPromptSeedCompleted,
   updatePrompt,
   updatePromptSeed,
   type PromptRecord,
@@ -3012,6 +3021,195 @@ test("idea saves reuse normalized text and identity while preserving exact conte
     assert.equal((await listPrompts(directory)).records.length, 1);
     assert.equal(history.seed?.id, manuallyRetitled.id);
     assert.equal(prompt.seed?.id, manuallyRetitled.id);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("capture metadata groups typed and legacy ideas without migration", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-metadata-"),
+  );
+  try {
+    const nextPrompt = await recordPromptSeed(directory, {
+      title: "Check the failed build",
+      body: "Inspect the failed build and explain the root cause.",
+      target: "codex",
+      capture: { kind: "next-prompt" },
+    });
+    const kept = await recordPromptSeed(directory, {
+      title: "Keep the deployment link",
+      body: "https://example.com/deployment",
+      target: "generic",
+      capture: { kind: "keep" },
+    });
+    const legacyIdea = await createPrompt(
+      promptSeedDirectory(directory),
+      {
+        title: "Legacy Idea",
+        body: "Turn this earlier thought into a prompt.",
+        target: "codex",
+        tags: ["seed"],
+      },
+      { syncSearchIndex: false },
+    );
+
+    assert.deepEqual(nextPrompt.capture, { kind: "next-prompt" });
+    assert.equal(promptCaptureKind(nextPrompt), "next-prompt");
+    assert.equal(promptCaptureSection(nextPrompt), "up-next");
+    assert.equal(promptCaptureKind(kept), "keep");
+    assert.equal(promptCaptureSection(kept), "saved-for-later");
+    assert.equal(legacyIdea.capture, undefined);
+    assert.equal(promptCaptureKind(legacyIdea), "idea");
+    assert.equal(promptCaptureSection(legacyIdea), "saved-for-later");
+    const reviewedLegacyIdea = await recordPromptSeed(directory, {
+      title: "A different reviewed title",
+      body: legacyIdea.body,
+      target: legacyIdea.target,
+      capture: { kind: "idea" },
+    });
+    assert.equal(reviewedLegacyIdea.id, legacyIdea.id);
+    assert.deepEqual(reviewedLegacyIdea.capture, { kind: "idea" });
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records.length,
+      3,
+    );
+    assert.equal(
+      (
+        await listPrompts(promptSeedDirectory(directory))
+      ).records.find((record) => record.id === nextPrompt.id)?.capture?.kind,
+      "next-prompt",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("capture input keeps the first exact non-empty source", () => {
+  assert.equal(
+    captureTextFromSources("  explicit text  ", "selected", "clipboard"),
+    "  explicit text  ",
+  );
+  assert.equal(
+    captureTextFromSources(" ", "selected text", "clipboard"),
+    "selected text",
+  );
+  assert.equal(
+    captureTextFromSources(undefined, undefined, "clipboard text"),
+    "clipboard text",
+  );
+  assert.equal(captureTextFromSources("", " ", "\n"), undefined);
+  assert.equal(captureKindTitle("next-prompt"), "Next Prompt");
+  assert.equal(
+    captureTitleFromText(
+      "  Review   this long answer and keep its useful explanation for the next deployment decision.  ",
+    ),
+    "Review this long answer and keep its useful explanation for the next…",
+  );
+});
+
+test("capture completion moves one item to Completed and restores its original queue", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-completion-"),
+  );
+  try {
+    const item = await recordPromptSeed(directory, {
+      title: "Keep the useful answer",
+      body: "This answer explains the deployment boundary.",
+      target: "generic",
+      capture: { kind: "keep" },
+    });
+
+    const completed = await setPromptSeedCompleted(directory, item.id, true);
+    assert.equal(completed.id, item.id);
+    assert.equal(promptCaptureKind(completed), "keep");
+    assert.equal(promptCaptureSection(completed), "completed");
+    assert.match(completed.capture?.completedAt ?? "", /^\d{4}-\d{2}-\d{2}T/u);
+
+    const repeated = await setPromptSeedCompleted(directory, item.id, true);
+    assert.equal(repeated.updatedAt, completed.updatedAt);
+
+    const restored = await setPromptSeedCompleted(directory, item.id, false);
+    assert.equal(restored.id, item.id);
+    assert.deepEqual(restored.capture, { kind: "keep" });
+    assert.equal(promptCaptureSection(restored), "saved-for-later");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("capture identity is repeat-safe within one item kind", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-identity-"),
+  );
+  try {
+    const nextPrompt = await recordPromptSeed(directory, {
+      title: "Ask about the release",
+      body: "What changed in the release?",
+      target: "generic",
+      capture: { kind: "next-prompt" },
+    });
+    const repeated = await recordPromptSeed(directory, {
+      title: "Different temporary title",
+      body: "  What changed in the release? ",
+      target: "generic",
+      capture: { kind: "next-prompt" },
+    });
+    const kept = await recordPromptSeed(directory, {
+      title: "Keep the release question",
+      body: "What changed in the release?",
+      target: "generic",
+      capture: { kind: "keep" },
+    });
+
+    assert.equal(repeated.id, nextPrompt.id);
+    assert.notEqual(kept.id, nextPrompt.id);
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records.length,
+      2,
+    );
+    assert.equal((await findExactIdeaDuplicates(directory)).length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("one captured item converts to one repeat-safe library prompt", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-conversion-"),
+  );
+  try {
+    const item = await recordPromptSeed(directory, {
+      title: "Review the API change",
+      body: "Review the API change and report compatibility risks.",
+      target: "codex",
+      capture: { kind: "next-prompt" },
+    });
+    const reviewed = {
+      title: "Review API Compatibility",
+      body: "Review this API change. Report compatibility risks with evidence.",
+      target: "codex" as const,
+    };
+
+    const converted = await savePromptSeedToLibrary(
+      directory,
+      item.id,
+      reviewed,
+    );
+    assert.equal(converted.title, reviewed.title);
+    assert.equal(converted.body, reviewed.body);
+    assert.deepEqual(converted.seed, {
+      id: item.id,
+      thoughts: item.body,
+    });
+    const repeated = await savePromptSeedToLibrary(
+      directory,
+      item.id,
+      reviewed,
+    );
+    assert.equal(repeated.id, converted.id);
+    assert.equal((await listPrompts(directory)).records.length, 1);
+    assert.equal((await listPromptVersions(directory, converted.id)).length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
