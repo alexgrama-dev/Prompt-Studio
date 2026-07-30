@@ -9,8 +9,15 @@ export function captureTextFromSources(
 
 export function captureTitleFromText(text: string): string {
   const compact = text.replace(/\s+/gu, " ").trim();
-  if (compact.length <= 80) return compact;
-  const clipped = compact.slice(0, 77).trimEnd();
+  let length = 0;
+  let clipped = "";
+  for (const character of compact) {
+    if (length < 77) clipped += character;
+    length += 1;
+    if (length > 80) break;
+  }
+  if (length <= 80) return compact;
+  clipped = clipped.trimEnd();
   return `${clipped.replace(/\s+\S*$/u, "") || clipped}…`;
 }
 

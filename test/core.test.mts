@@ -3080,6 +3080,22 @@ test("capture metadata groups typed and legacy ideas without migration", async (
       ).records.find((record) => record.id === nextPrompt.id)?.capture?.kind,
       "next-prompt",
     );
+    await writeFile(
+      join(promptSeedDirectory(directory), "malformed-capture.md"),
+      (await readFile(nextPrompt.filePath, "utf8")).replace(
+        '"kind": "next-prompt"',
+        '"kind": "later"',
+      ),
+    );
+    const withMalformedCapture = await listPrompts(
+      promptSeedDirectory(directory),
+    );
+    assert.equal(withMalformedCapture.records.length, 3);
+    assert.equal(withMalformedCapture.invalid.length, 1);
+    assert.match(
+      withMalformedCapture.invalid[0]?.error ?? "",
+      /unsupported capture kind/i,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -3095,6 +3111,9 @@ test("capture input keeps selected text before clipboard text", () => {
     "clipboard text",
   );
   assert.equal(captureTextFromSources(" ", "\n"), undefined);
+});
+
+test("capture labels and titles stay bounded and valid", () => {
   assert.equal(captureKindTitle("next-prompt"), "Next Prompt");
   assert.equal(
     captureTitleFromText(
@@ -3102,6 +3121,17 @@ test("capture input keeps selected text before clipboard text", () => {
     ),
     "Review this long answer and keep its useful explanation for the next…",
   );
+  const emojiBoundary = captureTitleFromText(
+    `${"a".repeat(76)}😀${"b".repeat(10)}`,
+  );
+  assert.equal(emojiBoundary, `${"a".repeat(76)}😀…`);
+  assert.equal(captureTitleFromText("x".repeat(80)), "x".repeat(80));
+  for (const length of [81, 1_000_000]) {
+    assert.equal(
+      captureTitleFromText("x".repeat(length)),
+      `${"x".repeat(77)}…`,
+    );
+  }
 });
 
 test("Quick Capture runs immediately without an argument form", async () => {
@@ -3180,6 +3210,82 @@ test("capture identity is repeat-safe within one item kind", async () => {
       2,
     );
     assert.equal((await findExactIdeaDuplicates(directory)).length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("concurrent identical captures create one repeat-safe item", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-race-"),
+  );
+  try {
+    const captures = await Promise.all(
+      Array.from({ length: 16 }, () =>
+        recordPromptSeed(directory, {
+          title: "Capture the release question",
+          body: "What changed in the release?",
+          target: "generic",
+          capture: { kind: "next-prompt" },
+        }),
+      ),
+    );
+
+    assert.equal(new Set(captures.map((capture) => capture.id)).size, 1);
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records.length,
+      1,
+    );
+    assert.equal(
+      (await readdir(promptSeedDirectory(directory))).some((file) =>
+        file.endsWith(".tmp"),
+      ),
+      false,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("capture identity rejects a conflicting claimed file", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "prompt-studio-capture-conflict-"),
+  );
+  try {
+    const draft = {
+      title: "Capture the release question",
+      body: "What changed in the release?",
+      target: "generic" as const,
+      capture: { kind: "next-prompt" as const },
+    };
+    const original = await recordPromptSeed(directory, draft);
+    await deletePrompt(promptSeedDirectory(directory), original.id, {
+      syncSearchIndex: false,
+    });
+    const conflicting = await createPrompt(
+      promptSeedDirectory(directory),
+      {
+        title: "Unrelated capture",
+        body: "This file belongs to another capture.",
+        target: "generic",
+        capture: { kind: "next-prompt" },
+      },
+      { syncSearchIndex: false },
+    );
+    await writeFile(
+      original.filePath,
+      await readFile(conflicting.filePath, "utf8"),
+    );
+    await rm(conflicting.filePath);
+
+    await assert.rejects(
+      recordPromptSeed(directory, draft),
+      /capture identity conflict/i,
+    );
+    assert.equal(
+      (await listPrompts(promptSeedDirectory(directory))).records[0]?.body,
+      conflicting.body,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

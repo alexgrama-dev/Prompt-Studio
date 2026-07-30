@@ -10,13 +10,17 @@ Date: 2026-07-30
   Earlier Markdown without a type remains readable as an active Idea.
 - Active Next Prompt items appear under Up Next. Active Keep and Idea items
   appear under Saved for Later. Completed items appear under Completed.
-- Paste, Complete or Restore, Enhance, Generate Title, Capture, and Organize
-  are separate actions. Paste does not complete the item.
+- Every captured-item action is visible at the first level. The menu is split
+  into Use, Improve, Add, and Maintenance; Delete Item is under Maintenance.
+  Paste and Complete remain separate, so Paste does not complete the item.
 - Quick Capture is an auxiliary command with no argument form. It immediately
   saves selected text, or clipboard text when no selection exists, as a Next
   Prompt.
 - Convert to Prompt shows editable title, prompt text, and target before it
   writes one linked library prompt.
+- Identical captures that arrive at the same time now resolve to one Markdown
+  file. A conflicting file is rejected and preserved instead of overwritten.
+- Long generated titles no longer split an emoji at the clipping boundary.
 
 ## Mac Mini Live Raycast Evidence
 
@@ -47,18 +51,20 @@ Computer Use verified these real Raycast flows:
 
 ## Automated Evidence
 
-- `pnpm check`: passed.
-  - 90 tests passed, 0 failed.
-  - TypeScript, ESLint, Raycast build, CLI build, MCP build, MCP runtime and
-    mutation checks, feedback checks, and optimization checks passed.
-- `pnpm check:store`: passed.
-  - 3 Store checks passed, 0 failed.
-  - Store lint and Store build passed.
+- `pnpm test`: 94 passed, 0 failed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
 - `openspec validate --all --strict`: 21 passed, 0 failed.
-- Focused checks cover type validation and Markdown round-trip, the legacy Idea
-  default, reviewed legacy typing, queue grouping, completion and restore,
-  type-aware duplicate identity, capture input priority, and repeat-safe prompt
-  conversion (a second conversion reuses the first prompt).
+- The capture race, identity-conflict, and Unicode-boundary tests passed in 50
+  consecutive focused runs.
+- The complete 94-test suite passed in 10 consecutive runs.
+- Coverage was 90.37% of lines and 71.10% of branches overall. The two changed
+  core files reached 91.52% and 92.86% line coverage.
+- Three CodeRabbit review passes completed with no findings. The third ran
+  successfully after the service's required rate-limit delay.
+- Focused checks also cover malformed capture kinds, Markdown round-trip, the
+  legacy Idea default, queue grouping, completion and restore, capture input
+  priority, and repeat-safe prompt conversion.
 
 ## MacBook Pro Mirror
 

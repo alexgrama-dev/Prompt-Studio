@@ -468,46 +468,25 @@ function IdeaActions({
 
   return (
     <ActionPanel>
-      <Action.Paste
-        title="Paste in Active App"
-        content={idea.body}
-        icon={Icon.ArrowRightCircle}
-      />
-      <Action
-        title={completed ? "Restore Item" : "Complete Item"}
-        icon={completed ? Icon.ArrowClockwise : Icon.CheckCircle}
-        shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
-        onAction={toggleCompleted}
-      />
-      <Action
-        title="Enhance Item"
-        icon={Icon.Wand}
-        shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
-        onAction={enhance}
-      />
-      <Action
-        title={idea.ideaTitle ? "Regenerate AI Title" : "Generate AI Title"}
-        icon={Icon.Stars}
-        shortcut={{ modifiers: ["cmd"], key: "g" }}
-        onAction={generateTitle}
-      />
-      <ActionPanel.Submenu
-        title="Capture"
-        icon={Icon.Plus}
-        shortcut={{ modifiers: ["cmd"], key: "i" }}
-      >
-        <Action.Push
-          title="Capture Item"
-          icon={Icon.Plus}
-          shortcut={Keyboard.Shortcut.Common.New}
-          target={<CreateIdeaForm directory={directory} onSaved={onReload} />}
+      <ActionPanel.Section title="Use">
+        <Action.Paste
+          title="Paste in Active App"
+          content={idea.body}
+          icon={Icon.ArrowRightCircle}
         />
         <Action
-          title="Capture Clipboard"
-          icon={Icon.Clipboard}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
-          onAction={captureClipboard}
+          title={completed ? "Restore Item" : "Complete Item"}
+          icon={completed ? Icon.ArrowClockwise : Icon.CheckCircle}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+          onAction={toggleCompleted}
         />
+        <Action.CopyToClipboard
+          title="Copy Item"
+          content={idea.body}
+          shortcut={Keyboard.Shortcut.Common.Copy}
+        />
+      </ActionPanel.Section>
+      <ActionPanel.Section title="Improve">
         <Action.Push
           title="Edit Item"
           icon={Icon.Pencil}
@@ -520,17 +499,18 @@ function IdeaActions({
             />
           }
         />
-        <Action.CopyToClipboard
-          title="Copy Item"
-          content={idea.body}
-          shortcut={Keyboard.Shortcut.Common.Copy}
+        <Action
+          title="Enhance Item"
+          icon={Icon.Wand}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+          onAction={enhance}
         />
-      </ActionPanel.Submenu>
-      <ActionPanel.Submenu
-        title="Organize"
-        icon={Icon.Folder}
-        shortcut={{ modifiers: ["cmd", "shift"], key: "z" }}
-      >
+        <Action
+          title={idea.ideaTitle ? "Regenerate AI Title" : "Generate AI Title"}
+          icon={Icon.Stars}
+          shortcut={{ modifiers: ["cmd"], key: "g" }}
+          onAction={generateTitle}
+        />
         <Action.Push
           title="Convert to Prompt"
           icon={Icon.Document}
@@ -543,6 +523,22 @@ function IdeaActions({
             />
           }
         />
+      </ActionPanel.Section>
+      <ActionPanel.Section title="Add">
+        <Action.Push
+          title="Capture Item"
+          icon={Icon.Plus}
+          shortcut={Keyboard.Shortcut.Common.New}
+          target={<CreateIdeaForm directory={directory} onSaved={onReload} />}
+        />
+        <Action
+          title="Capture Clipboard"
+          icon={Icon.Clipboard}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+          onAction={captureClipboard}
+        />
+      </ActionPanel.Section>
+      <ActionPanel.Section title="Maintenance">
         <Action.Push
           title="Review Exact Duplicates"
           icon={Icon.MagnifyingGlass}
@@ -558,7 +554,7 @@ function IdeaActions({
           shortcut={{ modifiers: ["ctrl"], key: "x" }}
           onAction={remove}
         />
-      </ActionPanel.Submenu>
+      </ActionPanel.Section>
     </ActionPanel>
   );
 }

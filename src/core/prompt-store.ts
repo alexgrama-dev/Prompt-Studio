@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  link,
   mkdir,
   readFile,
   readdir,
@@ -255,10 +256,27 @@ export async function createPrompt(
   draft: PromptDraft,
   options: PromptMutationOptions = {},
 ): Promise<PromptRecord> {
+  const record = await createPromptRecord(directory, draft, {
+    ...options,
+    id: randomUUID(),
+  });
+  if (!record) throw new Error("Could not create prompt.");
+  return record;
+}
+
+async function createPromptRecord(
+  directory: string,
+  draft: PromptDraft,
+  options: PromptMutationOptions & {
+    id: string;
+    fileName?: string;
+    exclusive?: boolean;
+  },
+): Promise<PromptRecord | undefined> {
   const now = new Date().toISOString();
   const metadata: PromptMetadata = validateMetadata({
     schemaVersion: 1,
-    id: randomUUID(),
+    id: options.id,
     title: draft.title.trim(),
     summary: (draft.summary?.trim() || summarize(draft.body)).trim(),
     target: draft.target,
@@ -290,9 +308,14 @@ export async function createPrompt(
   const body = validateBody(draft.body);
   const filePath = join(
     directory,
-    `${slug(metadata.title)}--${metadata.id}.md`,
+    options.fileName ?? `${slug(metadata.title)}--${metadata.id}.md`,
   );
-  await atomicWrite(filePath, serializePrompt(metadata, body));
+  const content = serializePrompt(metadata, body);
+  if (options.exclusive) {
+    if (!(await atomicCreate(filePath, content))) return undefined;
+  } else {
+    await atomicWrite(filePath, content);
+  }
   const record = { ...metadata, body, filePath };
   if (options.syncSearchIndex !== false) {
     await refreshActiveSearchIndex(directory, record);
@@ -373,11 +396,8 @@ export async function recordPromptSeed(
   const normalizedBody = normalizeIdeaText(draft.body);
   const kind = draft.capture?.kind ?? "idea";
   const existing = (await listPrompts(directory)).records
-    .filter(
-      (record) =>
-        record.target === draft.target &&
-        promptCaptureKind(record) === kind &&
-        normalizeIdeaText(record.body) === normalizedBody,
+    .filter((record) =>
+      promptSeedMatches(record, draft.target, kind, normalizedBody),
     )
     .sort(
       (left, right) =>
@@ -396,15 +416,29 @@ export async function recordPromptSeed(
     return existing;
   }
 
-  return createPrompt(
+  const id = captureIdentity(draft.target, kind, normalizedBody);
+  const fileName = `capture--${id}.md`;
+  const created = await createPromptRecord(
     directory,
     {
       ...draft,
       tags: ["seed"],
       searchTerms: ["idea", "prompt idea"],
     },
-    { syncSearchIndex: false },
+    { id, fileName, exclusive: true, syncSearchIndex: false },
   );
+  if (created) return created;
+  const claimed = parsePrompt(
+    await readFile(join(directory, fileName), "utf8"),
+    join(directory, fileName),
+  );
+  if (
+    claimed.id !== id ||
+    !promptSeedMatches(claimed, draft.target, kind, normalizedBody)
+  ) {
+    throw new Error("Capture identity conflict. Repair the claimed file.");
+  }
+  return claimed;
 }
 
 export async function updatePrompt(
@@ -493,6 +527,35 @@ export async function updatePromptSeed(
 
 export function normalizeIdeaText(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+}
+
+function captureIdentity(
+  target: PromptTarget,
+  kind: PromptCaptureKind,
+  normalizedBody: string,
+): string {
+  const characters = createHash("sha256")
+    .update(`${target}\0${kind}\0${normalizedBody}`)
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
+  characters[12] = "8";
+  characters[16] = "8";
+  const value = characters.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+function promptSeedMatches(
+  record: PromptRecord,
+  target: PromptTarget,
+  kind: PromptCaptureKind,
+  normalizedBody: string,
+): boolean {
+  return (
+    record.target === target &&
+    promptCaptureKind(record) === kind &&
+    normalizeIdeaText(record.body) === normalizedBody
+  );
 }
 
 export function promptCaptureKind(
@@ -1071,6 +1134,33 @@ async function atomicWrite(filePath: string, content: string): Promise<void> {
   }
 }
 
+async function atomicCreate(
+  filePath: string,
+  content: string,
+): Promise<boolean> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const temporary = join(
+    dirname(filePath),
+    `.${basename(filePath)}.${randomUUID()}.tmp`,
+  );
+  try {
+    await writeFile(temporary, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    try {
+      await link(temporary, filePath);
+      return true;
+    } catch (error) {
+      if (isExistingFile(error)) return false;
+      throw error;
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
 async function findPrompt(
   directory: string,
   id: string,
@@ -1236,4 +1326,8 @@ function errorMessage(error: unknown): string {
 
 function isMissingFile(error: unknown): boolean {
   return isObject(error) && error.code === "ENOENT";
+}
+
+function isExistingFile(error: unknown): boolean {
+  return isObject(error) && error.code === "EEXIST";
 }

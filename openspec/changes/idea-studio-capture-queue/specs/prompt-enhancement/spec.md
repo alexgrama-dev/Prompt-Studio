@@ -76,8 +76,15 @@ background, usage, or feedback work.
 
 - **WHEN** Quick Capture finds selected text or clipboard text
 - **THEN** it immediately saves one repeat-safe local Next Prompt
+- **AND** concurrent identical captures resolve to one item and one file
 - **AND** reports whether the item was saved or reused
 - **AND** performs no network request
+
+#### Scenario: Quick Capture finds a conflicting claimed file
+
+- **WHEN** the deterministic capture path contains a different valid item
+- **THEN** Quick Capture rejects the identity conflict
+- **AND** preserves the conflicting file unchanged for repair
 
 #### Scenario: Quick Capture has no text
 
@@ -106,15 +113,17 @@ SHALL return the same library prompt without creating another prompt or version.
 
 ### Requirement: Complete native queue actions
 
-Idea Studio SHALL keep Paste, Complete or Restore, Enhance, and Generate Title
-at the first action level. Capture and edit actions SHALL use one Capture
-submenu. Conversion and duplicate review SHALL use one Organize submenu.
-Deletion SHALL retain confirmation. Every changed action SHALL display a native
-or explicit conflict-free shortcut. No submenu SHALL contain another submenu.
+Idea Studio SHALL keep every item action at the first action level. It SHALL
+group actions under the flat Use, Improve, Add, and Maintenance sections.
+Deletion SHALL appear under Maintenance and retain confirmation. Every changed
+action SHALL display a native or explicit conflict-free shortcut. The item
+action panel SHALL contain no submenu.
 
 #### Scenario: Review an item action panel
 
 - **WHEN** the user opens an active or completed item action panel
 - **THEN** Paste and Complete or Restore are separate actions
+- **AND** every item action is visible without opening a submenu
+- **AND** Delete Item appears under Maintenance
 - **AND** every action displays a shortcut
 - **AND** destructive actions require confirmation

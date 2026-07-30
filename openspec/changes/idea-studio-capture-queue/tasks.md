@@ -10,15 +10,17 @@ Each implementation task is complete only after `pnpm test`,
 - [x] 1.3 Add focused public-interface checks for metadata round-trip, legacy
   defaults, queue grouping, completion and restore, type-aware identity, and
   repeat-safe conversion
+- [x] 1.4 Make concurrent identical capture atomic and reject conflicting
+  claimed files without overwriting recoverable Markdown
 
 ## 2. Raycast experience
 
 - [x] 2.1 Replace Ready to Enhance and Enhanced grouping with Up Next, Saved
   for Later, Completed, and Needs Repair while retaining enhancement evidence
 - [x] 2.2 Add reviewed manual and clipboard capture with an editable item type
-- [x] 2.3 Add separate Paste, Complete or Restore, Copy, Enhance, Convert,
-  Edit, Generate Title, Delete, and recovery actions with conflict-free
-  shortcuts
+- [x] 2.3 Expose separate Paste, Complete or Restore, Copy, Enhance, Convert,
+  Edit, Generate Title, capture, maintenance, and confirmed Delete actions in
+  four flat labeled sections with conflict-free shortcuts
 - [x] 2.4 Add an auxiliary Quick Capture no-view command with no argument form
   that immediately saves selected text, then clipboard text, and performs no
   network work
