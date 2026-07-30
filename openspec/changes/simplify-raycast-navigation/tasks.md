@@ -21,3 +21,6 @@
 - [x] 4.1 Pass focused tests, typecheck, lint, and strict OpenSpec validation on the Mac Mini
 - [x] 4.2 Pass the design detector on the changed Raycast source files
 - [ ] 4.3 Build and verify the five launcher commands and changed action panels in Raycast on the MacBook Pro
+  - 2026-07-30: the MacBook build, Store check, and development runtime passed.
+    Rendered action-panel inspection remains unverified because Screen Sharing
+    requires separate credentials and Coast capture did not return.
