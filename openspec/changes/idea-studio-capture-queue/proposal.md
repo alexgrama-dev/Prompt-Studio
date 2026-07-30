@@ -15,8 +15,8 @@ application and marking them complete.
 - Paste captured text into the frontmost application without completing it.
 - Complete and restore items through separate explicit actions.
 - Capture manual text, selected text, and clipboard text.
-- Add an auxiliary Quick Capture command that saves explicit text, selected
-  text, or clipboard text as a local Next Prompt.
+- Add an auxiliary Quick Capture command that immediately saves selected text,
+  or clipboard text when no selection exists, as a local Next Prompt.
 - Convert a captured item into one repeat-safe reusable library prompt after a
   review form.
 - Preserve existing idea Markdown without an automatic migration. Earlier

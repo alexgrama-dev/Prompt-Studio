@@ -12,8 +12,9 @@ Date: 2026-07-30
   appear under Saved for Later. Completed items appear under Completed.
 - Paste, Complete or Restore, Enhance, Generate Title, Capture, and Organize
   are separate actions. Paste does not complete the item.
-- Quick Capture is an auxiliary command. It prefers explicit text, then
-  selected text, then clipboard text, and defaults to Next Prompt.
+- Quick Capture is an auxiliary command with no argument form. It immediately
+  saves selected text, or clipboard text when no selection exists, as a Next
+  Prompt.
 - Convert to Prompt shows editable title, prompt text, and target before it
   writes one linked library prompt.
 
@@ -25,8 +26,10 @@ Computer Use verified these real Raycast flows:
 2. Capture Clipboard read the exact TextEdit sentence, defaulted its type to
    Keep, and wrote nothing until Save Item. The saved item appeared under Saved
    for Later.
-3. Quick Capture saved explicit text as a Next Prompt and the queue moved from
-   one to two Up Next items.
+3. After the rebuild, Raycast showed Quick Capture as an immediate command with
+   no text or type fields. Running it reached the repeat-safe save path and
+   showed `Next Prompt already captured`. Focused tests cover the
+   selected-text-before-clipboard order.
 4. Complete moved the selected item to Completed with a completion time.
    Restore returned the same item to Up Next.
 5. Convert to Prompt opened a review form with the exact title, body, and

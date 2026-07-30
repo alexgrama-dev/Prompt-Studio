@@ -60,11 +60,11 @@ completion time without changing its kind, body, identity, or links.
 Idea Studio SHALL retain manual capture and SHALL offer a Capture Clipboard
 action that reads current plain text only after the user selects that action.
 The capture form SHALL preserve the exact text and let the user review its kind,
-target, and title before saving. The auxiliary Quick Capture command SHALL use
-explicit argument text when present, otherwise selected text when available,
-otherwise clipboard text. It SHALL default to Next Prompt and MAY use another
-capture kind only when the user explicitly selects it. It SHALL make no network,
-provider, credential, project, background, usage, or feedback work.
+target, and title before saving. The auxiliary Quick Capture command SHALL
+declare no command arguments, so its global hotkey runs immediately. It SHALL
+use selected text when available, otherwise clipboard text, and save it as a
+Next Prompt. It SHALL make no network, provider, credential, project,
+background, usage, or feedback work.
 
 #### Scenario: Capture clipboard text with review
 
@@ -74,16 +74,16 @@ provider, credential, project, background, usage, or feedback work.
 
 #### Scenario: Run Quick Capture
 
-- **WHEN** Quick Capture receives explicit text, selected text, or clipboard text
-- **THEN** it saves one repeat-safe local item using the selected kind or Next Prompt by default
+- **WHEN** Quick Capture finds selected text or clipboard text
+- **THEN** it immediately saves one repeat-safe local Next Prompt
 - **AND** reports whether the item was saved or reused
 - **AND** performs no network request
 
 #### Scenario: Quick Capture has no text
 
-- **WHEN** explicit text, selected text, and clipboard text are all unavailable
+- **WHEN** selected text and clipboard text are both unavailable
 - **THEN** Quick Capture writes nothing
-- **AND** tells the user to enter, select, or copy text
+- **AND** tells the user to select or copy text
 
 ### Requirement: Repeat-safe direct prompt conversion
 

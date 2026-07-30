@@ -19,8 +19,9 @@ Each implementation task is complete only after `pnpm test`,
 - [x] 2.3 Add separate Paste, Complete or Restore, Copy, Enhance, Convert,
   Edit, Generate Title, Delete, and recovery actions with conflict-free
   shortcuts
-- [x] 2.4 Add an auxiliary Quick Capture no-view command that prefers explicit
-  text, then selected text, then clipboard text and performs no network work
+- [x] 2.4 Add an auxiliary Quick Capture no-view command with no argument form
+  that immediately saves selected text, then clipboard text, and performs no
+  network work
 
 ## 3. Verification
 

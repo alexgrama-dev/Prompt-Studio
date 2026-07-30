@@ -4,46 +4,31 @@ import {
   showHUD,
 } from "@raycast/api";
 import {
-  captureKindTitle,
   captureTextFromSources,
   captureTitleFromText,
 } from "./core/capture-queue";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import {
   listPrompts,
-  PROMPT_CAPTURE_KINDS,
   promptSeedDirectory,
   recordPromptSeed,
   resolvePromptDirectory,
-  type PromptCaptureKind,
 } from "./core/prompt-store";
 
-export default async function QuickCapture(props: {
-  arguments?: { text?: string; kind?: string };
-}) {
-  const explicit = props.arguments?.text;
+export default async function QuickCapture() {
   let selected: string | undefined;
   let clipboard: string | undefined;
-  if (!explicit?.trim()) {
-    try {
-      selected = await getSelectedText();
-    } catch {
-      selected = undefined;
-    }
-    if (!selected?.trim()) clipboard = await Clipboard.readText();
+  try {
+    selected = await getSelectedText();
+  } catch {
+    selected = undefined;
   }
-  const text = captureTextFromSources(explicit, selected, clipboard);
+  if (!selected?.trim()) clipboard = await Clipboard.readText();
+  const text = captureTextFromSources(selected, clipboard);
   if (!text) {
-    await showHUD("Enter, select, or copy text first");
+    await showHUD("Select or copy text first");
     return;
   }
-
-  const requestedKind = props.arguments?.kind;
-  const kind: PromptCaptureKind = PROMPT_CAPTURE_KINDS.includes(
-    requestedKind as PromptCaptureKind,
-  )
-    ? (requestedKind as PromptCaptureKind)
-    : "next-prompt";
 
   try {
     const directory = resolvePromptDirectory(
@@ -54,13 +39,11 @@ export default async function QuickCapture(props: {
       title: captureTitleFromText(text),
       body: text,
       target: "generic",
-      capture: { kind },
+      capture: { kind: "next-prompt" },
     });
     const reused = existing.records.some((item) => item.id === record.id);
     await showHUD(
-      reused
-        ? `${captureKindTitle(kind)} already captured`
-        : `${captureKindTitle(kind)} captured`,
+      reused ? "Next Prompt already captured" : "Next Prompt captured",
     );
   } catch (error) {
     await showHUD(

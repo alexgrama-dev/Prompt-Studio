@@ -1,11 +1,10 @@
 import type { PromptCaptureKind } from "./prompt-store.ts";
 
 export function captureTextFromSources(
-  explicit?: string,
   selected?: string,
   clipboard?: string,
 ): string | undefined {
-  return [explicit, selected, clipboard].find((value) => value?.trim());
+  return [selected, clipboard].find((value) => value?.trim());
 }
 
 export function captureTitleFromText(text: string): string {

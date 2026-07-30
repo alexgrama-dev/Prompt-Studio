@@ -50,12 +50,7 @@ declare namespace Arguments {
   "idea": string
 }
   /** Arguments passed to the `quick-capture` command */
-  export type QuickCapture = {
-  /** Text to capture */
-  "text": string,
-  /** Item type */
-  "kind": "next-prompt" | "keep" | "idea"
-}
+  export type QuickCapture = {}
   /** Arguments passed to the `menubar-prompts` command */
   export type MenubarPrompts = {}
 }

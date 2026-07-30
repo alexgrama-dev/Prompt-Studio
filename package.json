@@ -96,36 +96,8 @@
     {
       "name": "quick-capture",
       "title": "Quick Capture",
-      "description": "Save explicit, selected, or clipboard text to Idea Studio",
-      "mode": "no-view",
-      "arguments": [
-        {
-          "name": "text",
-          "type": "text",
-          "placeholder": "Text to capture",
-          "required": false
-        },
-        {
-          "name": "kind",
-          "type": "dropdown",
-          "placeholder": "Item type",
-          "required": false,
-          "data": [
-            {
-              "title": "Next Prompt",
-              "value": "next-prompt"
-            },
-            {
-              "title": "Keep",
-              "value": "keep"
-            },
-            {
-              "title": "Idea",
-              "value": "idea"
-            }
-          ]
-        }
-      ]
+      "description": "Save selected or clipboard text to Idea Studio immediately",
+      "mode": "no-view"
     },
     {
       "name": "menubar-prompts",

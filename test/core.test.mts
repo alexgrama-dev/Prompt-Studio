@@ -3085,20 +3085,16 @@ test("capture metadata groups typed and legacy ideas without migration", async (
   }
 });
 
-test("capture input keeps the first exact non-empty source", () => {
+test("capture input keeps selected text before clipboard text", () => {
   assert.equal(
-    captureTextFromSources("  explicit text  ", "selected", "clipboard"),
-    "  explicit text  ",
+    captureTextFromSources("  selected text  ", "clipboard"),
+    "  selected text  ",
   );
   assert.equal(
-    captureTextFromSources(" ", "selected text", "clipboard"),
-    "selected text",
-  );
-  assert.equal(
-    captureTextFromSources(undefined, undefined, "clipboard text"),
+    captureTextFromSources(" ", "clipboard text"),
     "clipboard text",
   );
-  assert.equal(captureTextFromSources("", " ", "\n"), undefined);
+  assert.equal(captureTextFromSources(" ", "\n"), undefined);
   assert.equal(captureKindTitle("next-prompt"), "Next Prompt");
   assert.equal(
     captureTitleFromText(
@@ -3106,6 +3102,21 @@ test("capture input keeps the first exact non-empty source", () => {
     ),
     "Review this long answer and keep its useful explanation for the next…",
   );
+});
+
+test("Quick Capture runs immediately without an argument form", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    commands?: Array<{
+      name?: string;
+      mode?: string;
+      arguments?: unknown[];
+    }>;
+  };
+  const quickCapture = manifest.commands?.find(
+    (command) => command.name === "quick-capture",
+  );
+  assert.equal(quickCapture?.mode, "no-view");
+  assert.equal(quickCapture?.arguments, undefined);
 });
 
 test("capture completion moves one item to Completed and restores its original queue", async () => {
