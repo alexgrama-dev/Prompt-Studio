@@ -21,7 +21,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CONTEXT7_PRIVACY_DISCLOSURE,
   context7ApiKeyForApprovedRequest,
@@ -330,6 +330,7 @@ function EnhancementWorkspace({
   const evaluationController = useRef<AbortController | undefined>(undefined);
   const formDraftLoaded = useRef(false);
   const projectDiscoveryStarted = useRef(false);
+  const projectDiscoveryLoadingRef = useRef(false);
   const effectiveProfileId = profileId;
   const effectiveResearchLevel = setupMode === "smart" ? "none" : researchLevel;
   const profile = getProviderEnhancementProfile(effectiveProfileId);
@@ -407,48 +408,64 @@ function EnhancementWorkspace({
     target,
   ]);
 
-  async function loadProjects() {
-    if (
-      projectContextState === "disabled" ||
-      !claimProjectDiscovery(projectDiscoveryStarted)
-    ) {
-      return;
-    }
-    setProjectDiscoveryLoading(true);
-    try {
-      const source = parseSshProjectSource(preferences.sshProjectRoot);
-      const [local, remote, recent] = await Promise.allSettled([
-        discoverGitProjects(preferences.projectRoots),
-        source ? discoverSshGitProjects(source) : Promise.resolve([]),
-        loadRecentProjectPaths(),
-      ]);
-      const discovered = [
-        ...(local.status === "fulfilled" ? local.value : []),
-        ...(remote.status === "fulfilled" ? remote.value : []),
-      ];
-      setProjects(discovered);
-      setRecentProjectPaths(recent.status === "fulfilled" ? recent.value : []);
-      const failures = [
-        ...(local.status === "rejected"
-          ? [
-              local.reason instanceof Error
-                ? local.reason.message
-                : String(local.reason),
-            ]
-          : []),
-        ...(remote.status === "rejected"
-          ? ["Mac Mini is unavailable over SSH. Local projects still work."]
-          : []),
-      ];
-      setProjectDiscoveryError(failures.join(" "));
-    } catch (error) {
-      setProjectDiscoveryError(
-        error instanceof Error ? error.message : String(error),
-      );
-    } finally {
-      setProjectDiscoveryLoading(false);
-    }
-  }
+  const loadProjects = useCallback(
+    async (refresh = false) => {
+      if (
+        projectContextState === "disabled" ||
+        projectDiscoveryLoadingRef.current
+      ) {
+        return;
+      }
+      if (refresh) projectDiscoveryStarted.current = false;
+      if (!claimProjectDiscovery(projectDiscoveryStarted)) return;
+
+      projectDiscoveryLoadingRef.current = true;
+      setProjectDiscoveryLoading(true);
+      try {
+        const source = parseSshProjectSource(preferences.sshProjectRoot);
+        const [local, remote, recent] = await Promise.allSettled([
+          discoverGitProjects(preferences.projectRoots),
+          source ? discoverSshGitProjects(source) : Promise.resolve([]),
+          loadRecentProjectPaths(),
+        ]);
+        const discovered = [
+          ...(local.status === "fulfilled" ? local.value : []),
+          ...(remote.status === "fulfilled" ? remote.value : []),
+        ];
+        setProjects(discovered);
+        setRecentProjectPaths(recent.status === "fulfilled" ? recent.value : []);
+        const failures = [
+          ...(local.status === "rejected"
+            ? [
+                local.reason instanceof Error
+                  ? local.reason.message
+                  : String(local.reason),
+              ]
+            : []),
+          ...(remote.status === "rejected"
+            ? ["Mac Mini is unavailable over SSH. Local projects still work."]
+            : []),
+        ];
+        setProjectDiscoveryError(failures.join(" "));
+      } catch (error) {
+        setProjectDiscoveryError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        projectDiscoveryLoadingRef.current = false;
+        setProjectDiscoveryLoading(false);
+      }
+    },
+    [
+      preferences.projectRoots,
+      preferences.sshProjectRoot,
+      projectContextState,
+    ],
+  );
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   useEffect(() => {
     void latestEnhancementEvaluation()
@@ -1223,13 +1240,12 @@ function EnhancementWorkspace({
                 onAction={() => setShowFolderPicker(true)}
               />
             ) : null}
-            {projectContextState !== "disabled" &&
-            !projectDiscoveryStarted.current ? (
+            {projectContextState !== "disabled" ? (
               <Action
-                title="Load Saved Projects"
-                icon={Icon.Download}
+                title="Refresh Projects"
+                icon={Icon.ArrowClockwise}
                 shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
-                onAction={loadProjects}
+                onAction={() => loadProjects(true)}
               />
             ) : null}
             <Action.Push
@@ -1431,8 +1447,8 @@ function EnhancementWorkspace({
               : projectDiscoveryError
                 ? `${projectDiscoveryError} You can still choose a MacBook folder.`
                 : projectDiscoveryStarted.current
-                  ? "Saved projects loaded. Project context remains read-only and is reviewed before anything is sent."
-                  : "No project scan has run. Choose Load Saved Projects or select an exact folder."
+                  ? "MacBook and Mac Mini projects are available read-only and refresh automatically when Enhance Prompt opens."
+                  : "Project access is starting automatically. You can still select an exact folder."
         }
       />
       {setupMode === "custom" ? (

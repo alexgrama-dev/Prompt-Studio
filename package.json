@@ -48,7 +48,8 @@
       "type": "textfield",
       "required": false,
       "title": "Mac Mini Project Root",
-      "description": "Optional read-only SSH source in host:path form; leave blank to disable"
+      "description": "Optional read-only SSH source in host:path form; leave blank to disable",
+      "default": "mini:~/Developer"
     },
     {
       "name": "openaiApiKey",
