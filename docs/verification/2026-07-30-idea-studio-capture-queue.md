@@ -70,8 +70,8 @@ Computer Use verified these real Raycast flows:
 
 - Alex’s MacBook Pro was confirmed as `Mac16,8`, host
   `Alexs-MacBook-Pro`.
-- The clean `cdx/prompt-studio-daily-use` mirror fast-forwarded from `4da871b`
-  to `37dce8c`.
+- The clean `cdx/prompt-studio-daily-use` mirror fast-forwarded from `964b168`
+  to `1137aea`.
 - `pnpm build` compiled and type-checked all five entry points: Prompt Studio,
   Enhance Prompt, Idea Studio, Quick Capture, and Most-Used Prompts.
 - `pnpm dev` launched the Raycast development runtime from
@@ -79,3 +79,7 @@ Computer Use verified these real Raycast flows:
   Extension Helper were both running.
 - The MacBook worktree remained clean and matched the pushed commit after the
   runtime check.
+- Direct inspection of the rebuilt menu could not run unattended: CUA Driver
+  is not installed on the MacBook, and macOS Screen Sharing requested separate
+  credentials. The prompt was cancelled without reading or changing
+  credentials.
