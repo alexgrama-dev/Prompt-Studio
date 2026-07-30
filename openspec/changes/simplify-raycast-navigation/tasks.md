@@ -22,6 +22,6 @@
 - [x] 4.2 Pass the design detector on the changed Raycast source files
 - [ ] 4.3 Build and verify the five launcher commands and changed action panels in Raycast on the MacBook Pro
   - 2026-07-30: the MacBook build, Store check, and development runtime passed.
-    Rendered action-panel inspection remains unverified because Screen Sharing
-    requires separate credentials, Coast capture did not return, and the direct
-    Codex Computer Use client is denied macOS Automation permission (`-1743`).
+    Rendered action-panel inspection remains unverified because Coast can capture
+    only the current foreground screen and cannot open Raycast. The direct Codex
+    Computer Use client is denied macOS Automation permission (`-1743`).

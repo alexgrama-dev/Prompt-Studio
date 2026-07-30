@@ -49,8 +49,10 @@ Date: 2026-07-30
 
 Computer Use reached macOS Screen Sharing, but the MacBook requires a separate
 username and password. The prompt was cancelled without reading or changing
-credentials. Coast Local is installed on the MacBook, but its immediate screen
-capture did not return.
+credentials. Coast Local now returns a valid current-screen capture from the
+MacBook, but Raycast is not foreground and Coast cannot open or control it.
+The available Coast history contains no rendered frame with the new Prompt
+Library, Capture Inbox, or Frequent Prompts Menu labels.
 
 The MacBook's bundled Codex Computer Use service was then started and reached
 directly over the existing SSH channel. Its MCP client exposed the expected
