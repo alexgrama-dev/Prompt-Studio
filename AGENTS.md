@@ -19,4 +19,11 @@ The approved behavior lives in `openspec/changes/build-prompt-studio/`.
 - `pnpm build` — Raycast production build
 - `pnpm dev` — load the extension in Raycast development mode
 
-Run build, test, lint, and typecheck on the Mac Mini mirror.
+Use the Mac Mini only for source edits and non-runtime checks: `pnpm test`,
+`pnpm typecheck`, and `pnpm lint`. Do not run `pnpm build` or `pnpm dev` on the
+Mac Mini, and do not install Prompt Studio or assign its Raycast shortcuts
+there.
+
+Sync committed code to the MacBook Pro, then run `pnpm build`, `pnpm dev`, and
+Raycast UI verification there. The MacBook Pro is the only Prompt Studio
+runtime.
