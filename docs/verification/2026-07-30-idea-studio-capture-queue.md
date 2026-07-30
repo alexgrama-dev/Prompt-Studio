@@ -59,4 +59,14 @@ Computer Use verified these real Raycast flows:
 
 ## MacBook Pro Mirror
 
-Pending committed-branch synchronization and runtime verification.
+- Alex’s MacBook Pro was confirmed as `Mac16,8`, host
+  `Alexs-MacBook-Pro`.
+- The clean `cdx/prompt-studio-daily-use` mirror fast-forwarded from `4da871b`
+  to `37dce8c`.
+- `pnpm build` compiled and type-checked all five entry points: Prompt Studio,
+  Enhance Prompt, Idea Studio, Quick Capture, and Most-Used Prompts.
+- `pnpm dev` launched the Raycast development runtime from
+  `/Users/alexgrama/Developer/prompt-studio`; its Node process and Raycast
+  Extension Helper were both running.
+- The MacBook worktree remained clean and matched the pushed commit after the
+  runtime check.

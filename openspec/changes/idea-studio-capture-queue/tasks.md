@@ -28,7 +28,7 @@ Each implementation task is complete only after `pnpm test`,
 - [x] 3.2 Pass `pnpm check:store` on the Mac mini
 - [x] 3.3 Pass `openspec validate --all --strict`
 - [x] 3.4 Verify the complete Raycast flow on the Mac mini with Computer Use
-- [ ] 3.5 Synchronize the committed branch to the MacBook Pro and verify the
+- [x] 3.5 Synchronize the committed branch to the MacBook Pro and verify the
   actual Raycast runtime there
-- [ ] 3.6 Record dated evidence in
+- [x] 3.6 Record dated evidence in
   `docs/verification/2026-07-30-idea-studio-capture-queue.md`
