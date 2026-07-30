@@ -56,20 +56,27 @@
       "type": "password",
       "required": false,
       "title": "OpenAI API Key",
-      "description": "Shared encrypted preference for Enhance Prompt and Idea Studio; read only after an explicit OpenAI action"
+      "description": "Shared encrypted preference for Enhance Prompt and Capture Inbox; read only after an explicit OpenAI action"
     }
   ],
   "commands": [
     {
       "name": "browse-prompts",
-      "title": "Prompt Studio",
-      "description": "Find, preview, copy, and save prompts",
+      "title": "Prompt Library",
+      "description": "Find, preview, paste, and manage saved prompts",
+      "icon": "prompt-library.png",
+      "keywords": [
+        "prompt studio",
+        "browse prompts",
+        "saved prompts"
+      ],
       "mode": "view"
     },
     {
       "name": "enhance-prompt",
       "title": "Enhance Prompt",
       "description": "Turn an idea into a complete prompt when enhancement is activated",
+      "icon": "enhance-prompt.png",
       "mode": "view",
       "arguments": [
         {
@@ -82,8 +89,14 @@
     },
     {
       "name": "idea-studio",
-      "title": "Idea Studio",
-      "description": "Capture, queue, paste, complete, and reuse AI work",
+      "title": "Capture Inbox",
+      "description": "Review and manage captured text, next prompts, and ideas",
+      "icon": "capture-inbox.png",
+      "keywords": [
+        "idea studio",
+        "captured items",
+        "ideas"
+      ],
       "mode": "view",
       "arguments": [
         {
@@ -97,13 +110,19 @@
     {
       "name": "quick-capture",
       "title": "Quick Capture",
-      "description": "Save selected or clipboard text to Idea Studio immediately",
+      "description": "Save selected or clipboard text to Capture Inbox immediately",
+      "icon": "quick-capture.png",
       "mode": "no-view"
     },
     {
       "name": "menubar-prompts",
-      "title": "Most-Used Prompts",
-      "description": "Copy your most-used prompts from the macOS menubar",
+      "title": "Frequent Prompts Menu",
+      "description": "Copy frequent prompts from the macOS menu bar",
+      "icon": "frequent-prompts.png",
+      "keywords": [
+        "most-used prompts",
+        "frequent prompts"
+      ],
       "mode": "menu-bar"
     }
   ],

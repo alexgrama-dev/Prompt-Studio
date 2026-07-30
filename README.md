@@ -20,9 +20,9 @@ Code, or any other application.
 
 The initial Raycast Store package exposes two commands:
 
-1. **Prompt Studio** — browse and maintain the library.
-2. **Most-Used Prompts** — copy a ready prompt from the macOS menu bar. Prompts
-   with placeholders open in Prompt Studio so you can fill them first.
+1. **Prompt Library** — browse and maintain saved prompts.
+2. **Frequent Prompts Menu** — copy a frequent prompt from the macOS menu bar.
+   Prompts with placeholders open in Prompt Library so you can fill them first.
 
 It does not require an account or API key, and the included commands make no
 Prompt Studio network requests. See [PRIVACY.md](PRIVACY.md) for the exact data
@@ -77,7 +77,7 @@ pnpm install
 pnpm dev
 ```
 
-Raycast opens the development extension. Search for **Prompt Studio** to create
+Raycast opens the development extension. Search for **Prompt Library** to create
 or browse prompts.
 
 ## Development

@@ -1216,7 +1216,7 @@ function EnhancementWorkspace({
             />
           ) : null}
           <ActionPanel.Submenu
-            title="Context"
+            title="Setup & Context"
             icon={Icon.Folder}
             shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
           >
@@ -1265,12 +1265,12 @@ function EnhancementWorkspace({
             />
           </ActionPanel.Submenu>
           <ActionPanel.Submenu
-            title="Saved Work"
+            title="History & Captures"
             icon={Icon.Bookmark}
             shortcut={{ modifiers: ["cmd", "shift"], key: "w" }}
           >
             <Action
-              title="Open in Idea Studio"
+              title="Open Capture Inbox"
               icon={Icon.LightBulb}
               shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
               onAction={() =>
@@ -1295,7 +1295,7 @@ function EnhancementWorkspace({
             />
           </ActionPanel.Submenu>
           <ActionPanel.Submenu
-            title="System"
+            title="Settings & Quality"
             icon={Icon.Gear}
             shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
           >
@@ -1370,7 +1370,7 @@ function EnhancementWorkspace({
       />
       <Form.Dropdown
         id="target"
-        title="Use With"
+        title="Target"
         value={target}
         onChange={(value) => setTarget(value as PromptTarget)}
       >
@@ -3314,7 +3314,7 @@ function EnhancementHistory({ directory }: { directory: string }) {
           actions={
             <ActionPanel>
               <Action
-                title="Paste Prompt"
+                title="Paste in Active App"
                 icon={Icon.ArrowRightCircle}
                 onAction={() => pasteEnhancedPrompt(record.body)}
               />
@@ -3451,14 +3451,14 @@ function EnhancementPreview({
       }
       actions={
         <ActionPanel>
-          <Action
-            title="Paste Prompt"
-            icon={Icon.ArrowRightCircle}
-            onAction={() => pasteEnhancedPrompt(result.enhancedPrompt)}
-          />
           <Action.CopyToClipboard
             title="Copy Prompt"
             content={result.enhancedPrompt}
+          />
+          <Action
+            title="Paste in Active App"
+            icon={Icon.ArrowRightCircle}
+            onAction={() => pasteEnhancedPrompt(result.enhancedPrompt)}
           />
           <Action
             title="Save to Prompt Library"
@@ -3587,7 +3587,7 @@ function EnhancementEditor({
       />
       <Form.Dropdown
         id="target"
-        title="Use With"
+        title="Target"
         defaultValue={run.result.target}
       >
         <Form.Dropdown.Item title="Codex" value="codex" />
@@ -3620,7 +3620,7 @@ function resultDetailsMarkdown(
     ...(seed
       ? [
           `## Original Idea\n\n${seed.thoughts}`,
-          `## Saved Idea\n\n${seed.id ? "Linked to Idea Studio." : "Not saved to Idea Studio."}`,
+          `## Saved Idea\n\n${seed.id ? "Linked to Capture Inbox." : "Not saved to Capture Inbox."}`,
         ]
       : []),
     `## Library Title\n\n${result.title}`,

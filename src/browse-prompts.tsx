@@ -406,7 +406,7 @@ export default function BrowsePrompts({
           value={filter}
           onChange={(value) => setFilter(value as LibraryFilter)}
         >
-          <List.Dropdown.Item title="Current Prompts" value="current" />
+          <List.Dropdown.Item title="Active Prompts" value="current" />
           <List.Dropdown.Item title="Favorites" value="favorites" />
           <List.Dropdown.Item title="All Prompts" value="all" />
           <List.Dropdown.Section title="Target">
@@ -518,7 +518,7 @@ export default function BrowsePrompts({
                     />
                   ) : null}
                   <Action
-                    title="Open in Idea Studio"
+                    title="Open Capture Inbox"
                     icon={Icon.LightBulb}
                     onAction={() =>
                       launchCommand({
@@ -748,7 +748,7 @@ function PromptItem({
           ) : (
             <>
               <Action
-                title="Paste Prompt"
+                title="Paste in Active App"
                 icon={Icon.ArrowRightCircle}
                 onAction={() => usePrompt(record.body, "paste")}
               />
@@ -807,7 +807,7 @@ function PromptItem({
             />
           </ActionPanel.Submenu>
           <ActionPanel.Submenu
-            title="Review"
+            title="Review & Improve"
             icon={Icon.Eye}
             shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
           >
@@ -853,7 +853,7 @@ function PromptItem({
             ) : null}
           </ActionPanel.Submenu>
           <ActionPanel.Submenu
-            title="System"
+            title="Settings & Status"
             icon={Icon.Gear}
             shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
           >
@@ -1094,7 +1094,7 @@ function PlaceholderForm({
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Paste Prompt"
+            title="Paste in Active App"
             icon={Icon.ArrowRightCircle}
             onSubmit={() => submit("paste")}
           />
@@ -1270,7 +1270,7 @@ function promptMarkdown(
   matchReason?: string,
 ): string {
   const overview = [
-    `**Use with:** ${targetTitle(record.target)}`,
+    `**Target:** ${targetTitle(record.target)}`,
     `**Updated:** ${new Date(record.updatedAt).toLocaleString()}`,
     ...(record.project
       ? [

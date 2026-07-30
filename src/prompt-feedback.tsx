@@ -115,7 +115,7 @@ export default function PromptFeedback() {
           title={error ? "Feedback Unavailable" : "No Feedback Found"}
           description={
             error ??
-            "Open a prompt in Browse Prompts and choose Record Prompt Feedback."
+            "Open a prompt in Prompt Library and choose Record Prompt Feedback."
           }
           actions={
             <ActionPanel>

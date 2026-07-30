@@ -68,8 +68,8 @@ export default function IdeaStudio(props: {
   } catch (error) {
     return (
       <Detail
-        navigationTitle="Idea Studio"
-        markdown={`# Idea Studio Cannot Open\n\n${error instanceof Error ? error.message : String(error)}`}
+        navigationTitle="Capture Inbox"
+        markdown={`# Capture Inbox Cannot Open\n\n${error instanceof Error ? error.message : String(error)}`}
         actions={
           <ActionPanel>
             <Action
@@ -170,7 +170,7 @@ function IdeaInbox({ directory }: { directory: string }) {
     };
   }, [ideas]);
   const emptyTitle = ideaError
-    ? "Idea Studio Unavailable"
+    ? "Capture Inbox Unavailable"
     : searchText.trim()
       ? "No Matching Captures"
       : "No Captured Items Yet";
@@ -198,7 +198,7 @@ function IdeaInbox({ directory }: { directory: string }) {
               {ideaError ? (
                 <>
                   <Action
-                    title="Reload Idea Studio"
+                    title="Reload Capture Inbox"
                     icon={Icon.ArrowClockwise}
                     onAction={load}
                   />
@@ -462,36 +462,38 @@ function IdeaActions({
 
   return (
     <ActionPanel>
-      <ActionPanel.Section title="Use">
-        <Action.Paste
-          title="Paste in Active App"
-          content={idea.body}
-          icon={Icon.ArrowRightCircle}
-        />
-        <Action
-          title={completed ? "Restore Item" : "Complete Item"}
-          icon={completed ? Icon.ArrowClockwise : Icon.CheckCircle}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
-          onAction={toggleCompleted}
-        />
+      <Action.Paste
+        title="Paste in Active App"
+        content={idea.body}
+        icon={Icon.ArrowRightCircle}
+      />
+      <Action
+        title={completed ? "Restore Item" : "Complete Item"}
+        icon={completed ? Icon.ArrowClockwise : Icon.CheckCircle}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
+        onAction={toggleCompleted}
+      />
+      <Action.Push
+        title="Edit Item"
+        icon={Icon.Pencil}
+        shortcut={Keyboard.Shortcut.Common.Edit}
+        target={
+          <EditIdeaForm
+            directory={directory}
+            idea={idea}
+            onSaved={onReload}
+          />
+        }
+      />
+      <ActionPanel.Submenu
+        title="More Actions…"
+        icon={Icon.Ellipsis}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
+      >
         <Action.CopyToClipboard
           title="Copy Item"
           content={idea.body}
           shortcut={Keyboard.Shortcut.Common.Copy}
-        />
-      </ActionPanel.Section>
-      <ActionPanel.Section title="Improve">
-        <Action.Push
-          title="Edit Item"
-          icon={Icon.Pencil}
-          shortcut={Keyboard.Shortcut.Common.Edit}
-          target={
-            <EditIdeaForm
-              directory={directory}
-              idea={idea}
-              onSaved={onReload}
-            />
-          }
         />
         <Action
           title="Enhance Item"
@@ -517,8 +519,6 @@ function IdeaActions({
             />
           }
         />
-      </ActionPanel.Section>
-      <ActionPanel.Section title="Add">
         <Action.Push
           title="Capture Item"
           icon={Icon.Plus}
@@ -531,8 +531,6 @@ function IdeaActions({
           shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
           onAction={captureClipboard}
         />
-      </ActionPanel.Section>
-      <ActionPanel.Section title="Maintenance">
         <Action.Push
           title="Review Exact Duplicates"
           icon={Icon.MagnifyingGlass}
@@ -541,14 +539,14 @@ function IdeaActions({
             <DuplicateReview directory={directory} onChanged={onReload} />
           }
         />
-        <Action
-          title="Delete Item"
-          icon={Icon.Trash}
-          style={Action.Style.Destructive}
-          shortcut={{ modifiers: ["ctrl"], key: "x" }}
-          onAction={remove}
-        />
-      </ActionPanel.Section>
+      </ActionPanel.Submenu>
+      <Action
+        title="Delete Item"
+        icon={Icon.Trash}
+        style={Action.Style.Destructive}
+        shortcut={{ modifiers: ["ctrl"], key: "x" }}
+        onAction={remove}
+      />
     </ActionPanel>
   );
 }
@@ -1118,7 +1116,7 @@ function InvalidIdeaItem({
               shortcut={Keyboard.Shortcut.Common.OpenWith}
             />
             <Action
-              title="Reload Idea Studio"
+              title="Reload Capture Inbox"
               icon={Icon.ArrowClockwise}
               shortcut={Keyboard.Shortcut.Common.Refresh}
               onAction={onReload}

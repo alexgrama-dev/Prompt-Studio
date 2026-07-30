@@ -27,14 +27,25 @@
   "commands": [
     {
       "name": "browse-prompts",
-      "title": "Prompt Studio",
-      "description": "Find, preview, paste, and save prompts",
+      "title": "Prompt Library",
+      "description": "Find, preview, paste, and manage saved prompts",
+      "icon": "prompt-library.png",
+      "keywords": [
+        "prompt studio",
+        "browse prompts",
+        "saved prompts"
+      ],
       "mode": "view"
     },
     {
       "name": "menubar-prompts",
-      "title": "Most-Used Prompts",
-      "description": "Copy your most-used prompts from the macOS menu bar",
+      "title": "Frequent Prompts Menu",
+      "description": "Copy frequent prompts from the macOS menu bar",
+      "icon": "frequent-prompts.png",
+      "keywords": [
+        "most-used prompts",
+        "frequent prompts"
+      ],
       "mode": "menu-bar"
     }
   ],

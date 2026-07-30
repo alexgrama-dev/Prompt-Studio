@@ -2098,6 +2098,7 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
       name?: string;
       title?: string;
       mode?: string;
+      icon?: string;
       preferences?: Array<{ name?: string }>;
     }>;
   };
@@ -2115,12 +2116,116 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
       ) ?? false,
     false,
   );
+});
+
+test("Raycast commands use job-based titles and distinct icons", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    title?: string;
+    commands?: Array<{
+      name?: string;
+      title?: string;
+      icon?: string;
+    }>;
+  };
+  const commands = manifest.commands ?? [];
+  const expected = [
+    ["browse-prompts", "Prompt Library", "prompt-library.png"],
+    ["enhance-prompt", "Enhance Prompt", "enhance-prompt.png"],
+    ["idea-studio", "Capture Inbox", "capture-inbox.png"],
+    ["quick-capture", "Quick Capture", "quick-capture.png"],
+    ["menubar-prompts", "Frequent Prompts Menu", "frequent-prompts.png"],
+  ];
+
+  assert.equal(manifest.title, "Prompt Studio");
   assert.deepEqual(
-    manifest.commands
-      ?.filter((command) => command.mode === "view")
-      .map((command) => command.title),
-    ["Prompt Studio", "Enhance Prompt", "Idea Studio"],
+    commands.map(({ name, title, icon }) => [name, title, icon]),
+    expected,
   );
+
+  const icons = commands.map(({ icon }) => icon);
+  assert.equal(new Set(icons).size, expected.length);
+  const iconDigests: string[] = [];
+  for (const icon of icons) {
+    assert.ok(icon);
+    const png = await readFile(join("assets", icon));
+    assert.deepEqual(
+      png.subarray(0, 8),
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    assert.equal(png.readUInt32BE(16), 512);
+    assert.equal(png.readUInt32BE(20), 512);
+    iconDigests.push(createHash("sha256").update(png).digest("hex"));
+  }
+  assert.equal(new Set(iconDigests).size, expected.length);
+
+  const storeManifest = JSON.parse(
+    await readFile("store/package.json", "utf8"),
+  ) as {
+    commands?: Array<{ name?: string; title?: string; icon?: string }>;
+  };
+  assert.deepEqual(
+    storeManifest.commands?.map(({ name, title, icon }) => [name, title, icon]),
+    [expected[0], expected[4]],
+  );
+});
+
+test("daily Raycast panels preserve the distilled action hierarchy", async () => {
+  const ideaSource = await readFile("src/idea-studio.tsx", "utf8");
+  const ideaActions = ideaSource.slice(
+    ideaSource.indexOf("function IdeaActions("),
+    ideaSource.indexOf("function CreateIdeaForm("),
+  );
+  const submenuStart = ideaActions.indexOf("<ActionPanel.Submenu");
+  const submenuEnd =
+    ideaActions.indexOf("</ActionPanel.Submenu>", submenuStart) +
+    "</ActionPanel.Submenu>".length;
+  assert.ok(submenuStart > 0 && submenuEnd > submenuStart);
+
+  const submenu = ideaActions.slice(submenuStart, submenuEnd);
+  const topLevel = `${ideaActions.slice(0, submenuStart)}${ideaActions.slice(submenuEnd)}`;
+  assert.equal((topLevel.match(/<Action(?=[.\s>])/g) ?? []).length, 4);
+  assert.equal((submenu.match(/<Action(?=[.\s>])/g) ?? []).length, 7);
+  assert.match(submenu, /title="More Actions…"/);
+  assert.doesNotMatch(
+    submenu.slice(submenu.indexOf(">") + 1),
+    /<ActionPanel\.Submenu/,
+  );
+
+  let priorIndex = -1;
+  for (const label of [
+    'title="Copy Item"',
+    'title="Enhance Item"',
+    "title={idea.ideaTitle",
+    'title="Convert to Prompt"',
+    'title="Capture Item"',
+    'title="Capture Clipboard"',
+    'title="Review Exact Duplicates"',
+  ]) {
+    const nextIndex = submenu.indexOf(label);
+    assert.ok(nextIndex > priorIndex, `${label} is missing or out of order`);
+    priorIndex = nextIndex;
+  }
+  assert.match(topLevel, /title=\{completed \? "Restore Item" : "Complete Item"\}/);
+  assert.match(
+    topLevel,
+    /title="Delete Item"[\s\S]*?style=\{Action\.Style\.Destructive\}/,
+  );
+  assert.match(ideaActions, /confirmAlert\(\{/);
+
+  const ideaItem = ideaSource.slice(
+    ideaSource.indexOf("function IdeaItem("),
+    ideaSource.indexOf("function IdeaActions("),
+  );
+  assert.doesNotMatch(ideaItem, /\b(?:subtitle|accessories)=/);
+
+  const enhancementSource = await readFile("src/enhance-prompt.tsx", "utf8");
+  const preview = enhancementSource.slice(
+    enhancementSource.indexOf("function EnhancementPreview("),
+    enhancementSource.indexOf("function EnhancementEditor("),
+  );
+  const copyIndex = preview.indexOf('title="Copy Prompt"');
+  const pasteIndex = preview.indexOf('title="Paste in Active App"');
+  assert.ok(copyIndex > 0 && pasteIndex > copyIndex);
 });
 
 test("OpenAI transient retries, Deep review, refusal, and cancellation remain explicit", async () => {

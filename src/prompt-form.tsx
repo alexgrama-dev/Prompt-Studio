@@ -84,7 +84,7 @@ export function PromptForm({
         defaultValue={initial.title}
         placeholder="Diagnose a failing API request"
       />
-      <Form.Dropdown id="target" title="Use With" defaultValue={initial.target}>
+      <Form.Dropdown id="target" title="Target" defaultValue={initial.target}>
         <Form.Dropdown.Item title="Generic" value="generic" />
         <Form.Dropdown.Item title="Codex" value="codex" />
         <Form.Dropdown.Item title="Claude Code" value="claude-code" />

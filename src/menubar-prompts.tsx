@@ -140,7 +140,7 @@ export default function MenubarPrompts() {
     );
     ratingInFlight.current = false;
     if (result === "failed") {
-      await showHUD("Rating Not Saved — Retry from Prompt Studio");
+      await showHUD("Rating Not Saved — Retry from Prompt Library");
       return;
     }
     setLastPaste(undefined);
@@ -153,7 +153,7 @@ export default function MenubarPrompts() {
   return (
     <MenuBarExtra
       icon={Icon.TextDocument}
-      tooltip="Most-Used Prompts"
+      tooltip="Frequent Prompts Menu"
       isLoading={records === undefined && error === undefined}
     >
       {error ? (
@@ -199,7 +199,7 @@ export default function MenubarPrompts() {
                     subtitle="Paste a library prompt to rate it here"
                   />
                   <MenuBarExtra.Item
-                    title="Browse Prompts"
+                    title="Open Prompt Library"
                     icon={Icon.TextDocument}
                     shortcut={{ modifiers: ["cmd"], key: "b" }}
                     onAction={() =>
@@ -213,7 +213,7 @@ export default function MenubarPrompts() {
               )}
             </MenuBarExtra.Section>
           ) : null}
-          <MenuBarExtra.Section title="Most Used Prompts">
+          <MenuBarExtra.Section title="Frequent Prompts">
             {(records ?? []).map((record) => (
               <MenuBarExtra.Item
                 key={record.id}
