@@ -301,17 +301,11 @@ function IdeaItem({
       id={idea.id}
       icon={captureIcon(kind, completed)}
       title={idea.title}
-      subtitle={oneLine(idea.body)}
       keywords={[
         idea.body,
         idea.target,
         captureKindTitle(kind),
         ...idea.aliases,
-      ]}
-      accessories={[
-        { tag: captureKindTitle(kind) },
-        { text: targetTitle(idea.target) },
-        ...(count && !completed ? [{ text: `${count} enhanced` }] : []),
       ]}
       detail={
         <List.Item.Detail
@@ -1182,11 +1176,6 @@ function captureIcon(kind: PromptCaptureKind, completed: boolean) {
     return { source: Icon.Bookmark, tintColor: Color.Orange };
   }
   return { source: Icon.LightBulb, tintColor: Color.Yellow };
-}
-
-function oneLine(value: string): string {
-  const compact = value.replace(/\s+/gu, " ").trim();
-  return compact.length <= 120 ? compact : `${compact.slice(0, 117)}…`;
 }
 
 function validateManualIdeaTitle(value: string): string {
