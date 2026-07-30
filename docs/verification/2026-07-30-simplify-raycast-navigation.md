@@ -26,11 +26,12 @@ Date: 2026-07-30
   action hierarchy, compact rows, destructive Delete, and Copy/Paste order.
 - Two independent adversarial reviews found one stale Target label and one
   cross-change OpenSpec conflict. Both were corrected before commit.
-- CodeRabbit CLI 0.7.1 passed all nine doctor checks, but repeated light and
-  normal review attempts were rejected by the service rate limit because the
-  authenticated GitHub organization has no assigned seat. No CodeRabbit
-  findings were returned or claimed. Waiting through the reported refill did
-  not unlock a review; the service reset the wait under the same seat policy.
+- CodeRabbit CLI 0.7.1 uses an assigned Pro seat and passed all nine doctor
+  checks. Five review passes covered the complete change and then the focused
+  fixes. Nine valid findings were corrected; six findings were rejected because
+  they contradicted the approved five-action hierarchy or OpenSpec file format.
+  The fifth pass found one final test-boundary weakness, which was corrected
+  before the complete local verification suite passed again.
 
 ## MacBook Pro Evidence
 
@@ -40,7 +41,7 @@ Date: 2026-07-30
 - `pnpm check:store` passed three Store-core tests, Raycast manifest and icon
   validation, ESLint, Prettier, and the two-entry Store build.
 - `pnpm dev` built the extension successfully and left the Raycast development
-  runtime active from `/Users/alexgrama/Developer/prompt-studio`.
+  runtime active from the MacBook Prompt Studio checkout.
 - The generated `raycast-env.d.ts` output was copied back into source control;
   its Mac Mini and MacBook SHA-256 checksums match.
 - The MacBook checkout is clean and matches `origin/main`.

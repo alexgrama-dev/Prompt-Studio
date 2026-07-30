@@ -36,9 +36,11 @@ Enhancement History SHALL continue to offer both actions.
 
 Each valid Capture Inbox item SHALL show exactly five first-level actions:
 Paste in Active App, Complete Item or Restore Item, Edit Item, More Actions,
-and Delete Item. More Actions SHALL contain Copy Item, Enhance Item, Generate
-or Regenerate AI Title, Convert to Prompt, Capture Item, Capture Clipboard, and
-Review Exact Duplicates. More Actions SHALL NOT contain another submenu.
+and Delete Item. More Actions SHALL contain Copy Item, Enhance Item, exactly one
+AI-title action, Convert to Prompt, Capture Item, Capture Clipboard, and Review
+Exact Duplicates. The AI-title action SHALL be Generate AI Title when no AI title
+exists and Regenerate AI Title when one exists. More Actions SHALL NOT contain
+another submenu.
 This requirement supersedes the older Complete Idea Studio actions and Complete
 native queue actions requirements.
 

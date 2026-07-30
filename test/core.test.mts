@@ -2206,11 +2206,33 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
     priorIndex = nextIndex;
   }
   assert.match(topLevel, /title=\{completed \? "Restore Item" : "Complete Item"\}/);
-  assert.match(
-    topLevel,
-    /title="Delete Item"[\s\S]*?style=\{Action\.Style\.Destructive\}/,
+  const deleteTitleIndex = topLevel.indexOf('title="Delete Item"');
+  const deleteAction = topLevel.slice(
+    topLevel.lastIndexOf("<Action", deleteTitleIndex),
+    topLevel.indexOf("/>", deleteTitleIndex) + 2,
   );
-  assert.match(ideaActions, /confirmAlert\(\{/);
+  assert.match(deleteAction, /title="Delete Item"/);
+  assert.match(deleteAction, /style=\{Action\.Style\.Destructive\}/);
+  assert.match(deleteAction, /onAction=\{remove\}/);
+  const removeHandlerStart = ideaActions.indexOf("async function remove()");
+  const removeHandlerEnd =
+    ideaActions.indexOf("\n  }\n\n  return (", removeHandlerStart) +
+    "\n  }".length;
+  assert.ok(removeHandlerStart >= 0 && removeHandlerEnd > removeHandlerStart);
+  const removeHandler = ideaActions.slice(
+    removeHandlerStart,
+    removeHandlerEnd,
+  );
+  const confirmationIndex = removeHandler.indexOf(
+    "const confirmed = await confirmAlert({",
+  );
+  const cancellationGuardIndex = removeHandler.indexOf(
+    "if (!confirmed) return;",
+  );
+  const deletionIndex = removeHandler.indexOf("await deletePrompt(");
+  assert.ok(confirmationIndex >= 0);
+  assert.ok(cancellationGuardIndex > confirmationIndex);
+  assert.ok(deletionIndex > cancellationGuardIndex);
 
   const ideaItem = ideaSource.slice(
     ideaSource.indexOf("function IdeaItem("),
@@ -2226,6 +2248,16 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
   const copyIndex = preview.indexOf('title="Copy Prompt"');
   const pasteIndex = preview.indexOf('title="Paste in Active App"');
   assert.ok(copyIndex > 0 && pasteIndex > copyIndex);
+
+  const menuSource = await readFile("src/menubar-prompts.tsx", "utf8");
+  assert.match(
+    menuSource,
+    /Rating Not Saved — Retry from Frequent Prompts Menu/,
+  );
+  assert.doesNotMatch(
+    menuSource,
+    /Rating Not Saved — Retry from Prompt Library/,
+  );
 });
 
 test("OpenAI transient retries, Deep review, refusal, and cancellation remain explicit", async () => {

@@ -140,7 +140,7 @@ export default function MenubarPrompts() {
     );
     ratingInFlight.current = false;
     if (result === "failed") {
-      await showHUD("Rating Not Saved — Retry from Prompt Library");
+      await showHUD("Rating Not Saved — Retry from Frequent Prompts Menu");
       return;
     }
     setLastPaste(undefined);

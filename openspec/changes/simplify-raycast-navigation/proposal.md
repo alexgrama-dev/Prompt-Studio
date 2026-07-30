@@ -49,6 +49,11 @@ where they conflict:
 - `fast-daily-reuse` — Task-based enhancement actions and Complete action
   shortcuts
 
-Their storage, safety, shortcut, and confirmation guarantees remain in force.
-Only command names, action grouping, submenu labels, and the new-enhancement
-Copy/Paste priority change.
+Their storage, safety, and confirmation guarantees remain in force. Shortcuts
+tied to the superseded action layouts are code-defined Raycast action shortcuts
+and are replaced by the new hierarchy. They are not persisted user bindings, so
+no shortcut migration is required. Launcher command identities remain unchanged,
+so user-assigned command shortcuts remain intact. This change affects command
+names, icons, action grouping and labels, row presentation, prompt-use labels,
+and new-enhancement Copy/Paste priority. It does not change storage, networking,
+prompt formats, feature state, or migrations.
