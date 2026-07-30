@@ -16,7 +16,7 @@ type ExtensionPreferences = {
   "projectRoots": string,
   /** Mac Mini Project Root - Optional read-only SSH source in host:path form; leave blank to disable */
   "sshProjectRoot": string,
-  /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Idea Studio; read only after an explicit OpenAI action */
+  /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Capture Inbox; read only after an explicit OpenAI action */
   "openaiApiKey"?: string
 }
 
