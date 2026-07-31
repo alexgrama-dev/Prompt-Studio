@@ -30,6 +30,7 @@ const sourceFiles = [
   "src/core/browse-state.ts",
   "src/core/last-library-paste.ts",
   "src/core/launch-context.ts",
+  "src/core/library-intelligence.ts",
   "src/core/placeholder-values.ts",
   "src/core/placeholders.ts",
   "src/core/project-context.ts",

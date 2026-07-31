@@ -67,6 +67,13 @@ import {
 } from "./provider-profiles.ts";
 import { listMissedSearches, tallyMissedSearches } from "./missed-searches.ts";
 import { listRuns, runLogPath, tallyRuns } from "./run-log.ts";
+import { ENHANCEMENT_COMPILER_VERSION } from "./enhancement.ts";
+import {
+  buildPromptLineage,
+  clusterPrompts,
+  detectPromptDrift,
+  suggestPromptsForProject,
+} from "./library-intelligence.ts";
 import { DEFAULT_OVERLAP_THRESHOLD, findPromptOverlaps } from "./overlap.ts";
 import { fusePromptSearch, rebuildQmd, searchQmd } from "./qmd-search.ts";
 import {
@@ -208,6 +215,8 @@ const COMMAND_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   stats: new Set(),
   overlap: new Set(["threshold"]),
   runs: new Set(["limit"]),
+  library: new Set(),
+  suggest: new Set(),
   create: new Set([
     "yes",
     "input",
@@ -382,6 +391,10 @@ async function runEnabledCommand(
       return overlapCommand(context);
     case "runs":
       return runsCommand(context);
+    case "library":
+      return libraryCommand(context);
+    case "suggest":
+      return suggestCommand(context);
     case "enhance":
       return enhanceCommand(context);
     default:
@@ -562,6 +575,57 @@ async function copyCommand(context: CommandContext): Promise<CommandOutcome> {
     ]
       .filter(Boolean)
       .join("\n"),
+  };
+}
+
+async function libraryCommand(
+  context: CommandContext,
+): Promise<CommandOutcome> {
+  assertPositionals(context.parsed, 0, 0);
+  const library = await listPrompts(context.directory);
+  const clusters = clusterPrompts(library.records);
+  const lineage = buildPromptLineage(library.records);
+  const drifted = library.records
+    .map((record) =>
+      detectPromptDrift(record, {
+        compilerVersion: ENHANCEMENT_COMPILER_VERSION,
+      }),
+    )
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const human = [
+    `Clusters: ${clusters.length} · Lineages: ${lineage.length} · Drifted: ${drifted.length}`,
+    ...clusters.map(
+      (cluster) => `  cluster ${cluster.label}: ${cluster.titles.join(", ")}`,
+    ),
+    ...lineage.map(
+      (chain) =>
+        `  lineage ${chain.historyId}: ${chain.entries.map((entry) => entry.title).join(" -> ")}`,
+    ),
+    ...drifted.map((entry) => `  drift ${entry.title}: ${entry.headline}`),
+  ].join("\n");
+  return { data: { clusters, lineage, drifted }, human };
+}
+
+async function suggestCommand(
+  context: CommandContext,
+): Promise<CommandOutcome> {
+  assertPositionals(context.parsed, 1, 1);
+  const projectPath = context.parsed.positionals[0]!;
+  const library = await listPrompts(context.directory);
+  const { usage } = loadPromptUsageEvidence(context.searchIndexPath);
+  const suggestions = suggestPromptsForProject(library.records, projectPath, {
+    usage: new Map(
+      [...usage.entries()].map(([id, entry]) => [id, entry.useCount]),
+    ),
+  });
+  return {
+    data: { projectPath, suggestions },
+    human:
+      suggestions.length > 0
+        ? suggestions
+            .map((item) => `${item.title} — ${item.reason}`)
+            .join("\n")
+        : `No prompt is bound to or names ${projectPath}.`,
   };
 }
 
@@ -2411,6 +2475,8 @@ Commands:
   stats                        Show use counts, feedback tallies, zero-use prompts, and missed searches
   overlap                      Report near-duplicate active prompts; --threshold 0.2-0.95
   runs [ok|failed|cancelled]   Show enhancement run history, failures, and recorded spend; --limit N
+  library                      Show topic clusters, prompt lineages, and prompts whose project drifted
+  suggest <project-path>       Rank prompts for the repository at that path
   enhance                      Generate a reviewed history result; requires --yes
   enhance save <history-id>    Save reviewed history with --digest and --yes
 

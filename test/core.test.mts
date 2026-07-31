@@ -102,6 +102,12 @@ import {
 } from "../src/core/revision.ts";
 import { findDuplicateCandidates } from "../src/core/overlap.ts";
 import {
+  buildPromptLineage,
+  clusterPrompts,
+  detectPromptDrift,
+  suggestPromptsForProject,
+} from "../src/core/library-intelligence.ts";
+import {
   listRuns,
   recordRun,
   runLogPath,
@@ -8894,4 +8900,126 @@ test("a near-duplicate is caught before the save, not in a later audit", () => {
       ),
     /between 0.2 and 0.95/,
   );
+});
+
+
+function libraryRecord(over: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    id: "p1",
+    title: "Prompt",
+    summary: "Summary",
+    target: "generic",
+    tags: [],
+    aliases: [],
+    searchTerms: [],
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
+    favorite: false,
+    body: "Body",
+    filePath: "/p1.md",
+    ...over,
+  } as never;
+}
+
+test("drift is reported only when the bound repository actually moved", () => {
+  const bound = libraryRecord({
+    id: "bound",
+    project: { name: "amp", path: "/repo/amp", commit: "aaa" },
+    projectFiles: ["src/a.ts"],
+    enhancement: { compilerVersion: "compiler/1.0.0" },
+  });
+
+  // Same commit, nothing changed: no drift, so the badge stays meaningful.
+  assert.equal(detectPromptDrift(bound, { commit: "aaa" }), undefined);
+
+  const moved = detectPromptDrift(bound, { commit: "bbb" });
+  assert.deepEqual(moved?.reasons, ["commit-moved"]);
+
+  const missing = detectPromptDrift(bound, {
+    commit: "aaa",
+    missingFiles: ["src/a.ts"],
+  });
+  // A missing cited file outranks a moved commit in the headline.
+  assert.match(String(missing?.headline), /no longer exist/);
+
+  const superseded = detectPromptDrift(bound, {
+    commit: "aaa",
+    compilerVersion: "compiler/2.0.0",
+  });
+  assert.deepEqual(superseded?.reasons, ["compiler-superseded"]);
+
+  // Unbound and archived prompts cannot drift against a repository.
+  assert.equal(detectPromptDrift(libraryRecord(), { commit: "bbb" }), undefined);
+  assert.equal(
+    detectPromptDrift(
+      libraryRecord({
+        project: { name: "amp", path: "/repo/amp", commit: "aaa" },
+        archivedAt: "2026-07-02T00:00:00.000Z",
+      }),
+      { commit: "bbb" },
+    ),
+    undefined,
+  );
+});
+
+test("lineage links prompts from one draft and clustering groups by vocabulary", () => {
+  const lineage = buildPromptLineage([
+    libraryRecord({
+      id: "a",
+      updatedAt: "2026-07-03T00:00:00.000Z",
+      enhancementHistory: { id: "h1", digest: "d" },
+    }),
+    libraryRecord({
+      id: "b",
+      updatedAt: "2026-07-02T00:00:00.000Z",
+      enhancementHistory: { id: "h1", digest: "d" },
+    }),
+    // A lone prompt is not a lineage.
+    libraryRecord({ id: "c", enhancementHistory: { id: "h2", digest: "d" } }),
+    libraryRecord({ id: "d" }),
+  ]);
+  assert.equal(lineage.length, 1);
+  assert.deepEqual(
+    lineage[0]?.entries.map((entry) => entry.id),
+    ["b", "a"],
+  );
+
+  const clusters = clusterPrompts([
+    libraryRecord({ id: "t1", title: "Adversarial test sweep", tags: ["testing"] }),
+    libraryRecord({ id: "t2", title: "Adversarial test hardening", tags: ["testing"] }),
+    libraryRecord({ id: "r1", title: "Write release notes", tags: ["release"] }),
+  ]);
+  assert.equal(clusters.length, 1);
+  assert.deepEqual(clusters[0]?.ids, ["t1", "t2"]);
+  assert.equal(clusters[0]?.label, "testing");
+  assert.throws(() => clusterPrompts([], 0.05), /between 0.1 and 0.95/);
+});
+
+test("repository suggestions rank a real binding above a name match", () => {
+  const records = [
+    libraryRecord({ id: "bound", title: "Bound", project: { name: "amp", path: "/repo/amp" } }),
+    libraryRecord({ id: "named", title: "Named", tags: ["amp"] }),
+    libraryRecord({ id: "other", title: "Other", tags: ["unrelated"] }),
+    libraryRecord({
+      id: "archived",
+      title: "Archived",
+      project: { name: "amp", path: "/repo/amp" },
+      archivedAt: "2026-07-02T00:00:00.000Z",
+    }),
+  ];
+  // A trailing slash must not defeat the binding match.
+  const ranked = suggestPromptsForProject(records, "/repo/amp/");
+  assert.deepEqual(
+    ranked.map((item) => item.id),
+    ["bound", "named"],
+  );
+  assert.match(String(ranked[0]?.reason), /Bound to this repository/);
+
+  // Use count orders equal evidence, it never outranks a binding.
+  const withUsage = suggestPromptsForProject(records, "/repo/amp", {
+    usage: new Map([["named", 99]]),
+  });
+  assert.equal(withUsage[0]?.id, "bound");
+  assert.deepEqual(suggestPromptsForProject(records, "   "), []);
 });

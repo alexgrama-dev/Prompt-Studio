@@ -43,6 +43,24 @@ import {
 } from "./core/features";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { currentProjectCommit } from "./core/project-context";
+import { detectPromptDrift } from "./core/library-intelligence";
+
+/** Archived state, plus a warning when the bound repository has moved on. */
+function promptAccessories(
+  record: PromptRecord,
+  commit: string | undefined,
+): List.Item.Accessory[] {
+  const accessories: List.Item.Accessory[] = [];
+  if (record.archivedAt) accessories.push({ tag: "Archived" });
+  const drift = detectPromptDrift(record, commit ? { commit } : {});
+  if (drift) {
+    accessories.push({
+      icon: { source: Icon.Warning, tintColor: Color.Orange },
+      tooltip: drift.headline,
+    });
+  }
+  return accessories;
+}
 import {
   fusePromptSearch,
   prepareQmdDiscovery,
@@ -723,7 +741,7 @@ function PromptItem({
       }}
       title={record.title}
       keywords={keywords}
-      accessories={record.archivedAt ? [{ tag: "Archived" }] : []}
+      accessories={promptAccessories(record, currentProjectCommit)}
       detail={
         <PromptDetail
           record={record}
