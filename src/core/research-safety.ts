@@ -1,4 +1,8 @@
 import type { EnhancementInputSource } from "./enhancement.ts";
+import {
+  RESEARCH_SOURCE_POLICY,
+  type ResearchRoute,
+} from "./research-router.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
 export function safeResearchSourceUrl(value: unknown): string | undefined {
@@ -65,6 +69,15 @@ export function truncateUtf8(value: string, maximumBytes: number): string {
   return new TextDecoder().decode(encoded.slice(0, maximumBytes)).trimEnd();
 }
 
+/** Lower is more authoritative. Untagged sources sort last but keep their order. */
+function researchSourcePriority(route: ResearchRoute | undefined): number {
+  if (!route) return Number.MAX_SAFE_INTEGER;
+  return (
+    RESEARCH_SOURCE_POLICY.find((policy) => policy.route === route)?.priority ??
+    Number.MAX_SAFE_INTEGER
+  );
+}
+
 export function mergeReviewedSources(
   existing: EnhancementInputSource[] | undefined,
   incoming: EnhancementInputSource[],
@@ -74,7 +87,18 @@ export function mergeReviewedSources(
   const seenUrls = new Set<string>();
   let totalBytes = 0;
 
-  for (const source of [...(existing ?? []), ...incoming]) {
+  // Fill the shared 30 KB budget by source authority, not arrival order, so a
+  // version-matched official document is never dropped for a community page.
+  const ordered = [...(existing ?? []), ...incoming]
+    .map((source, index) => ({ source, index }))
+    .sort(
+      (left, right) =>
+        researchSourcePriority(left.source.route) -
+          researchSourcePriority(right.source.route) || left.index - right.index,
+    )
+    .map(({ source }) => source);
+
+  for (const source of ordered) {
     const sourceBytes = encoder.encode(source.content).length;
     if (
       seenUrls.has(source.url) ||

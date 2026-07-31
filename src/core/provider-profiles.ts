@@ -28,6 +28,33 @@ export function enhancementProfileIsAvailable(
   return true;
 }
 
+export const FALLBACK_ENHANCEMENT_PROFILE_ID: SelectableEnhancementProfileId =
+  "openai-standard-v1";
+
+/**
+ * Resolves the Default Model preference. An unknown value, or a provider whose
+ * activation is still Disabled, falls back to OpenAI Standard so the form never
+ * opens on a profile the user cannot run.
+ */
+export function resolveDefaultEnhancementProfileId(
+  preference: string | undefined,
+  states: { anthropic: FeatureState; google: FeatureState },
+): SelectableEnhancementProfileId {
+  const requested = preference?.trim();
+  if (
+    !requested ||
+    !(SELECTABLE_ENHANCEMENT_PROFILE_IDS as readonly string[]).includes(
+      requested,
+    )
+  ) {
+    return FALLBACK_ENHANCEMENT_PROFILE_ID;
+  }
+  const id = requested as SelectableEnhancementProfileId;
+  return enhancementProfileIsAvailable(id, states)
+    ? id
+    : FALLBACK_ENHANCEMENT_PROFILE_ID;
+}
+
 const SONNET_5_STANDARD_PRICING_START = Date.parse("2026-09-01T00:00:00.000Z");
 
 export function getProviderEnhancementProfile(

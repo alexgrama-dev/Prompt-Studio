@@ -8,6 +8,12 @@ import type {
   PromptTarget,
   PromptTaxonomy,
 } from "./prompt-store.ts";
+import type { ResearchRoute } from "./research-router.ts";
+import {
+  revisionInput,
+  REVISION_INSTRUCTIONS,
+  type RevisionContext,
+} from "./revision.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
 export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.2.0";
@@ -130,6 +136,8 @@ export interface EnhancementInputSource {
   retrievedAt: string;
   supports: string;
   content: string;
+  /** Which research source produced this; drives authority ordering when the byte budget is tight. */
+  route?: ResearchRoute;
 }
 
 export interface EnhancementRequest {
@@ -143,6 +151,10 @@ export interface EnhancementRequest {
   allowedProjectFiles?: string[];
   sources?: EnhancementInputSource[];
   compilerPolicy?: EnhancementCompilerPolicy;
+  /** Run the independent reviewer pass even on a single-pass profile. */
+  selfReview?: boolean;
+  /** Set on a follow-up run that revises an already-compiled result. */
+  revision?: RevisionContext;
 }
 
 export interface EnhancementSource {
@@ -264,19 +276,19 @@ export const ENHANCEMENT_RESULT_SCHEMA = {
     },
     tags: {
       type: "array",
-      minItems: 5,
+      minItems: 3,
       maxItems: 8,
       items: { type: "string", minLength: 1, maxLength: 60 },
     },
     aliases: {
       type: "array",
-      minItems: 3,
+      minItems: 1,
       maxItems: 16,
       items: { type: "string", minLength: 1, maxLength: 120 },
     },
     searchTerms: {
       type: "array",
-      minItems: 20,
+      minItems: 5,
       maxItems: 50,
       items: { type: "string", minLength: 1, maxLength: 160 },
     },
@@ -341,11 +353,34 @@ export const ENHANCEMENT_RESULT_SCHEMA = {
 } as const;
 
 export function enhancementResultSchemaForProvider(): Record<string, unknown> {
-  return stripUnsupportedStringBounds(ENHANCEMENT_RESULT_SCHEMA) as Record<
+  return stripUnsupportedSchemaBounds(ENHANCEMENT_RESULT_SCHEMA) as Record<
     string,
     unknown
   >;
 }
+
+
+export const COMPILER_WORKED_EXAMPLES = `
+Worked examples. Match this level of compression, not this exact wording.
+
+Example 1 — a small task stays small.
+Rough thoughts: "make the readme setup section clearer, people keep asking how to run it locally"
+Good enhancedPrompt: "Rewrite the Setup section of README.md so a new contributor can run the project locally without asking follow-up questions. Cover: prerequisites with versions, the install command, the run command, and how to confirm it worked. Keep the existing heading structure. Do not document commands you have not found in the repository."
+Why: no invented commands, no ceremonial role, no sections the task does not need.
+Bad: "You are an expert technical writer. Your mission is to craft world-class documentation... Step 1: Analyze. Step 2: Plan. Step 3: Write..." — added a role, a universal workflow, and length the task never called for.
+
+Example 2 — an explicit prohibition is restated at full strength.
+Rough thoughts: "fix the flaky checkout test but do NOT touch the payment code, and I want proof it was actually the cause not just a guess"
+Good enhancedPrompt: "Diagnose and fix the flaky checkout test. Establish the cause with evidence — a reproduction, a failing-then-passing run, or instrumented output — before changing anything; a plausible explanation is not sufficient. Do not modify payment code. If the cause turns out to be in payment code, stop and report it instead of changing it. Deliver: the fix, the evidence that identifies the cause, and a regression test."
+Why: "proof" stayed proof, the prohibition kept an explicit stop path, and the deliverable is named.
+Bad: "...investigate the likely cause and avoid payment code where possible" — softened proof to likelihood and turned a prohibition into a preference.
+
+Example 3 — an underspecified task asks instead of inventing.
+Rough thoughts: "add caching"
+Good enhancedPrompt: "Add caching to this project. Before implementing, state which of these you need from the requester, because the answer changes the design: (1) what is being cached and how often it changes, (2) acceptable staleness, (3) whether the cache must survive a restart or be shared across processes. If the repository already answers any of these, cite where. Implement the simplest option that satisfies the answers."
+Why: it surfaces the blocking questions rather than guessing a Redis layer nobody asked for.
+Bad: "Implement a Redis-backed cache with a 5-minute TTL and cache invalidation on write..." — invented a dependency, a number, and a strategy from a two-word request.
+`.trim();
 
 export const BASE_COMPILER_INSTRUCTIONS = `
 You are Prompt Studio's prompt compiler. Convert rough task thoughts into one
@@ -413,7 +448,7 @@ const TARGET_REPOSITORY_INSTRUCTIONS: Readonly<Record<PromptTarget, string>> = {
   "claude-code": "applicable CLAUDE.md and repository instructions",
 };
 
-const REVIEWER_INSTRUCTIONS = `
+export const REVIEWER_INSTRUCTIONS = `
 You are the independent second pass for Prompt Studio. Review the candidate
 against the original rough thoughts and the compiler contract. Return a corrected
 strict structured result.
@@ -445,12 +480,28 @@ export function isOpenAIEnhancementProfileId(
 }
 
 export function enhancementCompilerInstructions(
-  request: Pick<EnhancementRequest, "target" | "compilerPolicy">,
+  request: Pick<EnhancementRequest, "target" | "compilerPolicy"> &
+    Partial<Pick<EnhancementRequest, "roughThoughts" | "sources" | "revision">>,
 ): string {
   const instructions = request.compilerPolicy
     ? validateEnhancementCompilerPolicy(request.compilerPolicy).instructions
     : BASE_COMPILER_INSTRUCTIONS;
-  return `${instructions}\n\nTarget adaptation:\n${TARGET_INSTRUCTIONS[request.target]}`;
+  const sections = [instructions, COMPILER_WORKED_EXAMPLES];
+  if (request.revision) sections.push(REVISION_INSTRUCTIONS);
+  // Only stated when the caller supplied the task, so metadata volume can match
+  // task size instead of always demanding the complex-tier minimum.
+  if (typeof request.roughThoughts === "string") {
+    const floors = metadataFloors(request as EnhancementRequest);
+    sections.push(
+      [
+        "Metadata volume:",
+        `This task is ${floors.tier}. Produce at least ${floors.tags} tags, ${floors.aliases} aliases, and ${floors.searchTerms} search terms.`,
+        "Do not pad beyond what the task genuinely supports. More terms are allowed only when they are distinct and useful for retrieval.",
+      ].join("\n"),
+    );
+  }
+  sections.push(`Target adaptation:\n${TARGET_INSTRUCTIONS[request.target]}`);
+  return sections.join("\n\n");
 }
 
 export function defaultEnhancementCompilerPolicy(): EnhancementCompilerPolicy {
@@ -588,6 +639,15 @@ export function validateEnhancementRequest(
   if (request.researchLevel === "none" && (request.sources?.length ?? 0) > 0) {
     throw new Error("External sources require Automatic or Deep research.");
   }
+  if (request.revision) {
+    boundedString(
+      request.revision.instruction,
+      "revision.instruction",
+      1,
+      2_000,
+    );
+    assertNoLikelySecret(request.revision.instruction);
+  }
   const projectContext = request.projectContext?.trim();
   if (
     request.project &&
@@ -643,12 +703,19 @@ export function validateEnhancementResult(
     );
   }
 
-  const tags = normalizedTerms(value.tags, "tags", 5, 8, 60);
-  const aliases = normalizedTerms(value.aliases, "aliases", 3, 16, 120);
+  const floors = metadataFloors(request);
+  const tags = normalizedTerms(value.tags, "tags", floors.tags, 8, 60);
+  const aliases = normalizedTerms(
+    value.aliases,
+    "aliases",
+    floors.aliases,
+    16,
+    120,
+  );
   const searchTerms = normalizedTerms(
     value.searchTerms,
     "searchTerms",
-    20,
+    floors.searchTerms,
     50,
     160,
   );
@@ -737,7 +804,7 @@ export async function enhanceWithOpenAI(
   );
   passes.push(first);
 
-  if (profile.passes === 2) {
+  if (profile.passes === 2 || request.selfReview) {
     passes.push(
       await runOpenAIPass(
         request,
@@ -817,7 +884,7 @@ export function estimatedMaximumCostForProfileUsd(
     (approximateInputTokens * profile.pricing.input +
       profile.maxOutputTokens * profile.pricing.output) /
     1_000_000;
-  if (profile.passes === 1) return roundCost(first);
+  if (profile.passes === 1 && !request.selfReview) return roundCost(first);
   const reviewInputTokens = approximateInputTokens + profile.maxOutputTokens;
   const second =
     (reviewInputTokens * profile.pricing.input +
@@ -1018,6 +1085,9 @@ function parseOpenAIResponse(value: unknown): {
 }
 
 function enhancementInput(request: EnhancementRequest): string {
+  if (request.revision) {
+    return revisionInput(request, request.revision);
+  }
   return JSON.stringify(
     {
       task: "Compile these rough thoughts into a ready-to-use prompt.",
@@ -1035,7 +1105,7 @@ function enhancementInput(request: EnhancementRequest): string {
   );
 }
 
-function reviewerInput(
+export function reviewerInput(
   request: EnhancementRequest,
   candidate: EnhancementResult,
 ): string {
@@ -1170,6 +1240,7 @@ function validateInputSources(
     return {
       title: boundedString(source.title, `sources[${index}].title`, 1, 300),
       url,
+      ...(source.route ? { route: source.route } : {}),
       retrievedAt: source.retrievedAt,
       supports: boundedString(
         source.supports,
@@ -1201,6 +1272,33 @@ function validateInputSources(
     );
   }
   return validated;
+}
+
+export interface MetadataFloors {
+  tier: "simple" | "standard" | "complex";
+  tags: number;
+  aliases: number;
+  searchTerms: number;
+}
+
+/**
+ * Minimum metadata counts, scaled to how much task there is to describe. Fixed
+ * floors made a one-line request pad out 20 search terms; the ceilings are
+ * unchanged, so a rich task can still produce the full set.
+ */
+export function metadataFloors(request: EnhancementRequest): MetadataFloors {
+  const words = request.roughThoughts.trim().split(/\s+/).filter(Boolean).length;
+  const hasStructure = /(?:^|\n)\s*(?:[-*+]|\d+[.)]|#{1,6}\s)/m.test(
+    request.roughThoughts,
+  );
+  const hasResearch = (request.sources ?? []).length > 0;
+  if (words >= 250 || hasResearch || (words >= 120 && hasStructure)) {
+    return { tier: "complex", tags: 5, aliases: 3, searchTerms: 20 };
+  }
+  if (words >= 40) {
+    return { tier: "standard", tags: 4, aliases: 2, searchTerms: 10 };
+  }
+  return { tier: "simple", tags: 3, aliases: 1, searchTerms: 5 };
 }
 
 function normalizedTerms(
@@ -1312,6 +1410,8 @@ function calculateUsage(
   };
 }
 
+export const sumEnhancementUsage = sumUsage;
+
 function sumUsage(items: EnhancementUsage[]): EnhancementUsage {
   return {
     inputTokens: items.reduce((sum, item) => sum + item.inputTokens, 0),
@@ -1402,14 +1502,23 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stripUnsupportedStringBounds(value: unknown): unknown {
+// Anthropic and Google structured outputs reject string-length and array-length
+// keywords. validateEnhancementResult still enforces every bound after the run.
+const UNSUPPORTED_SCHEMA_BOUNDS = new Set([
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+]);
+
+function stripUnsupportedSchemaBounds(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map(stripUnsupportedStringBounds);
+    return value.map(stripUnsupportedSchemaBounds);
   }
   if (!isObject(value)) return value;
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => key !== "minLength" && key !== "maxLength")
-      .map(([key, child]) => [key, stripUnsupportedStringBounds(child)]),
+      .filter(([key]) => !UNSUPPORTED_SCHEMA_BOUNDS.has(key))
+      .map(([key, child]) => [key, stripUnsupportedSchemaBounds(child)]),
   );
 }

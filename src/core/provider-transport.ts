@@ -60,7 +60,14 @@ export async function providerResponseErrorCode(
     const raw: unknown = await response.json();
     if (!isObject(raw) || !isObject(raw.error)) return "";
     const value = raw.error.code ?? raw.error.status ?? raw.error.type;
-    return typeof value === "string" ? value.slice(0, 100) : "";
+    const code = typeof value === "string" ? value.slice(0, 100) : "";
+    // The provider message names the rejected field; without it a 400 is undiagnosable.
+    const message =
+      typeof raw.error.message === "string"
+        ? raw.error.message.slice(0, 300)
+        : "";
+    if (!message) return code;
+    return code ? `${code}: ${message}` : message;
   } catch {
     return "";
   }

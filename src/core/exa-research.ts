@@ -22,6 +22,13 @@ const EXA_CONTENT_PAGE_COST_USD = 0.001;
 export const EXA_PRIVACY_DISCLOSURE =
   "Exa receives only the displayed sanitized search query, an in-memory API key, and connection metadata; Prompt Studio never sends the project bundle. Exa's standard privacy policy says Query Data can be used to improve its products and train or fine-tune its models, and says query fields are not intended for personal information. Zero Data Retention is an enterprise control, not assumed here.";
 
+export type ExaCategory =
+  | "research paper"
+  | "github"
+  | "news"
+  | "pdf"
+  | "company";
+
 export interface ExaResearchPlan {
   route: "none" | "exa";
   reason: string;
@@ -29,7 +36,7 @@ export interface ExaResearchPlan {
   intent?: FocusedResearchIntent;
   researchLevel?: EnhancementResearchLevel;
   searchType?: "deep";
-  category?: "research paper";
+  category?: ExaCategory;
   numResults?: number;
   maximumCostUsd?: number;
 }
@@ -110,9 +117,12 @@ export function planExaResearch(
       : {}),
     researchLevel,
     searchType: "deep",
-    ...(needsResearchPaperCategory(roughThoughts)
-      ? { category: "research paper" as const }
-      : {}),
+    ...(() => {
+      // Categorize from the planner's own query when it wrote one; it is the
+      // text Exa actually receives.
+      const category = exaCategory(options.intent?.query ?? roughThoughts);
+      return category ? { category } : {};
+    })(),
     numResults: MAX_RESULTS,
     maximumCostUsd: maximumExaResearchCostUsd(),
   };
@@ -301,6 +311,7 @@ function parseExaResponse(
         shortText(`Broader semantic evidence: ${highlights[0]}`, 500) ??
         "Broader semantic evidence returned by Exa.",
       content,
+      route: "exa" as const,
       ...(publishedDate ? { publishedDate } : {}),
       ...(author ? { author } : {}),
       ...(score !== undefined ? { score } : {}),
@@ -435,10 +446,43 @@ function cancelled(): Error {
   return new Error("Exa research cancelled. No enhancement request was made.");
 }
 
-function needsResearchPaperCategory(value: string): boolean {
-  return /\b(?:paper|papers|research literature|systematic review|academic|arxiv|journal)\b/i.test(
-    value,
-  );
+/**
+ * Exa narrows the index when a category is set, so an unmatched query returns
+ * fewer and worse results. Only apply a category the wording clearly asks for,
+ * and fall back to the general index otherwise.
+ */
+const EXA_CATEGORY_RULES: ReadonlyArray<{
+  category: ExaCategory;
+  pattern: RegExp;
+}> = [
+  {
+    category: "research paper",
+    pattern:
+      /\b(?:paper|papers|research literature|systematic review|academic|arxiv|journal|citation)\b/i,
+  },
+  {
+    category: "github",
+    pattern:
+      /\b(?:github|open[- ]?source|reference implementation|source code|repository|repos?|sample code|code examples?)\b/i,
+  },
+  {
+    category: "news",
+    pattern:
+      /\b(?:news|announced|announcement|released?|release notes|changelog|this (?:week|month)|recently)\b/i,
+  },
+  {
+    category: "pdf",
+    pattern: /\b(?:pdf|whitepaper|white paper|spec sheet|datasheet|report)\b/i,
+  },
+  {
+    category: "company",
+    pattern:
+      /\b(?:vendor|vendors|pricing|competitors?|company|companies|market)\b/i,
+  },
+];
+
+function exaCategory(value: string): ExaCategory | undefined {
+  return EXA_CATEGORY_RULES.find((rule) => rule.pattern.test(value))?.category;
 }
 
 function validDate(value: unknown): string | undefined {

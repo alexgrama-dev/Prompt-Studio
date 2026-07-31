@@ -15,13 +15,33 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const INPUT_COST_PER_MILLION_USD = 2.5;
 const OUTPUT_COST_PER_MILLION_USD = 15;
 
-export type FocusedResearchRoute = Extract<ResearchRoute, "web" | "exa">;
+export type FocusedResearchRoute = Extract<
+  ResearchRoute,
+  "web" | "exa" | "context7"
+>;
+
+/**
+ * Per-run ceiling on planned queries for each route. Every query is one paid
+ * provider request, so these bound the cost the review screen has to disclose.
+ */
+export const MAX_QUERIES_PER_ROUTE: Readonly<
+  Record<FocusedResearchRoute, number>
+> = { context7: 5, exa: 4, web: 2 };
+
+export const MAX_PLANNED_QUERIES =
+  MAX_QUERIES_PER_ROUTE.context7 +
+  MAX_QUERIES_PER_ROUTE.exa +
+  MAX_QUERIES_PER_ROUTE.web;
+
+const MAX_AVAILABLE_LIBRARIES = 60;
 
 export interface FocusedResearchRequest {
   roughThoughts: string;
   researchLevel: Exclude<EnhancementResearchLevel, "none">;
   routes: readonly FocusedResearchRoute[];
   technicalLibrary?: string;
+  /** Real dependency names from the selected project, so the planner names libraries it can resolve. */
+  availableLibraries?: readonly string[];
   currentDate?: string;
 }
 
@@ -29,6 +49,8 @@ export interface FocusedResearchQuery {
   route: FocusedResearchRoute;
   purpose: string;
   query: string;
+  /** Required for context7; the library the documentation query is about. */
+  library?: string;
 }
 
 export interface FocusedResearchPlan {
@@ -85,15 +107,16 @@ export const FOCUSED_RESEARCH_SCHEMA = {
     queries: {
       type: "array",
       minItems: 1,
-      maxItems: 2,
+      maxItems: MAX_PLANNED_QUERIES,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["route", "purpose", "query"],
+        required: ["route", "purpose", "query", "library"],
         properties: {
-          route: { type: "string", enum: ["web", "exa"] },
+          route: { type: "string", enum: ["web", "exa", "context7"] },
           purpose: { type: "string", minLength: 1, maxLength: 240 },
           query: { type: "string", minLength: 1, maxLength: MAX_QUERY_LENGTH },
+          library: { type: ["string", "null"], maxLength: 200 },
         },
       },
     },
@@ -133,9 +156,15 @@ export function buildOpenAIFocusedResearchRequest(
       "Extract only the external facts that must be researched before the task can be completed accurately.",
       "Remove implementation instructions, desired visual impact, deliverable wording, local details, and motivational language from search queries.",
       "Preserve named technologies, versions, dates, comparison criteria, and the kind of evidence needed.",
-      "Use web for current official or primary facts. Use Exa only for broad papers, case studies, code examples, or comparisons.",
+      "Route context7 retrieves official API and library documentation. Set library to the exact package name and write query as a short documentation topic of at most 12 words, for example 'App Router streaming and Suspense boundaries'. Never copy the task description into a context7 query.",
+      "Route web retrieves current official or primary facts that change over time.",
+      "Route exa retrieves broad papers, case studies, community code examples, and comparisons.",
+      `Return at most ${MAX_QUERIES_PER_ROUTE.context7} context7, ${MAX_QUERIES_PER_ROUTE.exa} exa, and ${MAX_QUERIES_PER_ROUTE.web} web queries.`,
+      "Return at least one query for every allowed route and no query for any other route.",
+      "Each query for the same route must investigate a different question. Do not restate one question in different words.",
+      "Choose a library only from availableLibraries when that list is not empty.",
+      "Set library for every context7 query and set library to null for every web and exa query.",
       "Write concise source-oriented queries, not conversational requests to build the final deliverable.",
-      "Return exactly one query for each allowed route and no query for any other route.",
     ].join(" "),
     input: [
       {
@@ -205,16 +234,29 @@ export function focusedResearchIntent(
   plan: FocusedResearchPlan,
   route: FocusedResearchRoute,
 ): FocusedResearchIntent {
-  const query = plan.queries.find((candidate) => candidate.route === route);
-  if (!query) {
+  const intent = focusedResearchIntents(plan, route)[0];
+  if (!intent) {
     throw new Error(`The focused research plan has no ${route} query.`);
   }
-  return {
-    ...query,
-    objective: plan.objective,
-    questions: [...plan.questions],
-    planningCostUsd: plan.usage.estimatedCostUsd,
-  };
+  return intent;
+}
+
+/**
+ * Every planned query for one route. The planning cost is charged once for the
+ * whole plan, so it is reported on the first intent only and zero after that.
+ */
+export function focusedResearchIntents(
+  plan: FocusedResearchPlan,
+  route: FocusedResearchRoute,
+): FocusedResearchIntent[] {
+  return plan.queries
+    .filter((candidate) => candidate.route === route)
+    .map((query, index) => ({
+      ...query,
+      objective: plan.objective,
+      questions: [...plan.questions],
+      planningCostUsd: index === 0 ? plan.usage.estimatedCostUsd : 0,
+    }));
 }
 
 function validatedPlannerInput(request: FocusedResearchRequest): {
@@ -222,6 +264,7 @@ function validatedPlannerInput(request: FocusedResearchRequest): {
   researchLevel: FocusedResearchRequest["researchLevel"];
   allowedRoutes: FocusedResearchRoute[];
   technicalLibrary: string | null;
+  availableLibraries: string[];
   currentDate: string;
 } {
   const technicalLibrary = request.technicalLibrary?.trim() ?? "";
@@ -242,10 +285,11 @@ function validatedPlannerInput(request: FocusedResearchRequest): {
   const routes = [...new Set(request.routes)];
   if (
     routes.length === 0 ||
-    routes.length > 2 ||
-    routes.some((route) => route !== "web" && route !== "exa")
+    routes.some((route) => !(route in MAX_QUERIES_PER_ROUTE))
   ) {
-    throw new Error("Focused research requires a justified web or Exa route.");
+    throw new Error(
+      "Focused research requires a justified Context7, web, or Exa route.",
+    );
   }
   return {
     roughThoughts,
@@ -254,6 +298,9 @@ function validatedPlannerInput(request: FocusedResearchRequest): {
     technicalLibrary: technicalLibrary
       ? sanitizeResearchQuery(technicalLibrary, 200)
       : null,
+    availableLibraries: [...new Set(request.availableLibraries ?? [])]
+      .filter((name) => /^@?[a-z0-9._/-]{1,200}$/i.test(name))
+      .slice(0, MAX_AVAILABLE_LIBRARIES),
     currentDate:
       request.currentDate ??
       new Date().toISOString().slice(0, "YYYY-MM-DD".length),
@@ -288,7 +335,7 @@ function validateFocusedResearchPlan(
       throw new Error("OpenAI returned an invalid provider query.");
     }
     const route = candidate.route;
-    if (route !== "web" && route !== "exa") {
+    if (typeof route !== "string" || !(route in MAX_QUERIES_PER_ROUTE)) {
       throw new Error("OpenAI returned an unsupported research route.");
     }
     const purpose = boundedText(candidate.purpose, "query purpose", 240);
@@ -307,17 +354,47 @@ function validateFocusedResearchPlan(
         "OpenAI repeated the rough task instead of producing a focused search query. No search was started.",
       );
     }
-    return { route: route as FocusedResearchRoute, purpose, query };
+    if (route !== "context7") {
+      return { route: route as FocusedResearchRoute, purpose, query };
+    }
+    // A Context7 request without a library cannot resolve, so reject the plan
+    // instead of guessing a package name.
+    const library = boundedText(candidate.library, "query library", 200);
+    return { route: "context7" as const, purpose, query, library };
   });
-  const returnedRoutes = queries.map((query) => query.route);
-  if (
-    queries.length !== allowedRoutes.length ||
-    new Set(returnedRoutes).size !== returnedRoutes.length ||
-    allowedRoutes.some((route) => !returnedRoutes.includes(route))
-  ) {
+
+  const counts = new Map<string, number>();
+  for (const query of queries) {
+    counts.set(query.route, (counts.get(query.route) ?? 0) + 1);
+  }
+  for (const [route, count] of counts) {
+    if (!allowedRoutes.includes(route as FocusedResearchRoute)) {
+      throw new Error(
+        `The focused research plan returned a ${route} query that was not approved.`,
+      );
+    }
+    const limit = MAX_QUERIES_PER_ROUTE[route as FocusedResearchRoute];
+    if (count > limit) {
+      throw new Error(
+        `The focused research plan returned ${count} ${route} queries; the limit is ${limit}.`,
+      );
+    }
+  }
+  const missing = allowedRoutes.filter((route) => !counts.has(route));
+  if (missing.length > 0) {
     throw new Error(
-      "The focused research plan did not return exactly the approved research routes.",
+      `The focused research plan returned no query for: ${missing.join(", ")}.`,
     );
+  }
+  const seen = new Set<string>();
+  for (const query of queries) {
+    const key = `${query.route} ${query.library ?? ""} ${normalize(query.query)}`;
+    if (seen.has(key)) {
+      throw new Error(
+        "The focused research plan repeated the same query twice. No search was started.",
+      );
+    }
+    seen.add(key);
   }
   return { objective, questions, queries };
 }

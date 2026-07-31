@@ -4,6 +4,9 @@ import {
   enhancementCompilerInstructions,
   enhancementCompilerVersion,
   enhancementResultSchemaForProvider,
+  REVIEWER_INSTRUCTIONS,
+  reviewerInput,
+  sumEnhancementUsage,
   validateEnhancementRequest,
   validateEnhancementResult,
   type EnhancementRequest,
@@ -48,15 +51,16 @@ interface AnthropicResponse {
 export function buildAnthropicMessageRequest(
   request: EnhancementRequest,
   profile: EnhancementRunProfile,
+  override?: { system: string; input: string },
 ): Record<string, unknown> {
   return {
     model: profile.model,
     max_tokens: profile.maxOutputTokens,
-    system: enhancementCompilerInstructions(request),
+    system: override?.system ?? enhancementCompilerInstructions(request),
     messages: [
       {
         role: "user",
-        content: enhancementCompilerInput(request),
+        content: override?.input ?? enhancementCompilerInput(request),
       },
     ],
     output_config: {
@@ -109,7 +113,44 @@ export async function enhanceWithAnthropic(
   }
 
   const parsed = parseAnthropicResponse(await response.json());
-  const result = parseValidatedResult(parsed.outputText, request, "Anthropic");
+  let result = parseValidatedResult(parsed.outputText, request, "Anthropic");
+  const usages = [calculateAnthropicUsage(parsed.usage, profile)];
+  const responseIds = [parsed.responseId];
+
+  // Independent reviewer pass: the same contract, applied to the candidate.
+  if (profile.passes === 2 || request.selfReview) {
+    const reviewResponse = await fetchProviderWithRetry(
+      "Anthropic",
+      ANTHROPIC_MESSAGES_ENDPOINT,
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": ANTHROPIC_API_VERSION,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildAnthropicMessageRequest(request, profile, {
+            system: `${REVIEWER_INSTRUCTIONS}\n\nCompiler contract:\n${enhancementCompilerInstructions(request)}`,
+            input: reviewerInput(request, result),
+          }),
+        ),
+      },
+      profile.timeoutMs,
+      options,
+    );
+    if (!reviewResponse.ok) {
+      const code = await providerResponseErrorCode(reviewResponse);
+      throw new Error(
+        `Anthropic rejected the review pass (${reviewResponse.status}${code ? `, ${code}` : ""}). No prompt was saved.`,
+      );
+    }
+    const reviewed = parseAnthropicResponse(await reviewResponse.json());
+    result = parseValidatedResult(reviewed.outputText, request, "Anthropic");
+    usages.push(calculateAnthropicUsage(reviewed.usage, profile));
+    responseIds.push(reviewed.responseId);
+  }
+
   const completedAt = new Date();
   return {
     result,
@@ -119,8 +160,8 @@ export async function enhanceWithAnthropic(
     startedAt: startedAt.toISOString(),
     completedAt: completedAt.toISOString(),
     latencyMs: completedAt.getTime() - startedAt.getTime(),
-    usage: calculateAnthropicUsage(parsed.usage, profile),
-    responseIds: [parsed.responseId],
+    usage: sumEnhancementUsage(usages),
+    responseIds,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { EnhancementInputSource } from "./enhancement.ts";
 import type { FeatureState } from "./features.ts";
 import type { ProjectContextBundle } from "./project-context.ts";
+import type { FocusedResearchIntent } from "./research-intent.ts";
 import { sanitizeResearchQuery } from "./research-router.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
@@ -22,7 +23,7 @@ export function context7ApiKeyForApprovedRequest(
   const apiKey = readEnvironment()?.trim();
   if (!apiKey) {
     throw new Error(
-      "CONTEXT7_API_KEY is missing. No Context7 request was made.",
+      "CONTEXT7_API_KEY is missing. Set the Context7 API Key extension preference. No Context7 request was made.",
     );
   }
   return apiKey;
@@ -35,6 +36,8 @@ export interface Context7Plan {
   libraryId?: string;
   version?: string;
   query?: string;
+  /** Set when the focused-research planner wrote this documentation query. */
+  intent?: FocusedResearchIntent;
 }
 
 export interface Context7Options {
@@ -78,11 +81,15 @@ export function planContext7Research(
   researchLevel: "none" | "auto" | "deep",
   libraryInput?: string,
   version?: string,
+  options: { intent?: FocusedResearchIntent } = {},
 ): Context7Plan {
   if (researchLevel === "none") {
     return { route: "none", reason: "External research is disabled." };
   }
-  const library = libraryInput?.trim();
+  if (options.intent && options.intent.route !== "context7") {
+    throw new Error("The focused research intent does not match Context7.");
+  }
+  const library = options.intent?.library?.trim() || libraryInput?.trim();
   if (!library) {
     return {
       route: "none",
@@ -95,7 +102,17 @@ export function planContext7Research(
       "The Context7 request appears to contain a secret. Replace it with a placeholder before research.",
     );
   }
-  const query = formulateDocumentationQuery(roughThoughts, library, version);
+  // A planned query is already a documentation topic. Falling back to the rough
+  // thoughts only sends a truncated task description, which retrieves noise.
+  const query = options.intent
+    ? bounded(
+        `For ${library}${version ? ` ${version}` : ""}: ${options.intent.query}`,
+        "query",
+        1,
+        MAX_QUERY_LENGTH,
+      )
+    : formulateDocumentationQuery(roughThoughts, library, version);
+  const intent = options.intent ? { intent: options.intent } : {};
   if (library.startsWith("/")) {
     const libraryId = validateLibraryId(
       version ? `${library.replace(/\/$/, "")}/${version}` : library,
@@ -107,14 +124,18 @@ export function planContext7Research(
       libraryId,
       ...(version ? { version } : {}),
       query,
+      ...intent,
     };
   }
   return {
     route: "context7",
-    reason: "A named technical library requires current documentation.",
+    reason: options.intent
+      ? options.intent.purpose
+      : "A named technical library requires current documentation.",
     libraryInput: bounded(library, "libraryInput", 1, 200),
     ...(version ? { version: bounded(version, "version", 1, 80) } : {}),
     query,
+    ...intent,
   };
 }
 
@@ -168,6 +189,20 @@ export function formulateDocumentationQuery(
     1,
     MAX_QUERY_LENGTH,
   );
+}
+
+/**
+ * Dependency names from the selected project, longest first. The planner picks
+ * library names from this list so it never invents a package Context7 cannot
+ * resolve.
+ */
+export function projectLibraryNames(
+  bundle?: ProjectContextBundle,
+  limit = 60,
+): string[] {
+  return projectDependencies(bundle)
+    .map(({ libraryInput }) => libraryInput)
+    .slice(0, Math.max(0, limit));
 }
 
 export function detectTechnicalLibrary(
@@ -359,15 +394,59 @@ function projectDependencies(
   return [...dependencies.values()];
 }
 
+/**
+ * Tails of scoped packages that are ordinary words. Matching "@scope/name" by
+ * its tail is what lets "react query" find "@tanstack/react-query", but a tail
+ * like "test" matches any prompt that mentions testing, so those tails require
+ * the full scoped name.
+ */
+const AMBIGUOUS_PACKAGE_TAILS = new Set([
+  "api",
+  "app",
+  "cache",
+  "cli",
+  "client",
+  "common",
+  "compiler",
+  "config",
+  "core",
+  "dev",
+  "helpers",
+  "icons",
+  "lib",
+  "node",
+  "parser",
+  "plugin",
+  "plugins",
+  "runtime",
+  "sdk",
+  "server",
+  "shared",
+  "test",
+  "testing",
+  "tests",
+  "theme",
+  "themes",
+  "tools",
+  "types",
+  "ui",
+  "utils",
+  "web",
+]);
+
 function mentionsLibrary(text: string, library: string): boolean {
   const escaped = library
     .toLowerCase()
     .replace(/^@/, "")
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const tail = escaped.split("/").at(-1) ?? escaped;
-  return new RegExp(`(^|[^a-z0-9])(?:${escaped}|${tail})(?=$|[^a-z0-9])`).test(
-    text,
-  );
+  const alternatives =
+    tail === escaped || AMBIGUOUS_PACKAGE_TAILS.has(tail)
+      ? escaped
+      : `${escaped}|${tail}`;
+  return new RegExp(
+    `(^|[^a-z0-9])(?:${alternatives})(?=$|[^a-z0-9])`,
+  ).test(text);
 }
 
 function versionNextTo(text: string, library: string): string | undefined {
@@ -515,6 +594,7 @@ function parseContext(
       url,
       retrievedAt,
       supports: shortText(`Documentation relevant to: ${query}`, 500)!,
+route: "context7" as const,
       content,
     });
   }
@@ -539,6 +619,7 @@ function parseContext(
       url,
       retrievedAt,
       supports: description ?? shortText(`Code relevant to: ${query}`, 500)!,
+route: "context7" as const,
       content: code,
     });
   }

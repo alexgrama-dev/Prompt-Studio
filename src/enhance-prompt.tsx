@@ -28,6 +28,7 @@ import {
   detectTechnicalLibrary,
   findContext7ProjectVersion,
   planContext7Research,
+  projectLibraryNames,
   researchWithContext7,
   type Context7Plan,
   type Context7ResearchResult,
@@ -101,10 +102,14 @@ import {
   type DiscoveredProject,
   type ProjectContextBundle,
 } from "./core/project-context";
-import { planResearchRoutes } from "./core/research-router";
+import {
+  filterResearchRoutesBySupplier,
+  planResearchRoutes,
+} from "./core/research-router";
 import {
   FOCUSED_RESEARCH_PRIVACY_DISCLOSURE,
   focusedResearchIntent,
+  focusedResearchIntents,
   maximumFocusedResearchCostUsd,
   planFocusedResearch,
   type FocusedResearchRoute,
@@ -133,6 +138,7 @@ import {
   getProviderEnhancementProfile,
   providerPricingDisclosure,
   providerPrivacyDisclosure,
+  resolveDefaultEnhancementProfileId,
   type SelectableEnhancementProfileId,
 } from "./core/provider-profiles";
 import {
@@ -142,11 +148,313 @@ import {
   type WebResearchPlan,
   type WebResearchResult,
 } from "./core/web-research";
+import { findDuplicateCandidates } from "./core/overlap";
+import { recordRun, type RunStage } from "./core/run-log";
+import {
+  buildRevisionRequest,
+  diffLines,
+  renderDiff,
+} from "./core/revision";
+import {
+  MIN_VARIANTS,
+  REVIEW_TOTAL,
+  selectBestVariant,
+  variantCount,
+  type EnhancementVariant,
+  type ScoredVariant,
+  type VariantSelection,
+} from "./core/variant-selection";
 import FeatureStatus from "./feature-status";
+
+/** The saved key for whichever provider produced this run. */
+function providerApiKeyForRequest(
+  request: EnhancementRequest,
+  preferences: Preferences,
+): string | undefined {
+  const provider = getProviderEnhancementProfile(
+    request.profileId as SelectableEnhancementProfileId,
+  ).provider;
+  const key =
+    provider === "anthropic"
+      ? preferences.anthropicApiKey
+      : provider === "google"
+        ? preferences.googleApiKey
+        : preferences.openaiApiKey;
+  return key?.trim() || undefined;
+}
+
+/** Ask for one change, re-run from the previous result, then show what moved. */
+function RevisionForm({
+  request,
+  run,
+}: {
+  request: EnhancementRequest;
+  run: EnhancementRun;
+}) {
+  const { push } = useNavigation();
+  const preferences = getPreferenceValues<Preferences>();
+  const [instruction, setInstruction] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
+  const controller = useRef<AbortController | undefined>(undefined);
+
+  async function revise() {
+    if (isRunning) return;
+    const apiKey = providerApiKeyForRequest(request, preferences);
+    if (!apiKey) {
+      await showToast(
+        Toast.Style.Failure,
+        "Provider API Key Required",
+        "Add the key for this provider in Prompt Studio preferences before revising.",
+      );
+      return;
+    }
+    let revisionRequest: EnhancementRequest;
+    try {
+      revisionRequest = buildRevisionRequest(request, run.result, instruction);
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        "Revision Not Started",
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
+    const activeController = new AbortController();
+    controller.current = activeController;
+    setIsRunning(true);
+    const toast = await showToast(
+      Toast.Style.Animated,
+      "Revising Prompt",
+      "Applying only the change you asked for.",
+    );
+    try {
+      const revised = await dispatchEnhancement(revisionRequest, {
+        apiKey,
+        signal: activeController.signal,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = "Revision Ready";
+      toast.message = "Review the difference before keeping it.";
+      void recordRun(
+        resolvePromptDirectory(preferences.libraryDirectory),
+        {
+          status: "ok",
+          stage: "enhancement",
+          ...runShape(revisionRequest, run.profile),
+          cost: { model: revised.usage.estimatedCostUsd },
+        },
+      );
+      push(
+        <RevisionDiff
+          request={revisionRequest}
+          previous={run}
+          revised={revised}
+        />,
+      );
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Revision Failed";
+      toast.message = error instanceof Error ? error.message : String(error);
+      void logResearchFailure("enhancement", error);
+    } finally {
+      controller.current = undefined;
+      setIsRunning(false);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isRunning}
+      navigationTitle="Revise Prompt"
+      actions={
+        <ActionPanel>
+          <Action
+            title="Revise"
+            icon={Icon.Repeat}
+            onAction={() => void revise()}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text="State only what should change. Everything you did not mention is kept as it is." />
+      <Form.TextArea
+        id="revisionInstruction"
+        title="What should change"
+        placeholder="Require proof of the cause, not a likely explanation."
+        value={instruction}
+        onChange={setInstruction}
+      />
+    </Form>
+  );
+}
+
+/** Unified diff between the previous compiled prompt and the revised one. */
+function RevisionDiff({
+  request,
+  previous,
+  revised,
+}: {
+  request: EnhancementRequest;
+  previous: EnhancementRun;
+  revised: EnhancementRun;
+}) {
+  const summary = diffLines(
+    previous.result.enhancedPrompt,
+    revised.result.enhancedPrompt,
+  );
+  const markdown = [
+    "# Review Revision",
+    `**Nothing is saved yet.** ${summary.added} line${summary.added === 1 ? "" : "s"} added · ${summary.removed} removed.`,
+    `**Instruction:** ${escapeMarkdown(request.revision?.instruction ?? "(missing)")}`,
+    `**Revision cost:** $${revised.usage.estimatedCostUsd.toFixed(4)}`,
+    "## Difference",
+    indentCode(renderDiff(summary)),
+    "## Revised Prompt",
+    indentCode(revised.result.enhancedPrompt),
+  ].join("\n\n");
+
+  return (
+    <Detail
+      navigationTitle="Review Revision"
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          <Action.CopyToClipboard
+            title="Copy Revised Prompt"
+            content={revised.result.enhancedPrompt}
+          />
+          <Action
+            title="Paste in Active App"
+            icon={Icon.ArrowRightCircle}
+            onAction={() => pasteEnhancedPrompt(revised.result.enhancedPrompt)}
+          />
+          <Action.Push
+            title="Revise Again"
+            icon={Icon.Repeat}
+            target={<RevisionForm request={request} run={revised} />}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+/** Ranked variants with the blind judge's score and the defects it deducted for. */
+function VariantComparison({
+  selection,
+  onChoose,
+}: {
+  selection: VariantSelection;
+  onChoose: (variant: ScoredVariant) => Promise<void>;
+}) {
+  const [isChoosing, setIsChoosing] = useState(false);
+  const markdown = [
+    "# Compare Variants",
+    `**Nothing is saved yet.** ${selection.ranked.length} candidates were generated from the same request and scored blind — the judge never saw which run produced which.`,
+    `**Cost so far:** $${selection.enhancementCostUsd.toFixed(4)} generation · $${selection.judgeCostUsd.toFixed(4)} judging`,
+    ...selection.ranked.flatMap((variant, position) => [
+      `## ${position === 0 ? "Winner · " : ""}Variant ${variant.index + 1} — ${variant.score}/${REVIEW_TOTAL}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
+      [
+        `fidelity ${variant.review.fidelity}`,
+        `completeness ${variant.review.completeness}`,
+        `unsupported facts ${variant.review.unsupportedFacts}`,
+        `actionability ${variant.review.actionability}`,
+        `validation ${variant.review.validation}`,
+        `authorization ${variant.review.authorization}`,
+        `length ${variant.review.appropriateLength}`,
+      ].join(" · "),
+      variant.review.notes
+        ? `**Judge notes:** ${escapeMarkdown(variant.review.notes)}`
+        : "**Judge notes:** none",
+      `**Title:** ${escapeMarkdown(variant.run.result.title)}`,
+      indentCode(variant.run.result.enhancedPrompt),
+    ]),
+  ].join("\n\n");
+
+  async function choose(variant: ScoredVariant) {
+    if (isChoosing) return;
+    setIsChoosing(true);
+    try {
+      await onChoose(variant);
+    } finally {
+      setIsChoosing(false);
+    }
+  }
+
+  return (
+    <Detail
+      isLoading={isChoosing}
+      navigationTitle="Compare Variants"
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          {selection.ranked.map((variant, position) => (
+            <Action
+              key={variant.index}
+              title={
+                position === 0
+                  ? `Keep Winner · Variant ${variant.index + 1} (${variant.score})`
+                  : `Keep Variant ${variant.index + 1} (${variant.score})`
+              }
+              icon={position === 0 ? Icon.Trophy : Icon.Document}
+              onAction={() => void choose(variant)}
+            />
+          ))}
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+/** Research failures happen before the enhancement, after money is spent. */
+async function logResearchFailure(
+  stage: RunStage,
+  error: unknown,
+  extra: { libraries?: string[]; cost?: { planning?: number; exa?: number } } = {},
+) {
+  await recordRun(
+    resolvePromptDirectory(getPreferenceValues<Preferences>().libraryDirectory),
+    {
+      status: "failed",
+      stage,
+      error: error instanceof Error ? error.message : String(error),
+      routes: [stage as never],
+      ...extra,
+    },
+  );
+}
+
+/** Fields every run record shares, so success and failure rows stay comparable. */
+function runShape(
+  request: EnhancementRequest,
+  profile: { provider: string; model: string; id: string },
+) {
+  return {
+    provider: profile.provider,
+    model: profile.model,
+    profileId: profile.id,
+    target: request.target,
+    researchLevel: request.researchLevel,
+    sourceCount: request.sources?.length ?? 0,
+    ...(request.selfReview ? { selfReview: true } : {}),
+  };
+}
 
 interface Preferences {
   libraryDirectory?: string;
+  defaultEnhancementProfile?: string;
+  selfReviewPass?: boolean;
+  variantCount?: string;
   openaiApiKey?: string;
+  anthropicApiKey?: string;
+  googleApiKey?: string;
+  context7ApiKey?: string;
+  exaApiKey?: string;
+  githubToken?: string;
+  researchContext7?: boolean;
+  researchExa?: boolean;
+  researchWeb?: boolean;
+  researchGithub?: boolean;
   projectRoots?: string;
   sshProjectRoot?: string;
 }
@@ -303,8 +611,14 @@ function EnhancementWorkspace({
   const { push } = useNavigation();
   const [setupMode, setSetupMode] =
     useState<EnhancementFormValues["setupMode"]>("smart");
-  const [profileId, setProfileId] =
-    useState<EnhancementFormValues["profileId"]>("openai-standard-v1");
+  const [profileId, setProfileId] = useState<
+    EnhancementFormValues["profileId"]
+  >(() =>
+    resolveDefaultEnhancementProfileId(preferences.defaultEnhancementProfile, {
+      anthropic: anthropicState,
+      google: googleState,
+    }),
+  );
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
   const [roughThoughts, setRoughThoughts] = useState(initialThoughts);
@@ -572,12 +886,20 @@ function EnhancementWorkspace({
       detectedLibrary?.version ?? inferredVersion?.version ?? "";
     const libraryVersionSource =
       detectedLibrary?.sourcePath ?? inferredVersion?.sourcePath;
-    const routing = planResearchRoutes({
-      roughThoughts: values.roughThoughts,
-      researchLevel: values.researchLevel,
-      hasSelectedProject,
-      technicalLibrary,
-    });
+    const routing = filterResearchRoutesBySupplier(
+      planResearchRoutes({
+        roughThoughts: values.roughThoughts,
+        researchLevel: values.researchLevel,
+        hasSelectedProject,
+        technicalLibrary,
+      }),
+      {
+        context7: preferences.researchContext7 !== false,
+        exa: preferences.researchExa !== false,
+        web: preferences.researchWeb !== false,
+        github: preferences.researchGithub !== false,
+      },
+    );
     if (values.researchLevel !== "none") {
       if (routing.routes.includes("context7") && context7State === "disabled") {
         await showToast(
@@ -714,7 +1036,9 @@ function EnhancementWorkspace({
       );
       return;
     }
-    if (webPlan || exaPlan) {
+    let context7Plans: Context7Plan[] = context7Plan ? [context7Plan] : [];
+    let exaPlans: ExaResearchPlan[] = exaPlan ? [exaPlan] : [];
+    if (webPlan || exaPlan || context7Plan) {
       const apiKey = preferences.openaiApiKey?.trim();
       if (!apiKey) {
         await showToast(
@@ -746,9 +1070,11 @@ function EnhancementWorkspace({
       );
       try {
         const routes = [
+          ...(context7Plan ? (["context7"] as const) : []),
           ...(webPlan ? (["web"] as const) : []),
           ...(exaPlan ? (["exa"] as const) : []),
         ] satisfies FocusedResearchRoute[];
+        const availableLibraries = projectLibraryNames(projectBundle);
         const focusedPlan = await planFocusedResearch(
           {
             roughThoughts: values.roughThoughts,
@@ -758,6 +1084,7 @@ function EnhancementWorkspace({
             >,
             routes,
             ...(technicalLibrary ? { technicalLibrary } : {}),
+            ...(availableLibraries.length > 0 ? { availableLibraries } : {}),
           },
           {
             apiKey,
@@ -771,13 +1098,29 @@ function EnhancementWorkspace({
               intent: focusedResearchIntent(focusedPlan, "web"),
             })
           : undefined;
-        exaPlan = exaPlan
-          ? planExaResearch(values.roughThoughts, values.researchLevel, {
-              hasSelectedProject,
-              ...(technicalLibrary ? { technicalLibrary } : {}),
-              intent: focusedResearchIntent(focusedPlan, "exa"),
-            })
-          : undefined;
+        // One plan per planned query: each is a separate provider request.
+        exaPlans = exaPlan
+          ? focusedResearchIntents(focusedPlan, "exa").map((intent) =>
+              planExaResearch(values.roughThoughts, values.researchLevel, {
+                hasSelectedProject,
+                ...(technicalLibrary ? { technicalLibrary } : {}),
+                intent,
+              }),
+            )
+          : [];
+        exaPlan = exaPlans[0];
+        context7Plans = context7Plan
+          ? focusedResearchIntents(focusedPlan, "context7").map((intent) =>
+              planContext7Research(
+                values.roughThoughts,
+                values.researchLevel,
+                intent.library ?? technicalLibrary,
+                libraryVersion,
+                { intent },
+              ),
+            )
+          : [];
+        context7Plan = context7Plans[0];
         toast.style = Toast.Style.Success;
         toast.title = "Focused Research Plan Ready";
         toast.message = "Review the questions and exact provider query next.";
@@ -786,6 +1129,7 @@ function EnhancementWorkspace({
         toast.title = controller.signal.aborted
           ? "Research Planning Cancelled"
           : "Research Planning Failed";
+        void logResearchFailure("planning", error);
         toast.message = error instanceof Error ? error.message : String(error);
         return;
       } finally {
@@ -798,6 +1142,7 @@ function EnhancementWorkspace({
       target: values.target,
       profileId: values.profileId,
       researchLevel: values.researchLevel,
+      ...(preferences.selfReviewPass ? { selfReview: true } : {}),
       ...(values.oneRunInstruction.trim()
         ? { oneRunInstruction: values.oneRunInstruction }
         : {}),
@@ -815,10 +1160,10 @@ function EnhancementWorkspace({
           onContinue={(reviewedRequest) =>
             continueAfterProject(
               reviewedRequest,
-              context7Plan,
+              context7Plans,
               githubPlan,
               webPlan,
-              exaPlan,
+              exaPlans,
               libraryVersionSource,
             )
           }
@@ -828,33 +1173,33 @@ function EnhancementWorkspace({
     }
     await continueAfterProject(
       request,
-      context7Plan,
+      context7Plans,
       githubPlan,
       webPlan,
-      exaPlan,
+      exaPlans,
     );
   }
 
   async function continueAfterProject(
     request: EnhancementRequest,
-    context7Plan?: Context7Plan,
+    context7Plans: Context7Plan[],
     githubPlan?: GithubMcpPlan,
     webPlan?: WebResearchPlan,
-    exaPlan?: ExaResearchPlan,
+    exaPlans: ExaResearchPlan[] = [],
     versionSource?: string,
   ) {
-    if (!context7Plan) {
-      await continueAfterContext7(request, githubPlan, webPlan, exaPlan);
+    if (context7Plans.length === 0) {
+      await continueAfterContext7(request, githubPlan, webPlan, exaPlans);
       return;
     }
     push(
       <Context7PlanReview
         request={request}
-        plan={context7Plan}
+        plans={context7Plans}
         context7State={context7State}
         {...(versionSource ? { versionSource } : {})}
         onContinue={(reviewedRequest) =>
-          continueAfterContext7(reviewedRequest, githubPlan, webPlan, exaPlan)
+          continueAfterContext7(reviewedRequest, githubPlan, webPlan, exaPlans)
         }
         onCancelContinue={cancel}
       />,
@@ -865,10 +1210,10 @@ function EnhancementWorkspace({
     request: EnhancementRequest,
     githubPlan?: GithubMcpPlan,
     webPlan?: WebResearchPlan,
-    exaPlan?: ExaResearchPlan,
+    exaPlans: ExaResearchPlan[] = [],
   ) {
     if (!githubPlan) {
-      await continueAfterGithub(request, webPlan, exaPlan);
+      await continueAfterGithub(request, webPlan, exaPlans);
       return;
     }
     push(
@@ -876,7 +1221,7 @@ function EnhancementWorkspace({
         request={request}
         plan={githubPlan}
         onContinue={(reviewedRequest) =>
-          continueAfterGithub(reviewedRequest, webPlan, exaPlan)
+          continueAfterGithub(reviewedRequest, webPlan, exaPlans)
         }
         onCancelContinue={cancel}
       />,
@@ -886,10 +1231,10 @@ function EnhancementWorkspace({
   async function continueAfterGithub(
     request: EnhancementRequest,
     webPlan?: WebResearchPlan,
-    exaPlan?: ExaResearchPlan,
+    exaPlans: ExaResearchPlan[] = [],
   ) {
     if (!webPlan) {
-      await continueAfterWeb(request, exaPlan);
+      await continueAfterWeb(request, exaPlans);
       return;
     }
     push(
@@ -897,7 +1242,7 @@ function EnhancementWorkspace({
         request={request}
         plan={webPlan}
         onContinue={(reviewedRequest) =>
-          continueAfterWeb(reviewedRequest, exaPlan)
+          continueAfterWeb(reviewedRequest, exaPlans)
         }
         onCancelContinue={cancel}
       />,
@@ -906,16 +1251,16 @@ function EnhancementWorkspace({
 
   async function continueAfterWeb(
     request: EnhancementRequest,
-    exaPlan?: ExaResearchPlan,
+    exaPlans: ExaResearchPlan[] = [],
   ) {
-    if (!exaPlan) {
+    if (exaPlans.length === 0) {
       await runEnhancement(request);
       return;
     }
     push(
       <ExaResearchPlanReview
         request={request}
-        plan={exaPlan}
+        plans={exaPlans}
         onContinue={runEnhancement}
         onCancelContinue={cancel}
       />,
@@ -927,21 +1272,22 @@ function EnhancementWorkspace({
     const selectedProfile = getProviderEnhancementProfile(
       request.profileId as SelectableEnhancementProfileId,
     );
-    if (selectedProfile.provider === "anthropic") {
+    if (
+      selectedProfile.provider === "anthropic" ||
+      selectedProfile.provider === "google"
+    ) {
+      const savedKey = (
+        selectedProfile.provider === "anthropic"
+          ? preferences.anthropicApiKey
+          : preferences.googleApiKey
+      )?.trim();
+      if (savedKey) {
+        await executeEnhancement(request, savedKey);
+        return;
+      }
       push(
         <ProviderApiKeyForm
-          provider="anthropic"
-          profile={selectedProfile}
-          onSubmit={(apiKey) => executeEnhancement(request, apiKey)}
-          onCancel={() => activeController.current?.abort()}
-        />,
-      );
-      return;
-    }
-    if (selectedProfile.provider === "google") {
-      push(
-        <ProviderApiKeyForm
-          provider="google"
+          provider={selectedProfile.provider}
           profile={selectedProfile}
           onSubmit={(apiKey) => executeEnhancement(request, apiKey)}
           onCancel={() => activeController.current?.abort()}
@@ -978,6 +1324,7 @@ function EnhancementWorkspace({
       "Enhancing Prompt",
       `${selectedProfile.title} · ${selectedProfile.passes === 2 ? "two passes" : "one pass"}`,
     );
+    const startedAt = Date.now();
     try {
       const compilerPolicy = await activeCompilerPolicyForStatuses(
         await loadFeatureStatuses(),
@@ -985,10 +1332,39 @@ function EnhancementWorkspace({
       const effectiveRequest = compilerPolicy
         ? { ...request, compilerPolicy }
         : request;
-      const run = await dispatchEnhancement(effectiveRequest, {
-        apiKey,
-        signal: controller.signal,
-      });
+      const variants = variantCount(preferences.variantCount);
+      let run: EnhancementRun;
+      let selection: VariantSelection | undefined;
+      if (variants < MIN_VARIANTS) {
+        run = await dispatchEnhancement(effectiveRequest, {
+          apiKey,
+          signal: controller.signal,
+        });
+      } else {
+        const judgeKey = preferences.openaiApiKey?.trim();
+        if (!judgeKey) {
+          throw new Error(
+            "Variant selection needs the OpenAI API key for the blind judge. Add it, or set Variants to Off.",
+          );
+        }
+        const generated: EnhancementVariant[] = [];
+        for (let index = 0; index < variants; index += 1) {
+          toast.message = `Variant ${index + 1} of ${variants}`;
+          generated.push({
+            index,
+            run: await dispatchEnhancement(effectiveRequest, {
+              apiKey,
+              signal: controller.signal,
+            }),
+          });
+        }
+        toast.message = `Scoring ${variants} variants`;
+        selection = await selectBestVariant(effectiveRequest, generated, {
+          apiKey: judgeKey,
+          signal: controller.signal,
+        });
+        run = selection.winner.run;
+      }
       const directory = resolvePromptDirectory(preferences.libraryDirectory);
       const seed: PromptSeedReference = {
         thoughts: effectiveRequest.roughThoughts,
@@ -1005,13 +1381,50 @@ function EnhancementWorkspace({
         completion: {},
       };
       setPendingEnhancement(pending);
-      await completeEnhancement(pending, toast);
+      if (selection) {
+        push(
+          <VariantComparison
+            selection={selection}
+            onChoose={async (chosen) => {
+              const chosenPending: PendingEnhancement = {
+                ...pending,
+                run: chosen.run,
+              };
+              setPendingEnhancement(chosenPending);
+              await completeEnhancement(chosenPending);
+            }}
+          />,
+        );
+      }
+      await recordRun(directory, {
+        status: "ok",
+        stage: "enhancement",
+        durationMs: Date.now() - startedAt,
+        ...runShape(effectiveRequest, selectedProfile),
+        // With variants the winner's cost is only part of what was spent.
+        cost: {
+          model: selection
+            ? selection.enhancementCostUsd + selection.judgeCostUsd
+            : run.usage.estimatedCostUsd,
+        },
+        usage: {
+          inputTokens: run.usage.inputTokens,
+          outputTokens: run.usage.outputTokens,
+        },
+      });
+      if (!selection) await completeEnhancement(pending, toast);
     } catch (error) {
+      const cancelled = enhancementRunWasCancelled(error, controller.signal);
       toast.style = Toast.Style.Failure;
-      toast.title = enhancementRunWasCancelled(error, controller.signal)
-        ? "Enhancement Cancelled"
-        : "Enhancement Failed";
+      toast.title = cancelled ? "Enhancement Cancelled" : "Enhancement Failed";
       toast.message = error instanceof Error ? error.message : String(error);
+      await recordRun(resolvePromptDirectory(preferences.libraryDirectory), {
+        status: cancelled ? "cancelled" : "failed",
+        stage: "enhancement",
+        durationMs: Date.now() - startedAt,
+        ...runShape(request, selectedProfile),
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       activeController.current = undefined;
       setIsLoading(false);
@@ -1083,6 +1496,11 @@ function EnhancementWorkspace({
         );
         return;
       }
+      const savedKey = preferences.anthropicApiKey?.trim();
+      if (savedKey) {
+        await executeActivationEvaluation(effectiveProfileId, savedKey);
+        return;
+      }
       push(
         <ProviderApiKeyForm
           provider="anthropic"
@@ -1103,6 +1521,11 @@ function EnhancementWorkspace({
           "Google Provider Is Disabled",
           "Activation 10 must enter Preview before its quality evaluation can run.",
         );
+        return;
+      }
+      const savedKey = preferences.googleApiKey?.trim();
+      if (savedKey) {
+        await executeActivationEvaluation(effectiveProfileId, savedKey);
         return;
       }
       push(
@@ -2080,14 +2503,14 @@ function ProjectContextReview({
 
 function Context7PlanReview({
   request,
-  plan,
+  plans,
   context7State,
   versionSource,
   onContinue,
   onCancelContinue,
 }: {
   request: EnhancementRequest;
-  plan: Context7Plan;
+  plans: Context7Plan[];
   context7State: FeatureState;
   versionSource?: string;
   onContinue: (request: EnhancementRequest) => Promise<void>;
@@ -2102,7 +2525,12 @@ function Context7PlanReview({
     let approvedApiKey = apiKey?.trim();
     if (!approvedApiKey) {
       try {
-        approvedApiKey = context7ApiKeyForApprovedRequest(context7State);
+        approvedApiKey = context7ApiKeyForApprovedRequest(
+          context7State,
+          () =>
+            getPreferenceValues<Preferences>().context7ApiKey ||
+            process.env.CONTEXT7_API_KEY,
+        );
       } catch (error) {
         await showToast(
           Toast.Style.Failure,
@@ -2121,10 +2549,17 @@ function Context7PlanReview({
       "No model request has started.",
     );
     try {
-      const result = await researchWithContext7(plan, {
-        apiKey: approvedApiKey,
-        signal: activeController.signal,
-      });
+      const results: Context7ResearchResult[] = [];
+      for (const [index, plan] of plans.entries()) {
+        toast.message = `Library ${index + 1} of ${plans.length}. No model request has started.`;
+        results.push(
+          await researchWithContext7(plan, {
+            apiKey: approvedApiKey,
+            signal: activeController.signal,
+          }),
+        );
+        if (activeController.signal.aborted) break;
+      }
       if (activeController.signal.aborted) {
         toast.style = Toast.Style.Failure;
         toast.title = "Context7 Retrieval Cancelled";
@@ -2134,10 +2569,25 @@ function Context7PlanReview({
       toast.style = Toast.Style.Success;
       toast.title = "Context7 Sources Ready";
       toast.message = "Review every source before enhancement.";
+      void recordRun(
+        resolvePromptDirectory(
+          getPreferenceValues<Preferences>().libraryDirectory,
+        ),
+        {
+          status: "ok",
+          stage: "context7",
+          routes: ["context7"],
+          libraries: results.map((item) => item.plan.libraryId),
+          sourceCount: results.reduce(
+            (total, item) => total + item.sources.length,
+            0,
+          ),
+        },
+      );
       push(
         <Context7SourceReview
           request={request}
-          result={result}
+          results={results}
           onContinue={onContinue}
           onCancelContinue={onCancelContinue}
         />,
@@ -2145,6 +2595,7 @@ function Context7PlanReview({
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = "Context7 Retrieval Failed";
+      void logResearchFailure("context7", error, { libraries: plans.map((item) => item.libraryInput ?? "").filter(Boolean) });
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       controller.current = undefined;
@@ -2154,12 +2605,14 @@ function Context7PlanReview({
 
   const markdown = [
     "# Review Library Research",
-    "**No request has started.** Only this library query will be sent.",
-    `**Library:** ${inlineCode(plan.libraryId ?? plan.libraryInput ?? "(missing)")}`,
-    `**Version:** ${inlineCode(plan.version ?? "(not specified)")}${versionSource ? ` — read from ${inlineCode(versionSource)}` : ""}`,
+    `**No request has started.** Only ${plans.length === 1 ? "this library query" : `these ${plans.length} library queries`} will be sent.`,
     "**Cost:** Context7 does not expose a per-request price.",
-    "## Query",
-    indentCode(plan.query ?? "(missing query)"),
+    ...plans.flatMap((plan, index) => [
+      `## ${index + 1}. ${escapeMarkdown(plan.libraryId ?? plan.libraryInput ?? "(missing)")}`,
+      `**Version:** ${inlineCode(plan.version ?? "(not specified)")}${versionSource ? ` — read from ${inlineCode(versionSource)}` : ""}`,
+      ...(plan.intent ? [`**Purpose:** ${escapeMarkdown(plan.intent.purpose)}`] : []),
+      indentCode(plan.query ?? "(missing query)"),
+    ]),
     "The existing CONTEXT7_API_KEY environment value is read only after you choose Retrieve. You can instead enter a one-run key.",
   ].join("\n\n");
 
@@ -2278,42 +2731,45 @@ function Context7ApiKeyForm({
 
 function Context7SourceReview({
   request,
-  result,
+  results,
   onContinue,
   onCancelContinue,
 }: {
   request: EnhancementRequest;
-  result: Context7ResearchResult;
+  results: Context7ResearchResult[];
   onContinue: (request: EnhancementRequest) => Promise<void>;
   onCancelContinue: () => void;
 }) {
   const [isContinuing, setIsContinuing] = useState(false);
+  const allSources = results.flatMap((result) => result.sources);
   const reviewedRequest: EnhancementRequest = {
     ...request,
-    sources: mergeReviewedSources(request.sources, result.sources),
+    sources: mergeReviewedSources(request.sources, allSources),
   };
   const maximumCost = estimatedProviderMaximumCostUsd(reviewedRequest);
   const encoder = new TextEncoder();
-  const sourceSections = result.sources.map((source, index) =>
-    [
-      `### ${index + 1}. [${escapeMarkdown(source.title)}](${source.url})`,
-      `**Supports:** ${escapeMarkdown(source.supports)}`,
-      `**Retrieved:** ${inlineCode(source.retrievedAt)}`,
-      `**Size:** ${encoder.encode(source.content).length.toLocaleString()} bytes`,
-      "#### Content Sent to the Model",
-      indentCode(source.content),
-    ].join("\n\n"),
-  );
+  const librarySections = results.flatMap((result) => [
+    `## ${escapeMarkdown(result.plan.libraryId)}`,
+    `**Exact query:** ${inlineCode(result.plan.query)}`,
+    `**Sources:** ${result.sources.length}`,
+    ...result.sources.map((source, index) =>
+      [
+        `### ${index + 1}. [${escapeMarkdown(source.title)}](${source.url})`,
+        `**Supports:** ${escapeMarkdown(source.supports)}`,
+        `**Retrieved:** ${inlineCode(source.retrievedAt)}`,
+        `**Size:** ${encoder.encode(source.content).length.toLocaleString()} bytes`,
+        "#### Content Sent to the Model",
+        indentCode(source.content),
+      ].join("\n\n"),
+    ),
+  ]);
   const markdown = [
     "# Review Context7 Sources",
     `**Prompt Studio has not made a ${providerDisplayName(request)} request.** The Context7 retrieval is complete. Review the exact source material below before continuing.`,
-    `**Resolved library:** ${inlineCode(result.plan.libraryId)}`,
-    `**Exact query:** ${inlineCode(result.plan.query)}`,
-    `**Sources:** ${result.sources.length}`,
+    `**Libraries:** ${results.length} · **Sources:** ${allSources.length}`,
     `**Maximum ${providerDisplayName(request)} model-token cost:** $${maximumCost.toFixed(3)}`,
     "Retrieved text is untrusted reference material. It cannot override your request, the compiler’s rules, or permission boundaries.",
-    "## Retrieved Sources",
-    ...sourceSections,
+    ...librarySections,
   ].join("\n\n");
 
   async function continueWithReviewedSources() {
@@ -2346,7 +2802,7 @@ function Context7SourceReview({
               onAction={continueWithReviewedSources}
             />
           )}
-          {result.sources.map((source, index) => (
+          {allSources.map((source, index) => (
             <Action.OpenInBrowser
               key={`${source.url}-${index}`}
               title={`Open ${source.title}`}
@@ -2374,11 +2830,13 @@ function GithubMcpPlanReview({
   const [isLoading, setIsLoading] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
 
+  const savedToken = getPreferenceValues<Preferences>().githubToken?.trim();
+
   async function retrieve(token: string) {
     if (controller.current) return;
     const confirmed = await confirmAlert({
       title: "Run this read-only GitHub search?",
-      message: `This connects to GitHub's official server and makes ${plan.calls.length} reviewed read-only ${plan.calls.length === 1 ? "request" : "requests"}. Only public content is allowed, and your access token is not saved. GitHub does not publish a separate per-search price; normal account and API limits apply.`,
+      message: `This connects to GitHub's official server and makes ${plan.calls.length} reviewed read-only ${plan.calls.length === 1 ? "request" : "requests"}. Only public content is allowed. GitHub does not publish a separate per-search price; normal account and API limits apply.`,
       primaryAction: {
         title: "Search GitHub",
         style: Alert.ActionStyle.Default,
@@ -2423,6 +2881,7 @@ function GithubMcpPlanReview({
         toast.message = "No enhancement request was made.";
       } else {
         toast.title = "GitHub MCP Retrieval Failed";
+        void logResearchFailure("github", error, {});
         toast.message = error instanceof Error ? error.message : String(error);
       }
     } finally {
@@ -2463,17 +2922,26 @@ function GithubMcpPlanReview({
               onAction={() => controller.current?.abort()}
             />
           ) : (
-            <Action.Push
-              title="Connect GitHub for This Search"
-              icon={Icon.Key}
-              target={
-                <GithubTokenForm
-                  plan={plan}
-                  onSubmit={retrieve}
-                  onCancel={() => controller.current?.abort()}
+            <>
+              {savedToken ? (
+                <Action
+                  title="Search GitHub with Saved Token"
+                  icon={Icon.Download}
+                  onAction={() => retrieve(savedToken)}
                 />
-              }
-            />
+              ) : null}
+              <Action.Push
+                title="Connect GitHub for This Search"
+                icon={Icon.Key}
+                target={
+                  <GithubTokenForm
+                    plan={plan}
+                    onSubmit={retrieve}
+                    onCancel={() => controller.current?.abort()}
+                  />
+                }
+              />
+            </>
           )}
           <Action.Push
             title="Review Privacy and Limits"
@@ -2752,6 +3220,7 @@ function WebResearchPlanReview({
           "No enhancement request was made. Search charges may apply if OpenAI had already started.";
       } else {
         toast.title = "Current Web Research Failed";
+        void logResearchFailure("web", error, {});
         toast.message = error instanceof Error ? error.message : String(error);
       }
     } finally {
@@ -2923,25 +3392,31 @@ function WebResearchSourceReview({
 
 function ExaResearchPlanReview({
   request,
-  plan,
+  plans,
   onContinue,
   onCancelContinue,
 }: {
   request: EnhancementRequest;
-  plan: ExaResearchPlan;
+  plans: ExaResearchPlan[];
   onContinue: (request: EnhancementRequest) => Promise<void>;
   onCancelContinue: () => void;
 }) {
   const { push } = useNavigation();
   const [isLoading, setIsLoading] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
-  const maximumCost = plan.maximumCostUsd ?? maximumExaResearchCostUsd();
+  const plan = plans[0] as ExaResearchPlan;
+  // Every planned query is a separate paid search; disclose the total.
+  const maximumCost = plans.reduce(
+    (total, item) => total + (item.maximumCostUsd ?? maximumExaResearchCostUsd()),
+    0,
+  );
+  const savedApiKey = getPreferenceValues<Preferences>().exaApiKey?.trim();
 
   async function retrieve(apiKey: string) {
     if (controller.current) return;
     const confirmed = await confirmAlert({
       title: "Run this Exa search?",
-      message: `Only the reviewed query and one-run key are sent. No project files or enhancement request are included. Maximum search cost: $${maximumCost.toFixed(2)}.`,
+      message: `Only the reviewed query and the key are sent. No project files or enhancement request are included. Maximum search cost: $${maximumCost.toFixed(2)}.`,
       primaryAction: {
         title: `Search Up to $${maximumCost.toFixed(2)}`,
         style: Alert.ActionStyle.Default,
@@ -2958,10 +3433,17 @@ function ExaResearchPlanReview({
       "No prompt-enhancement request has started.",
     );
     try {
-      const result = await researchWithExa(plan, {
-        apiKey,
-        signal: activeController.signal,
-      });
+      const results: ExaResearchResult[] = [];
+      for (const [index, item] of plans.entries()) {
+        toast.message = `Search ${index + 1} of ${plans.length}. No prompt-enhancement request has started.`;
+        results.push(
+          await researchWithExa(item, {
+            apiKey,
+            signal: activeController.signal,
+          }),
+        );
+        if (activeController.signal.aborted) break;
+      }
       if (activeController.signal.aborted) {
         toast.style = Toast.Style.Failure;
         toast.title = "Exa Research Cancelled";
@@ -2972,10 +3454,30 @@ function ExaResearchPlanReview({
       toast.style = Toast.Style.Success;
       toast.title = "Exa Sources Ready";
       toast.message = "Review every result before enhancement.";
+      void recordRun(
+        resolvePromptDirectory(
+          getPreferenceValues<Preferences>().libraryDirectory,
+        ),
+        {
+          status: "ok",
+          stage: "exa",
+          routes: ["exa"],
+          sourceCount: results.reduce(
+            (total, item) => total + item.sources.length,
+            0,
+          ),
+          cost: {
+            exa: results.reduce(
+              (total, item) => total + item.cost.estimatedCostUsd,
+              0,
+            ),
+          },
+        },
+      );
       push(
         <ExaResearchSourceReview
           request={request}
-          result={result}
+          results={results}
           onContinue={onContinue}
           onCancelContinue={onCancelContinue}
         />,
@@ -2988,6 +3490,7 @@ function ExaResearchPlanReview({
           "No enhancement request was made. Search charges may apply if Exa had already started.";
       } else {
         toast.title = "Exa Research Failed";
+        void logResearchFailure("exa", error, {});
         toast.message = error instanceof Error ? error.message : String(error);
       }
     } finally {
@@ -2998,15 +3501,18 @@ function ExaResearchPlanReview({
 
   const markdown = [
     "# Review Exa Research",
-    "**No search has started.** Only the focused query below will be sent.",
+    `**No search has started.** Only the ${plans.length} focused ${plans.length === 1 ? "query" : "queries"} below will be sent.`,
     `**Cost:** $${(plan.intent?.planningCostUsd ?? 0).toFixed(4)} planning · up to $${maximumCost.toFixed(2)} search`,
     "## Goal",
     plan.intent?.objective ?? "(missing research objective)",
     "## Questions",
     plan.intent?.questions.map((question) => `- ${question}`).join("\n") ??
       "(missing research questions)",
-    "## Query",
-    indentCode(plan.query ?? "(missing query)"),
+    ...plans.flatMap((item, index) => [
+      `## Query ${index + 1}${item.category ? ` · ${item.category}` : ""}`,
+      ...(item.intent ? [escapeMarkdown(item.intent.purpose)] : []),
+      indentCode(item.query ?? "(missing query)"),
+    ]),
   ].join("\n\n");
 
   return (
@@ -3023,16 +3529,25 @@ function ExaResearchPlanReview({
               onAction={() => controller.current?.abort()}
             />
           ) : (
-            <Action.Push
-              title="Enter One-Run Exa Key"
-              icon={Icon.Key}
-              target={
-                <ExaApiKeyForm
-                  onSubmit={retrieve}
-                  onCancel={() => controller.current?.abort()}
+            <>
+              {savedApiKey ? (
+                <Action
+                  title="Search Exa with Saved Key"
+                  icon={Icon.Download}
+                  onAction={() => retrieve(savedApiKey)}
                 />
-              }
-            />
+              ) : null}
+              <Action.Push
+                title="Enter One-Run Exa Key"
+                icon={Icon.Key}
+                target={
+                  <ExaApiKeyForm
+                    onSubmit={retrieve}
+                    onCancel={() => controller.current?.abort()}
+                  />
+                }
+              />
+            </>
           )}
           <Action.Push
             title="Review Privacy and Limits"
@@ -3049,7 +3564,9 @@ function ExaResearchPlanReview({
                   "**Freshness:** 24-hour cache, then live crawl with a 12-second limit",
                   FOCUSED_RESEARCH_PRIVACY_DISCLOSURE,
                   EXA_PRIVACY_DISCLOSURE,
-                  "The one-run key is sent only in Exa's authentication header, then cleared. It is never saved in prompts, settings, or logs.",
+                  savedApiKey
+                    ? "The key comes from the encrypted Exa API Key extension preference. It is sent only in Exa's authentication header. It is never saved in prompts, returned sources, or logs."
+                    : "The one-run key is sent only in Exa's authentication header, then cleared. It is never saved in prompts, settings, or logs.",
                 ].join("\n\n")}
               />
             }
@@ -3125,19 +3642,20 @@ function ExaApiKeyForm({
 
 function ExaResearchSourceReview({
   request,
-  result,
+  results,
   onContinue,
   onCancelContinue,
 }: {
   request: EnhancementRequest;
-  result: ExaResearchResult;
+  results: ExaResearchResult[];
   onContinue: (request: EnhancementRequest) => Promise<void>;
   onCancelContinue: () => void;
 }) {
   const [isContinuing, setIsContinuing] = useState(false);
-  const mergedSources = mergeReviewedSources(request.sources, result.sources);
+  const allSources = results.flatMap((item) => item.sources);
+  const mergedSources = mergeReviewedSources(request.sources, allSources);
   const includedUrls = new Set(mergedSources.map((source) => source.url));
-  const mergeOmissions = result.sources.filter(
+  const mergeOmissions = allSources.filter(
     (source) => !includedUrls.has(source.url),
   ).length;
   const reviewedRequest: EnhancementRequest = {
@@ -3146,7 +3664,7 @@ function ExaResearchSourceReview({
   };
   const maximumModelCost = estimatedProviderMaximumCostUsd(reviewedRequest);
   const encoder = new TextEncoder();
-  const sourceSections = result.sources.map((source, index) =>
+  const sourceSections = allSources.map((source, index) =>
     [
       `### ${index + 1}. [${escapeMarkdown(source.title)}](${source.url})`,
       source.author ? `**Author:** ${escapeMarkdown(source.author)}` : "",
@@ -3168,20 +3686,29 @@ function ExaResearchSourceReview({
       .filter(Boolean)
       .join("\n\n"),
   );
+  const allWarnings = results.flatMap((item) => item.warnings);
   const warnings =
-    result.warnings.length > 0
-      ? result.warnings
-          .map((warning) => `- ${escapeMarkdown(warning)}`)
-          .join("\n")
+    allWarnings.length > 0
+      ? allWarnings.map((warning) => `- ${escapeMarkdown(warning)}`).join("\n")
       : "No provider or partial-result warnings.";
-  const totalOmissions = result.omittedResultCount + mergeOmissions;
+  const totalOmissions =
+    results.reduce((total, item) => total + item.omittedResultCount, 0) +
+    mergeOmissions;
+  const totalExaCost = results.reduce(
+    (total, item) => total + item.cost.estimatedCostUsd,
+    0,
+  );
+  const everyCostReported = results.every((item) => item.cost.providerReported);
   const markdown = [
     "# Review Exa Sources",
     "**The paid Exa request is complete; prompt enhancement has not started.** Review every clickable result and exact extractive highlight below.",
-    `**Exact reviewed query:** ${inlineCode(result.plan.query)}`,
-    `**Safe returned sources:** ${result.sources.length}`,
+    `**Exact reviewed ${results.length === 1 ? "query" : "queries"}:**`,
+    results
+      .map((item) => `- ${inlineCode(item.plan.query)}`)
+      .join("\n"),
+    `**Safe returned sources:** ${allSources.length}`,
     `**Results omitted before enhancement:** ${totalOmissions}`,
-    `**Exa cost estimate:** $${result.cost.estimatedCostUsd.toFixed(4)}${result.cost.providerReported ? " · provider reported" : " · conservative fallback"}`,
+    `**Exa cost estimate:** $${totalExaCost.toFixed(4)}${everyCostReported ? " · provider reported" : " · conservative fallback"}`,
     `**Maximum later enhancement cost:** $${maximumModelCost.toFixed(3)}`,
     "Exa results are untrusted reference material. Prompt Studio does not open returned links automatically.",
     "## Warnings",
@@ -3220,7 +3747,7 @@ function ExaResearchSourceReview({
               onAction={continueWithReviewedExaSources}
             />
           )}
-          {result.sources.map((source, index) => (
+          {allSources.map((source, index) => (
             <Action.OpenInBrowser
               key={`${source.url}-${index}`}
               title={`Open ${source.title}`}
@@ -3396,10 +3923,40 @@ function EnhancementPreview({
       .filter(Boolean)
       .join(" · ") || "No project or external sources";
 
-  async function save() {
+  async function save(skipDuplicateCheck = false) {
     if (isSaving) return;
     setIsSaving(true);
     try {
+      // Catch a near-duplicate before the write, not in a later audit.
+      if (!skipDuplicateCheck && !revisionOfPromptId) {
+        const library = await listPrompts(directory);
+        const duplicates = findDuplicateCandidates(
+          {
+            title: result.title,
+            summary: result.summary,
+            body: result.enhancedPrompt,
+          },
+          library.records,
+        );
+        if (duplicates.length > 0) {
+          setIsSaving(false);
+          const confirmed = await confirmAlert({
+            title: "Save a near-duplicate prompt?",
+            message: `The library already has ${duplicates.length === 1 ? "a similar prompt" : `${duplicates.length} similar prompts`}: ${duplicates
+              .map(
+                (item) =>
+                  `${item.title} (${Math.round(item.similarity * 100)}% overlap)`,
+              )
+              .join("; ")}. Revising the existing prompt usually beats adding another one.`,
+            primaryAction: {
+              title: "Save Anyway",
+              style: Alert.ActionStyle.Default,
+            },
+          });
+          if (!confirmed) return;
+          setIsSaving(true);
+        }
+      }
       await saveEnhancementHistoryToLibrary(
         directory,
         history.id,
@@ -3464,7 +4021,7 @@ function EnhancementPreview({
             title="Save to Prompt Library"
             icon={Icon.CheckCircle}
             shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
-            onAction={save}
+            onAction={() => void save()}
           />
           <Action.Push
             title="Edit Before Saving"
@@ -3480,6 +4037,12 @@ function EnhancementPreview({
                 seed={seed}
               />
             }
+          />
+          <Action.Push
+            title="Revise This Prompt"
+            icon={Icon.Repeat}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+            target={<RevisionForm request={request} run={run} />}
           />
           <Action.Push
             title="Review Enhancement Details"

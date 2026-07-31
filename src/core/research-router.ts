@@ -141,6 +141,48 @@ export function planResearchRoutes(
   return { routes, reasons, noExternalRequest: false };
 }
 
+export type ResearchSupplier = Exclude<
+  ResearchRoute,
+  "none" | "local-project"
+>;
+
+export type ResearchSupplierChoice = Partial<Record<ResearchSupplier, boolean>>;
+
+/**
+ * Removes suppliers the user turned off in extension preferences. A preference
+ * may only narrow the plan; it never adds a route the router did not justify,
+ * and it never overrides a Disabled feature activation.
+ */
+export function filterResearchRoutesBySupplier(
+  decision: ResearchRouteDecision,
+  choice: ResearchSupplierChoice,
+): ResearchRouteDecision {
+  const removed: ResearchSupplier[] = [];
+  const routes = decision.routes.filter((route) => {
+    if (route === "none" || route === "local-project") return true;
+    if (choice[route] === false) {
+      removed.push(route);
+      return false;
+    }
+    return true;
+  });
+  if (removed.length === 0) return decision;
+
+  const reasons = { ...decision.reasons };
+  for (const route of removed) delete reasons[route];
+
+  if (!routes.some((route) => route !== "none" && route !== "local-project")) {
+    return {
+      routes: ["none"],
+      reasons: {
+        none: `Every justified external source is turned off in preferences: ${removed.join(", ")}.`,
+      },
+      noExternalRequest: true,
+    };
+  }
+  return { routes, reasons, noExternalRequest: false };
+}
+
 export function preferResearchEvidence<T extends ResearchEvidence>(
   evidence: T[],
 ): T[] {
@@ -195,7 +237,7 @@ function needsCurrentWeb(value: string, hasTechnicalLibrary: boolean): boolean {
 }
 
 function needsBroadResearch(value: string): boolean {
-  return /\b(?:paper|papers|research literature|survey|landscape|compare alternatives|community examples|case studies|best approaches)\b/i.test(
+  return /\b(?:paper|papers|research literature|survey|landscape|compare|comparison|alternatives|community examples|case stud(?:y|ies)|best approaches|best practices?|prior art|state of the art|benchmarks?|trade[- ]?offs?|ecosystem|examples|patterns|techniques|options|evaluate|which library|how do others|push the boundaries|latest in)\b/i.test(
     value,
   );
 }

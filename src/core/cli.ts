@@ -66,6 +66,7 @@ import {
   type SelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
 import { listMissedSearches, tallyMissedSearches } from "./missed-searches.ts";
+import { listRuns, runLogPath, tallyRuns } from "./run-log.ts";
 import { DEFAULT_OVERLAP_THRESHOLD, findPromptOverlaps } from "./overlap.ts";
 import { fusePromptSearch, rebuildQmd, searchQmd } from "./qmd-search.ts";
 import {
@@ -206,6 +207,7 @@ const COMMAND_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   copy: new Set(),
   stats: new Set(),
   overlap: new Set(["threshold"]),
+  runs: new Set(["limit"]),
   create: new Set([
     "yes",
     "input",
@@ -378,6 +380,8 @@ async function runEnabledCommand(
       return statsCommand(context);
     case "overlap":
       return overlapCommand(context);
+    case "runs":
+      return runsCommand(context);
     case "enhance":
       return enhanceCommand(context);
     default:
@@ -558,6 +562,53 @@ async function copyCommand(context: CommandContext): Promise<CommandOutcome> {
     ]
       .filter(Boolean)
       .join("\n"),
+  };
+}
+
+async function runsCommand(
+  context: CommandContext,
+): Promise<CommandOutcome> {
+  assertPositionals(context.parsed, 0, 1);
+  const filter = context.parsed.positionals[0];
+  if (filter && filter !== "failed" && filter !== "ok" && filter !== "cancelled") {
+    throw new CliError(
+      "INVALID_ARGUMENT",
+      "runs accepts one optional status: ok, failed, or cancelled.",
+      CLI_EXIT_CODES.usage,
+    );
+  }
+  const all = await listRuns(context.directory);
+  const rawLimit = context.parsed.options.get("limit");
+  const limit = Math.max(
+    1,
+    Math.min(typeof rawLimit === "string" ? Number(rawLimit) || 20 : 20, 500),
+  );
+  const summary = tallyRuns(all);
+  const selected = (filter ? all.filter((run) => run.status === filter) : all)
+    .slice(-limit)
+    .reverse();
+  const human = [
+    `Runs: ${summary.total} · ok ${summary.ok} · failed ${summary.failed} · cancelled ${summary.cancelled}`,
+    `Recorded spend: $${summary.totalCostUsd.toFixed(4)}`,
+    ...(summary.failuresByStage.length > 0
+      ? [
+          `Failures by stage: ${summary.failuresByStage
+            .map((entry) => `${entry.stage} ${entry.count}`)
+            .join(", ")}`,
+        ]
+      : []),
+    ...selected.map(
+      (run) =>
+        `${run.at} ${run.status.padEnd(9)} ${run.stage.padEnd(11)} ${run.model ?? "-"}${run.error ? ` — ${run.error}` : ""}`,
+    ),
+  ].join("\n");
+  return {
+    data: {
+      logPath: runLogPath(context.directory),
+      summary,
+      runs: selected,
+    },
+    human,
   };
 }
 
@@ -2359,6 +2410,7 @@ Commands:
   optimization <operation>     Generate, evaluate, inspect, approve, or roll back proposals
   stats                        Show use counts, feedback tallies, zero-use prompts, and missed searches
   overlap                      Report near-duplicate active prompts; --threshold 0.2-0.95
+  runs [ok|failed|cancelled]   Show enhancement run history, failures, and recorded spend; --limit N
   enhance                      Generate a reviewed history result; requires --yes
   enhance save <history-id>    Save reviewed history with --digest and --yes
 

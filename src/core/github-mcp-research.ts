@@ -359,6 +359,7 @@ export async function researchWithGithubMcp(
         url: sourceUrl(call, plan.repository),
         retrievedAt,
         supports: call.purpose,
+route: "github" as const,
         content,
       });
       totalBytes += sourceBytes;

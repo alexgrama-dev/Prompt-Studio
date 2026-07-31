@@ -39,10 +39,46 @@ export function findPromptOverlaps(
   return overlaps.sort((a, b) => b.similarity - a.similarity);
 }
 
+export interface DuplicateCandidate {
+  id: string;
+  title: string;
+  similarity: number;
+}
+
+/**
+ * Near-duplicates of a prompt that is about to be saved. Checked before the
+ * write so the library does not accumulate three versions of the same prompt.
+ */
+export function findDuplicateCandidates(
+  draft: { title: string; summary: string; body: string },
+  records: readonly PromptRecord[],
+  threshold = DEFAULT_OVERLAP_THRESHOLD,
+  limit = 3,
+): DuplicateCandidate[] {
+  if (!(threshold >= 0.2 && threshold <= 0.95)) {
+    throw new Error("The overlap threshold must be between 0.2 and 0.95.");
+  }
+  const draftTokens = textTokens(
+    `${draft.title} ${draft.summary} ${draft.body}`,
+  );
+  return records
+    .filter((record) => !record.archivedAt)
+    .map((record) => ({
+      id: record.id,
+      title: record.title,
+      similarity: Number(jaccard(draftTokens, promptTokens(record)).toFixed(3)),
+    }))
+    .filter((candidate) => candidate.similarity >= threshold)
+    .sort((left, right) => right.similarity - left.similarity)
+    .slice(0, Math.max(0, limit));
+}
+
 function promptTokens(record: PromptRecord): Set<string> {
-  const text =
-    `${record.title} ${record.summary} ${record.body}`.toLocaleLowerCase();
-  return new Set(text.match(/[a-z0-9]{3,}/g) ?? []);
+  return textTokens(`${record.title} ${record.summary} ${record.body}`);
+}
+
+function textTokens(value: string): Set<string> {
+  return new Set(value.toLocaleLowerCase().match(/[a-z0-9]{3,}/g) ?? []);
 }
 
 function jaccard(left: Set<string>, right: Set<string>): number {

@@ -359,6 +359,7 @@ function parseWebResponse(
           url,
           retrievedAt,
           supports: shortText(`Current web evidence for: ${excerpt}`, 500)!,
+route: "web" as const,
           content: `Model-generated search brief excerpt based on the cited page:\n${excerpt}`,
         });
       }

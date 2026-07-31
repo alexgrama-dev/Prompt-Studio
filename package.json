@@ -57,6 +57,138 @@
       "required": false,
       "title": "OpenAI API Key",
       "description": "Shared encrypted preference for Enhance Prompt and Capture Inbox; read only after an explicit OpenAI action"
+    },
+    {
+      "name": "defaultEnhancementProfile",
+      "type": "dropdown",
+      "required": false,
+      "title": "Default Model",
+      "description": "The enhancement profile Enhance Prompt starts with; a Disabled provider falls back to OpenAI Standard",
+      "default": "openai-standard-v1",
+      "data": [
+        {
+          "title": "OpenAI · Standard",
+          "value": "openai-standard-v1"
+        },
+        {
+          "title": "OpenAI · Deep",
+          "value": "openai-deep-v1"
+        },
+        {
+          "title": "Anthropic · Claude Sonnet 5",
+          "value": "anthropic-sonnet-5-v1"
+        },
+        {
+          "title": "Google · Gemini 3.5 Flash",
+          "value": "google-gemini-3.5-flash-v1"
+        }
+      ]
+    },
+    {
+      "name": "selfReviewPass",
+      "type": "checkbox",
+      "required": false,
+      "title": "Quality",
+      "label": "Independent self-review pass",
+      "default": false,
+      "description": "Runs a second model pass that reviews the compiled prompt against your original thoughts. Roughly doubles the enhancement cost."
+    },
+    {
+      "name": "variantCount",
+      "type": "dropdown",
+      "required": false,
+      "title": "",
+      "description": "Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each.",
+      "default": "0",
+      "data": [
+        {
+          "title": "Off — one enhancement",
+          "value": "0"
+        },
+        {
+          "title": "2 variants, judged",
+          "value": "2"
+        },
+        {
+          "title": "3 variants, judged",
+          "value": "3"
+        },
+        {
+          "title": "4 variants, judged",
+          "value": "4"
+        }
+      ]
+    },
+    {
+      "name": "anthropicApiKey",
+      "type": "password",
+      "required": false,
+      "title": "Anthropic API Key",
+      "description": "Read only after you start an Anthropic enhancement; leave blank to type a one-run key each time"
+    },
+    {
+      "name": "googleApiKey",
+      "type": "password",
+      "required": false,
+      "title": "Google API Key",
+      "description": "Read only after you start a Google enhancement; leave blank to type a one-run key each time"
+    },
+    {
+      "name": "context7ApiKey",
+      "type": "password",
+      "required": false,
+      "title": "Context7 API Key",
+      "description": "Read only after you approve a Context7 documentation request; falls back to the CONTEXT7_API_KEY environment variable"
+    },
+    {
+      "name": "exaApiKey",
+      "type": "password",
+      "required": false,
+      "title": "Exa API Key",
+      "description": "Read only after you approve an Exa search and its maximum cost; leave blank to type a one-run key each time"
+    },
+    {
+      "name": "githubToken",
+      "type": "password",
+      "required": false,
+      "title": "GitHub Token",
+      "description": "Read only after you approve a read-only public GitHub search; leave blank to type a one-run token each time"
+    },
+    {
+      "name": "researchContext7",
+      "type": "checkbox",
+      "required": false,
+      "title": "Research Suppliers",
+      "label": "Context7 library documentation",
+      "default": true,
+      "description": "Allow Context7 when the task names a technical library"
+    },
+    {
+      "name": "researchExa",
+      "type": "checkbox",
+      "required": false,
+      "title": "",
+      "label": "Exa deep search",
+      "default": true,
+      "description": "Allow Exa on Deep research; each search shows its maximum cost before it runs"
+    },
+    {
+      "name": "researchWeb",
+      "type": "checkbox",
+      "required": false,
+      "title": "",
+      "label": "Current web research",
+      "default": false,
+      "description": "Allow current-web retrieval when the task depends on a fact outside library documentation"
+    },
+    {
+      "name": "researchGithub",
+      "type": "checkbox",
+      "required": false,
+      "title": "",
+      "label": "GitHub read-only search",
+      "default": false,
+      "description": "Allow read-only public GitHub searches when the task names upstream code or history"
     }
   ],
   "commands": [
@@ -149,7 +281,8 @@
     "eval:openai": "node --experimental-strip-types evals/run-provider.mts --profile openai-standard-v1",
     "eval:anthropic": "node --experimental-strip-types evals/run-provider.mts --profile anthropic-sonnet-5-v1",
     "eval:google": "node --experimental-strip-types evals/run-provider.mts --profile google-gemini-3.5-flash-v1",
-    "check": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm build:cli && pnpm build:mcp && pnpm verify:mcp-runtime && pnpm verify:mcp-bundle && pnpm verify:mcp-mutations && pnpm verify:feedback-cli && pnpm verify:optimization-cli"
+    "check": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm build:cli && pnpm build:mcp && pnpm verify:mcp-runtime && pnpm verify:mcp-bundle && pnpm verify:mcp-mutations && pnpm verify:feedback-cli && pnpm verify:optimization-cli",
+    "eval:judge": "node --experimental-strip-types evals/judge-run.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

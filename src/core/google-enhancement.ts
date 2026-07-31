@@ -4,6 +4,9 @@ import {
   enhancementCompilerInstructions,
   enhancementCompilerVersion,
   enhancementResultSchemaForProvider,
+  REVIEWER_INSTRUCTIONS,
+  reviewerInput,
+  sumEnhancementUsage,
   validateEnhancementRequest,
   validateEnhancementResult,
   type EnhancementRequest,
@@ -47,15 +50,16 @@ interface GoogleResponse {
 export function buildGoogleGenerateContentRequest(
   request: EnhancementRequest,
   profile: EnhancementRunProfile,
+  override?: { system: string; input: string },
 ): Record<string, unknown> {
   return {
     systemInstruction: {
-      parts: [{ text: enhancementCompilerInstructions(request) }],
+      parts: [{ text: override?.system ?? enhancementCompilerInstructions(request) }],
     },
     contents: [
       {
         role: "user",
-        parts: [{ text: enhancementCompilerInput(request) }],
+        parts: [{ text: override?.input ?? enhancementCompilerInput(request) }],
       },
     ],
     generationConfig: {
@@ -113,7 +117,43 @@ export async function enhanceWithGoogle(
   }
 
   const parsed = parseGoogleResponse(await response.json());
-  const result = parseValidatedResult(parsed.outputText, request, "Google");
+  let result = parseValidatedResult(parsed.outputText, request, "Google");
+  const usages = [calculateGoogleUsage(parsed.usage, profile)];
+  const responseIds = [parsed.responseId];
+
+  // Independent reviewer pass: the same contract, applied to the candidate.
+  if (profile.passes === 2 || request.selfReview) {
+    const reviewResponse = await fetchProviderWithRetry(
+      "Google",
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildGoogleGenerateContentRequest(request, profile, {
+            system: `${REVIEWER_INSTRUCTIONS}\n\nCompiler contract:\n${enhancementCompilerInstructions(request)}`,
+            input: reviewerInput(request, result),
+          }),
+        ),
+      },
+      profile.timeoutMs,
+      options,
+    );
+    if (!reviewResponse.ok) {
+      const code = await providerResponseErrorCode(reviewResponse);
+      throw new Error(
+        `Google rejected the review pass (${reviewResponse.status}${code ? `, ${code}` : ""}). No prompt was saved.`,
+      );
+    }
+    const reviewed = parseGoogleResponse(await reviewResponse.json());
+    result = parseValidatedResult(reviewed.outputText, request, "Google");
+    usages.push(calculateGoogleUsage(reviewed.usage, profile));
+    responseIds.push(reviewed.responseId);
+  }
+
   const completedAt = new Date();
   return {
     result,
@@ -123,8 +163,8 @@ export async function enhanceWithGoogle(
     startedAt: startedAt.toISOString(),
     completedAt: completedAt.toISOString(),
     latencyMs: completedAt.getTime() - startedAt.getTime(),
-    usage: calculateGoogleUsage(parsed.usage, profile),
-    responseIds: [parsed.responseId],
+    usage: sumEnhancementUsage(usages),
+    responseIds,
   };
 }
 

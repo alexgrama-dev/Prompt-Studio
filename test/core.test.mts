@@ -66,6 +66,7 @@ import type { PromptStudioMcpMutationOptions } from "../src/core/mcp-write.ts";
 import {
   appendExecutionGuardrails,
   defaultEnhancementCompilerPolicy,
+  enhancementCompilerInput,
   enhancementCompilerInstructions,
   buildOpenAIResponseRequest,
   ENHANCEMENT_COMPILER_VERSION,
@@ -78,7 +79,34 @@ import {
   validateEnhancementResult,
   type EnhancementRequest,
   type EnhancementResult,
+  metadataFloors,
+  COMPILER_WORKED_EXAMPLES,
 } from "../src/core/enhancement.ts";
+import {
+  buildJudgeRequest,
+  factCoverage,
+  judgeEvaluationRecord,
+  maximumJudgeCostUsd,
+} from "../src/core/evaluation-judge.ts";
+import {
+  rankVariants,
+  REVIEW_TOTAL,
+  variantAsEvaluationRecord,
+  variantCount,
+  type ScoredVariant,
+} from "../src/core/variant-selection.ts";
+import {
+  buildRevisionRequest,
+  diffLines,
+  renderDiff,
+} from "../src/core/revision.ts";
+import { findDuplicateCandidates } from "../src/core/overlap.ts";
+import {
+  listRuns,
+  recordRun,
+  runLogPath,
+  tallyRuns,
+} from "../src/core/run-log.ts";
 import {
   parseEnhancementFormDraft,
   restorableEnhancementFormDraft,
@@ -201,6 +229,7 @@ import {
   researchWithContext7,
 } from "../src/core/context7-research.ts";
 import {
+  filterResearchRoutesBySupplier,
   planResearchRoutes,
   preferResearchEvidence,
   RESEARCH_SOURCE_POLICY,
@@ -208,6 +237,8 @@ import {
 import {
   buildOpenAIFocusedResearchRequest,
   focusedResearchIntent,
+  focusedResearchIntents,
+  MAX_QUERIES_PER_ROUTE,
   maximumFocusedResearchCostUsd,
   planFocusedResearch,
   type FocusedResearchIntent,
@@ -239,6 +270,7 @@ import {
   enhancementProfileIsAvailable,
   getProviderEnhancementProfile,
   providerPrivacyDisclosure,
+  resolveDefaultEnhancementProfileId,
 } from "../src/core/provider-profiles.ts";
 import {
   mergeReviewedSources,
@@ -496,7 +528,7 @@ test("enhancement results enforce target, provenance, and discovery metadata bou
         { ...enhancementFixture(), tags: ["debugging"] },
         request,
       ),
-    /tags must contain 5-8/,
+    /tags must contain \d+-8/,
   );
   assert.throws(
     () =>
@@ -770,6 +802,64 @@ test("Context7 failures are bounded before model enhancement", async () => {
     /cancelled/,
   );
   assert.equal(cancelledCalls, 0);
+});
+
+test("supplier preferences may only narrow a justified research plan", () => {
+  const planned = planResearchRoutes({
+    roughThoughts:
+      "Check upstream GitHub issue #42, the latest browser support, and compare community examples.",
+    researchLevel: "deep",
+    hasSelectedProject: false,
+  });
+  assert.deepEqual(planned.routes, ["github", "web", "exa"]);
+
+  const defaults = filterResearchRoutesBySupplier(planned, {
+    context7: true,
+    exa: true,
+    web: false,
+    github: false,
+  });
+  assert.deepEqual(defaults.routes, ["exa"]);
+  assert.equal(defaults.noExternalRequest, false);
+  assert.equal(defaults.reasons.web, undefined);
+  assert.equal(defaults.reasons.github, undefined);
+
+  const allOff = filterResearchRoutesBySupplier(planned, {
+    context7: false,
+    exa: false,
+    web: false,
+    github: false,
+  });
+  assert.deepEqual(allOff.routes, ["none"]);
+  assert.equal(allOff.noExternalRequest, true);
+  assert.match(String(allOff.reasons.none), /turned off in preferences/);
+
+  const localOnly = filterResearchRoutesBySupplier(
+    planResearchRoutes({
+      roughThoughts: "Use the React useEffect API in this project.",
+      researchLevel: "auto",
+      hasSelectedProject: true,
+      technicalLibrary: "React",
+    }),
+    { context7: false, exa: true, web: true, github: true },
+  );
+  assert.deepEqual(localOnly.routes, ["none"]);
+
+  // A preference never adds a route the router did not justify.
+  const unchanged = planResearchRoutes({
+    roughThoughts: "Make the acceptance criteria explicit.",
+    researchLevel: "auto",
+    hasSelectedProject: false,
+  });
+  assert.deepEqual(
+    filterResearchRoutesBySupplier(unchanged, {
+      context7: true,
+      exa: true,
+      web: true,
+      github: true,
+    }).routes,
+    ["none"],
+  );
 });
 
 test("the research router is need-based and applies one source-priority rulebook", () => {
@@ -1246,6 +1336,194 @@ test("GitHub MCP stops on missing auth, extra tools, denials, limits, outage, an
   );
   assert.equal(step, 3);
   assert.equal(toolCalls, 0);
+});
+
+function plannerFetcher(plan: unknown): typeof fetch {
+  return (async () =>
+    Response.json({
+      id: "resp_multi",
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify(plan) }],
+        },
+      ],
+      usage: { input_tokens: 500, output_tokens: 150 },
+    })) as typeof fetch;
+}
+
+const MULTI_ROUTE_REQUEST = {
+  roughThoughts:
+    "Push the boundaries of web design with the latest CSS and shaders, compare community examples, and keep the data tables readable.",
+  researchLevel: "deep" as const,
+  routes: ["context7", "exa"] as const,
+  availableLibraries: ["next", "react", "@tanstack/react-query"],
+  currentDate: "2026-07-31",
+};
+
+test("the planner writes documentation topics per library and bounds each route", async () => {
+  assert.deepEqual(MAX_QUERIES_PER_ROUTE, { context7: 5, exa: 4, web: 2 });
+
+  const schema = (
+    buildOpenAIFocusedResearchRequest(MULTI_ROUTE_REQUEST).text as {
+      format: { schema: { properties: { queries: { maxItems: number } } } };
+    }
+  ).format.schema;
+  assert.equal(schema.properties.queries.maxItems, 11);
+  assert.match(
+    String(buildOpenAIFocusedResearchRequest(MULTI_ROUTE_REQUEST).instructions),
+    /Never copy the task description into a context7 query/,
+  );
+
+  const plan = await planFocusedResearch(MULTI_ROUTE_REQUEST, {
+    apiKey: "test-key",
+    retryLimit: 0,
+    fetcher: plannerFetcher({
+      objective: "Establish current CSS and data-table techniques.",
+      questions: ["Which CSS features ship in stable browsers?"],
+      queries: [
+        {
+          route: "context7",
+          purpose: "App Router rendering behaviour.",
+          query: "App Router streaming and Suspense boundaries",
+          library: "next",
+        },
+        {
+          route: "context7",
+          purpose: "Query cache behaviour for dense tables.",
+          query: "query cache invalidation and pagination",
+          library: "@tanstack/react-query",
+        },
+        {
+          route: "exa",
+          purpose: "Community implementations.",
+          query: "open-source dense data table WebGL rendering examples",
+          library: null,
+        },
+      ],
+    }),
+  });
+
+  const context7Intents = focusedResearchIntents(plan, "context7");
+  assert.equal(context7Intents.length, 2);
+  assert.equal(context7Intents[0]?.library, "next");
+  // The planning charge is levied once for the whole plan.
+  assert.ok(context7Intents[0]!.planningCostUsd > 0);
+  assert.equal(context7Intents[1]?.planningCostUsd, 0);
+
+  const context7Plan = planContext7Research(
+    MULTI_ROUTE_REQUEST.roughThoughts,
+    "deep",
+    undefined,
+    "15.1.0",
+    { intent: context7Intents[0]! },
+  );
+  assert.equal(context7Plan.libraryInput, "next");
+  assert.equal(
+    context7Plan.query,
+    "For next 15.1.0: App Router streaming and Suspense boundaries",
+  );
+  // The rough task must not leak into the documentation query.
+  assert.doesNotMatch(context7Plan.query!, /push the boundaries/i);
+
+  const exaPlan = planExaResearch(MULTI_ROUTE_REQUEST.roughThoughts, "deep", {
+    intent: focusedResearchIntents(plan, "exa")[0]!,
+  });
+  assert.equal(exaPlan.route, "exa");
+  assert.equal(exaPlan.category, "github");
+
+  const reject = async (queries: unknown, pattern: RegExp) =>
+    assert.rejects(
+      planFocusedResearch(MULTI_ROUTE_REQUEST, {
+        apiKey: "test-key",
+        retryLimit: 0,
+        fetcher: plannerFetcher({
+          objective: "Objective.",
+          questions: ["Question?"],
+          queries,
+        }),
+      }),
+      pattern,
+    );
+
+  await reject(
+    Array.from({ length: 6 }, (_unused, index) => ({
+      route: "context7",
+      purpose: "Purpose.",
+      query: `topic number ${index}`,
+      library: "next",
+    })).concat([
+      { route: "exa", purpose: "P.", query: "examples", library: null } as never,
+    ]),
+    /the limit is 5/,
+  );
+  await reject(
+    [
+      {
+        route: "context7",
+        purpose: "Purpose.",
+        query: "routing",
+        library: null,
+      },
+      { route: "exa", purpose: "P.", query: "examples", library: null },
+    ],
+    /query library is (?:invalid|empty)/,
+  );
+  await reject(
+    [
+      { route: "context7", purpose: "P.", query: "routing", library: "next" },
+      { route: "context7", purpose: "P.", query: "routing", library: "next" },
+      { route: "exa", purpose: "P.", query: "examples", library: null },
+    ],
+    /repeated the same query/,
+  );
+  await reject(
+    [{ route: "context7", purpose: "P.", query: "routing", library: "next" }],
+    /returned no query for: exa/,
+  );
+});
+
+test("scoped packages with ordinary-word tails need their full name", () => {
+  const bundle = {
+    records: [
+      {
+        path: "apps/web/package.json",
+        content: JSON.stringify({
+          dependencies: { next: "15.1.0" },
+          devDependencies: {
+            "@playwright/test": "1.58.2",
+            "@tanstack/react-query": "5.0.0",
+          },
+        }),
+      },
+    ],
+  } as never;
+
+  // "test" is an ordinary word, so it must not select @playwright/test.
+  assert.equal(
+    detectTechnicalLibrary("run the adversarial test sweep", bundle),
+    undefined,
+  );
+  assert.equal(
+    detectTechnicalLibrary(
+      "the repo is a Next.js app; fix every failing test",
+      bundle,
+    )?.libraryInput,
+    "next",
+  );
+  // A distinctive tail still resolves its scoped package.
+  assert.equal(
+    detectTechnicalLibrary("cache the react-query results", bundle)
+      ?.libraryInput,
+    "@tanstack/react-query",
+  );
+  // The full scoped name always matches.
+  assert.equal(
+    detectTechnicalLibrary("upgrade @playwright/test config", bundle)
+      ?.libraryInput,
+    "@playwright/test",
+  );
 });
 
 test("focused research planning extracts provider queries before any search", async () => {
@@ -2371,7 +2649,14 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     "json_schema",
   );
   assert.equal(JSON.stringify(anthropicBody).includes("tools"), false);
-  assert.equal(JSON.stringify(anthropicBody).includes("minLength"), false);
+  // Anthropic structured outputs reject length keywords with a 400.
+  for (const keyword of ["minLength", "maxLength", "minItems", "maxItems"]) {
+    assert.equal(
+      JSON.stringify(anthropicBody).includes(keyword),
+      false,
+      `${keyword} must not reach Anthropic`,
+    );
+  }
 
   const googleRequest: EnhancementRequest = {
     ...enhancementRequest(),
@@ -3714,6 +3999,25 @@ test("optional enhancement capabilities stay inert until explicitly available", 
   assert.equal(
     enhancementProfileIsAvailable("google-gemini-3.5-flash-v1", states),
     true,
+  );
+
+  const ready = { anthropic: "preview", google: "preview" } as const;
+  assert.equal(
+    resolveDefaultEnhancementProfileId("anthropic-sonnet-5-v1", ready),
+    "anthropic-sonnet-5-v1",
+  );
+  // A Disabled provider must not become the starting profile.
+  assert.equal(
+    resolveDefaultEnhancementProfileId("anthropic-sonnet-5-v1", states),
+    "openai-standard-v1",
+  );
+  assert.equal(
+    resolveDefaultEnhancementProfileId("not-a-profile", ready),
+    "openai-standard-v1",
+  );
+  assert.equal(
+    resolveDefaultEnhancementProfileId(undefined, ready),
+    "openai-standard-v1",
   );
 
   let credentialReads = 0;
@@ -8131,4 +8435,463 @@ test("prompt updates can carry revised sources and enhancement provenance", asyn
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+test("metadata floors scale with task size and the compiler states the target", () => {
+  const base = {
+    target: "generic" as const,
+    profileId: "openai-standard-v1" as const,
+    researchLevel: "none" as const,
+  };
+  const simple = metadataFloors({ ...base, roughThoughts: "make the readme clearer" });
+  assert.equal(simple.tier, "simple");
+  assert.equal(simple.searchTerms, 5);
+
+  const standard = metadataFloors({
+    ...base,
+    roughThoughts: Array.from({ length: 60 }, (_u, i) => `word${i}`).join(" "),
+  });
+  assert.equal(standard.tier, "standard");
+  assert.equal(standard.searchTerms, 10);
+
+  const complex = metadataFloors({
+    ...base,
+    roughThoughts: Array.from({ length: 300 }, (_u, i) => `word${i}`).join(" "),
+  });
+  assert.equal(complex.tier, "complex");
+  assert.equal(complex.searchTerms, 20);
+
+  // Retrieved research always counts as complex, however short the request is.
+  assert.equal(
+    metadataFloors({
+      ...base,
+      roughThoughts: "add caching",
+      sources: [
+        {
+          title: "Doc",
+          url: "https://example.com/a",
+          retrievedAt: new Date().toISOString(),
+          supports: "s",
+          content: "c",
+        },
+      ],
+    }).tier,
+    "complex",
+  );
+
+  const instructions = enhancementCompilerInstructions({
+    target: "generic",
+    roughThoughts: "make the readme clearer",
+  });
+  assert.match(instructions, /This task is simple\./);
+  assert.match(instructions, /at least 3 tags, 1 aliases, and 5 search terms/);
+  assert.ok(instructions.includes(COMPILER_WORKED_EXAMPLES));
+  // Worked examples must show both the good and the rejected shape.
+  assert.match(COMPILER_WORKED_EXAMPLES, /Good enhancedPrompt:/);
+  assert.match(COMPILER_WORKED_EXAMPLES, /Bad:/);
+});
+
+test("the shared source budget is filled by authority, not arrival order", () => {
+  const source = (route: string, url: string, bytes: number) => ({
+    title: `t-${url}`,
+    url,
+    retrievedAt: "2026-07-31T00:00:00.000Z",
+    supports: "s",
+    content: "x".repeat(bytes),
+    route: route as never,
+  });
+  // Exa arrives first but Context7 documentation outranks it.
+  const merged = mergeReviewedSources(
+    [source("exa", "https://a.example/1", 11_000)],
+    [
+      source("web", "https://b.example/2", 11_000),
+      source("context7", "https://c.example/3", 11_000),
+    ],
+  );
+  assert.deepEqual(
+    merged.map((item) => item.route),
+    ["context7", "web"],
+  );
+  // The third source did not fit in the 30 KB budget, and the lowest-authority
+  // one is the one that was dropped.
+  assert.equal(merged.length, 2);
+});
+
+
+test("the run log records failures with the stage that spent the money", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-runs-"));
+  try {
+    let tick = 0;
+    const clock = () => new Date(Date.UTC(2026, 6, 31, 12, tick++));
+
+    await recordRun(
+      directory,
+      {
+        status: "ok",
+        stage: "exa",
+        routes: ["exa"],
+        sourceCount: 8,
+        cost: { exa: 0.02 },
+      },
+      clock,
+    );
+    await recordRun(
+      directory,
+      {
+        status: "failed",
+        stage: "enhancement",
+        provider: "anthropic",
+        model: "claude-sonnet-5",
+        error: "Anthropic rejected the enhancement request (400).",
+      },
+      clock,
+    );
+    await recordRun(
+      directory,
+      {
+        status: "failed",
+        stage: "enhancement",
+        provider: "anthropic",
+        model: "claude-sonnet-5",
+        error: "Anthropic rejected the enhancement request (400).",
+      },
+      clock,
+    );
+    await recordRun(
+      directory,
+      { status: "ok", stage: "enhancement", cost: { model: 0.05 } },
+      clock,
+    );
+
+    const runs = await listRuns(directory);
+    assert.equal(runs.length, 4);
+    const tally = tallyRuns(runs);
+    assert.equal(tally.ok, 2);
+    assert.equal(tally.failed, 2);
+    // Exa spend still counts even though that enhancement later failed.
+    assert.equal(tally.totalCostUsd, 0.07);
+    assert.deepEqual(tally.failuresByStage, [
+      { stage: "enhancement", count: 2 },
+    ]);
+    assert.equal(tally.topErrors[0]?.count, 2);
+    assert.match(String(tally.topErrors[0]?.error), /400/);
+
+    // A malformed line must not hide the readable remainder.
+    await appendFile(runLogPath(directory), "{ not json\n", "utf8");
+    await recordRun(directory, { status: "cancelled", stage: "web" }, clock);
+    const afterCorruption = await listRuns(directory);
+    assert.equal(afterCorruption.length, 5);
+    assert.equal(afterCorruption.at(-1)?.status, "cancelled");
+
+    // Prompt text is never persisted: only the declared fields survive.
+    await recordRun(
+      directory,
+      {
+        status: "failed",
+        stage: "planning",
+        error: "x".repeat(900),
+        // @ts-expect-error a stray field must not reach the log
+        roughThoughts: "my private task description",
+      },
+      clock,
+    );
+    const raw = await readFile(runLogPath(directory), "utf8");
+    assert.equal(raw.includes("my private task description"), false);
+    assert.equal(
+      (await listRuns(directory)).at(-1)!.error!.length <= 300,
+      true,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+function judgeFixtureRecord() {
+  return {
+    caseId: "dev-debug-intermittent-api",
+    split: "development" as const,
+    category: "debugging",
+    requiredFacts: [
+      "The failure is intermittent.",
+      "Retries alone are not an acceptable fix.",
+    ],
+    prohibitedInventions: ["A specific Redis cache layer."],
+    request: {
+      target: "codex" as const,
+      roughThoughts: "API call fails sometimes; prove the cause before fixing.",
+      project: null,
+      allowedProjectFiles: [],
+    },
+    result: {
+      ...enhancementFixture(),
+      target: "codex" as const,
+      enhancedPrompt:
+        "Diagnose the intermittent API failure. Establish the cause with evidence before changing behaviour; retries alone are not an acceptable fix.",
+    },
+    metrics: { status: "completed" as const },
+    responseIds: ["resp_1"],
+    humanReview: {
+      status: "pending" as const,
+      fidelity: null,
+      completeness: null,
+      unsupportedFacts: null,
+      actionability: null,
+      validation: null,
+      authorization: null,
+      appropriateLength: null,
+      hardFailure: null,
+      notes: "",
+    },
+  };
+}
+
+test("the evaluation judge is blind, bounded, and cannot inflate a score", async () => {
+  const record = judgeFixtureRecord();
+
+  // Deterministic coverage is a supporting signal for the judge.
+  const coverage = factCoverage(record);
+  assert.equal(coverage.requiredFacts, 2);
+  assert.equal(coverage.prohibitedInventions, 0);
+
+  const body = buildJudgeRequest(record);
+  const serialized = JSON.stringify(body);
+  assert.equal(body.store, false);
+  // The judge must never learn which provider or model produced the result.
+  assert.equal(serialized.includes("resp_1"), false);
+  assert.equal(/anthropic|openai-standard|gpt-5\.6-sol|claude/i.test(serialized), false);
+  assert.match(serialized, /requiredFacts/);
+  assert.ok(maximumJudgeCostUsd(24) > 0);
+
+  const judged = await judgeEvaluationRecord(record, {
+    apiKey: "judge-test-key",
+    fetcher: (async () =>
+      Response.json({
+        id: "resp_judge",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                // Deliberately out of range: 999 must clamp, not inflate.
+                text: JSON.stringify({
+                  fidelity: 999,
+                  completeness: 18,
+                  unsupportedFacts: 20,
+                  actionability: 14,
+                  validation: 9,
+                  authorization: 5,
+                  appropriateLength: 4,
+                  hardFailure: false,
+                  notes: "x".repeat(900),
+                }),
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 3_000, output_tokens: 200 },
+      })) as typeof fetch,
+  });
+  assert.equal(judged.review.fidelity, 25);
+  assert.equal(judged.review.notes.length, 500);
+  assert.ok(judged.estimatedCostUsd > 0);
+
+  // A refusal must not be recorded as a passing score.
+  await assert.rejects(
+    judgeEvaluationRecord(record, {
+      apiKey: "judge-test-key",
+      fetcher: (async () =>
+        Response.json({
+          id: "resp_refusal",
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "refusal", refusal: "no" }],
+            },
+          ],
+        })) as typeof fetch,
+    }),
+    /declined to judge/,
+  );
+});
+
+
+test("variant selection is blind, hard-failure-aware, and deterministic on ties", () => {
+  assert.equal(REVIEW_TOTAL, 100);
+  // Only 2-4 variants are meaningful; anything else means one plain enhancement.
+  assert.equal(variantCount("0"), 0);
+  assert.equal(variantCount("1"), 0);
+  assert.equal(variantCount("3"), 3);
+  assert.equal(variantCount("9"), 4);
+  assert.equal(variantCount(undefined), 0);
+  assert.equal(variantCount("nonsense"), 0);
+
+  const request = enhancementRequest();
+  const record = variantAsEvaluationRecord(request, {
+    index: 0,
+    run: { result: enhancementFixture() } as never,
+  });
+  // The judge must not be able to tell variants apart by anything but content.
+  assert.deepEqual(record.responseIds, []);
+  assert.equal(record.request.roughThoughts, request.roughThoughts);
+
+  const variant = (
+    index: number,
+    score: number,
+    hardFailure = false,
+  ): ScoredVariant => ({
+    index,
+    run: { usage: { estimatedCostUsd: 0.01 } } as never,
+    score,
+    judgeCostUsd: 0.002,
+    review: {
+      fidelity: 0,
+      completeness: 0,
+      unsupportedFacts: 0,
+      actionability: 0,
+      validation: 0,
+      authorization: 0,
+      appropriateLength: 0,
+      hardFailure,
+      notes: "",
+    },
+  });
+
+  // A hard failure loses even with the highest score.
+  const withFailure = rankVariants([
+    variant(0, 98, true),
+    variant(1, 70),
+    variant(2, 84),
+  ]);
+  assert.equal(withFailure.winner.index, 2);
+  assert.equal(withFailure.ranked.at(-1)?.index, 0);
+
+  // Ties break toward the earlier variant, so the same inputs always agree.
+  const tied = rankVariants([variant(1, 90), variant(0, 90)]);
+  assert.equal(tied.winner.index, 0);
+
+  assert.equal(tied.enhancementCostUsd, 0.02);
+  assert.equal(tied.judgeCostUsd, 0.004);
+  assert.throws(() => rankVariants([]), /no winner/);
+});
+
+
+test("a revision changes only what was asked and shows what moved", () => {
+  const request = enhancementRequest();
+  const previous = enhancementFixture();
+
+  const revised = buildRevisionRequest(request, previous, "  Require proof.  ");
+  assert.equal(revised.revision?.instruction, "Require proof.");
+  assert.equal(revised.revision?.previous, previous);
+  // The original request is untouched, so a failed revision cannot corrupt it.
+  assert.equal("revision" in request, false);
+  assert.throws(() => buildRevisionRequest(request, previous, "   "), /Enter what/);
+  assert.throws(
+    () => buildRevisionRequest(request, previous, "x".repeat(2_001)),
+    /2000 characters or fewer/,
+  );
+
+  // The revision request compiles from the previous result, not from scratch.
+  const input = enhancementCompilerInput(revised);
+  assert.match(input, /Apply the revision instruction/);
+  assert.match(input, /Require proof\./);
+  const instructions = enhancementCompilerInstructions(revised);
+  assert.match(instructions, /Revision pass/);
+  assert.match(instructions, /keep the stricter reading/);
+  // A plain run must not pick up revision guidance.
+  assert.doesNotMatch(enhancementCompilerInstructions(request), /Revision pass/);
+
+  const summary = diffLines(
+    "line one\nline two\nline three\nline four",
+    "line one\nline two CHANGED\nline three\nline four",
+  );
+  assert.equal(summary.added, 1);
+  assert.equal(summary.removed, 1);
+  const rendered = renderDiff(summary);
+  assert.match(rendered, /^- line two$/m);
+  assert.match(rendered, /^\+ line two CHANGED$/m);
+  assert.match(rendered, /^ {2}line one$/m);
+
+  // Identical text produces no diff at all.
+  const unchanged = diffLines("same\ntext", "same\ntext");
+  assert.equal(unchanged.added, 0);
+  assert.equal(unchanged.removed, 0);
+
+  // Far-apart changes collapse the untouched middle.
+  const long = diffLines(
+    ["a", ...Array.from({ length: 30 }, (_u, i) => `m${i}`), "z"].join("\n"),
+    ["A", ...Array.from({ length: 30 }, (_u, i) => `m${i}`), "Z"].join("\n"),
+  );
+  assert.match(renderDiff(long), /…/);
+});
+
+
+test("a near-duplicate is caught before the save, not in a later audit", () => {
+  const record = (
+    id: string,
+    title: string,
+    body: string,
+    archivedAt?: string,
+  ) =>
+    ({
+      id,
+      title,
+      summary: title,
+      body,
+      archivedAt,
+    }) as never;
+
+  const library = [
+    record(
+      "a",
+      "Adversarial test sweep",
+      "Run a comprehensive adversarial test sweep targeting edge cases, malformed inputs, and race conditions.",
+    ),
+    record("b", "Write release notes", "Summarise the changes for the release."),
+    record(
+      "c",
+      "Archived duplicate",
+      "Run a comprehensive adversarial test sweep targeting edge cases, malformed inputs, and race conditions.",
+      "2026-07-01T00:00:00.000Z",
+    ),
+  ];
+
+  const duplicates = findDuplicateCandidates(
+    {
+      title: "Adversarial test sweep",
+      summary: "Adversarial test sweep",
+      body: "Run a comprehensive adversarial test sweep targeting edge cases, malformed inputs, and race conditions.",
+    },
+    library,
+  );
+  assert.equal(duplicates.length, 1);
+  assert.equal(duplicates[0]?.id, "a");
+  assert.ok(duplicates[0]!.similarity >= 0.9);
+
+  // An unrelated draft is not flagged, so the warning stays meaningful.
+  assert.deepEqual(
+    findDuplicateCandidates(
+      {
+        title: "Plan a migration",
+        summary: "Plan a migration",
+        body: "Design the sequencing for moving the warehouse to a new host.",
+      },
+      library,
+    ),
+    [],
+  );
+
+  assert.throws(
+    () =>
+      findDuplicateCandidates(
+        { title: "t", summary: "s", body: "b" },
+        library,
+        0.1,
+      ),
+    /between 0.2 and 0.95/,
+  );
 });
