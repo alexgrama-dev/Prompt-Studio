@@ -1,8 +1,10 @@
-import { Clipboard, showHUD } from "@raycast/api";
+import { Clipboard, LocalStorage, showHUD } from "@raycast/api";
 import { pickAmbientPrompt } from "./core/ambient";
 import { getPromptStudioPreferences } from "./core/extension-preferences";
 import { extractPlaceholders } from "./core/placeholders";
 import { listPrompts, resolvePromptDirectory } from "./core/prompt-store";
+import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
+import { recordLastLibraryPaste } from "./core/last-library-paste";
 import { loadPromptUsageEvidence, recordPromptUse } from "./core/search-index";
 
 /**
@@ -38,6 +40,15 @@ export default async function PasteTopPrompt() {
     recordPromptUse(pick.record.id);
   } catch {
     // ponytail: a missing index only loses ranking, never the paste.
+  }
+  try {
+    await recordLastLibraryPaste(
+      LocalStorage,
+      getFeatureStatus(await loadFeatureStatuses(), "feedback").effectiveState,
+      pick.record,
+    );
+  } catch {
+    // ponytail: losing the rating pointer never undoes a successful paste.
   }
   await showHUD(`Pasted ${pick.record.title} — ${pick.reason}`);
 }

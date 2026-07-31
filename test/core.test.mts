@@ -845,6 +845,8 @@ test("supplier preferences may only narrow a justified research plan", () => {
   assert.equal(allOff.noExternalRequest, true);
   assert.match(String(allOff.reasons.none), /turned off in preferences/);
 
+  // The selected project is not an external supplier: switching every supplier
+  // off must still leave the user's own repository in the plan.
   const localOnly = filterResearchRoutesBySupplier(
     planResearchRoutes({
       roughThoughts: "Use the React useEffect API in this project.",
@@ -854,7 +856,20 @@ test("supplier preferences may only narrow a justified research plan", () => {
     }),
     { context7: false, exa: true, web: true, github: true },
   );
-  assert.deepEqual(localOnly.routes, ["none"]);
+  assert.deepEqual(localOnly.routes, ["local-project"]);
+  assert.equal(localOnly.noExternalRequest, true);
+
+  // With no project there is nothing left, so the plan is genuinely empty.
+  const nothingLeft = filterResearchRoutesBySupplier(
+    planResearchRoutes({
+      roughThoughts: "Use the React useEffect API.",
+      researchLevel: "auto",
+      hasSelectedProject: false,
+      technicalLibrary: "React",
+    }),
+    { context7: false, exa: false, web: false, github: false },
+  );
+  assert.deepEqual(nothingLeft.routes, ["none"]);
 
   // A preference never adds a route the router did not justify.
   const unchanged = planResearchRoutes({
@@ -9392,7 +9407,6 @@ test("adversarial: diffing and clustering hold at their boundaries", () => {
   assert.equal(identical[0]?.ids.length, 3);
 });
 
-
 test("adversarial: the planner charges once, refuses unapproved routes, and bounds the budget", async () => {
   const responder = (payload: unknown) =>
     (async () =>
@@ -9424,7 +9438,12 @@ test("adversarial: the planner charges once, refuses unapproved routes, and boun
         objective: "o",
         questions: ["q?"],
         queries: [
-          { route: "context7", purpose: "p", query: "routing", library: "next" },
+          {
+            route: "context7",
+            purpose: "p",
+            query: "routing",
+            library: "next",
+          },
           {
             route: "exa",
             purpose: "p",
@@ -9444,7 +9463,11 @@ test("adversarial: the planner charges once, refuses unapproved routes, and boun
   // A route the user never approved must never reach a paid provider.
   await assert.rejects(
     planFocusedResearch(
-      { roughThoughts: "compare alternatives", researchLevel: "deep", routes: ["exa"] },
+      {
+        roughThoughts: "compare alternatives",
+        researchLevel: "deep",
+        routes: ["exa"],
+      },
       {
         apiKey: "k",
         retryLimit: 0,
@@ -9471,7 +9494,8 @@ test("adversarial: the planner charges once, refuses unapproved routes, and boun
   assert.equal(merged.length <= 30, true);
   assert.equal(
     merged.reduce(
-      (total, source) => total + new TextEncoder().encode(source.content).length,
+      (total, source) =>
+        total + new TextEncoder().encode(source.content).length,
       0,
     ) <= 30_000,
     true,

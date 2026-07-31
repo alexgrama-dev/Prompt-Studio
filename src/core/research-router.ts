@@ -169,13 +169,21 @@ export function filterResearchRoutesBySupplier(
   for (const route of removed) delete reasons[route];
 
   if (!routes.some((route) => route !== "none" && route !== "local-project")) {
-    return {
-      routes: ["none"],
-      reasons: {
-        none: `Every justified external source is turned off in preferences: ${removed.join(", ")}.`,
-      },
-      noExternalRequest: true,
-    };
+    const none = `Every justified external source is turned off in preferences: ${removed.join(", ")}.`;
+    // The selected project is not an external supplier, so switching the
+    // suppliers off must not also discard the user's own repository.
+    const local = routes.filter((route) => route === "local-project");
+    if (local.length > 0) {
+      return {
+        routes: local,
+        reasons: {
+          "local-project": decision.reasons["local-project"] ?? none,
+          none,
+        },
+        noExternalRequest: true,
+      };
+    }
+    return { routes: ["none"], reasons: { none }, noExternalRequest: true };
   }
   return { routes, reasons, noExternalRequest: false };
 }

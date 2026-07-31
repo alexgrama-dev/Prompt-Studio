@@ -594,7 +594,8 @@ async function libraryCommand(
     )
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   const human = [
-    `Clusters: ${clusters.length} · Lineages: ${lineage.length} · Drifted: ${drifted.length}`,
+    `Clusters: ${clusters.length} · Lineages: ${lineage.length} · Compiler-drifted: ${drifted.length}`,
+    "Repository drift needs the working tree; Browse Prompts reports it live.",
     ...clusters.map(
       (cluster) => `  cluster ${cluster.label}: ${cluster.titles.join(", ")}`,
     ),
@@ -602,7 +603,9 @@ async function libraryCommand(
       (chain) =>
         `  lineage ${chain.historyId}: ${chain.entries.map((entry) => entry.title).join(" -> ")}`,
     ),
-    ...drifted.map((entry) => `  drift ${entry.title}: ${entry.headline}`),
+    ...drifted.map(
+      (entry) => `  compiler drift ${entry.title}: ${entry.headline}`,
+    ),
   ].join("\n");
   return { data: { clusters, lineage, drifted }, human };
 }

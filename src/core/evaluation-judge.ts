@@ -8,7 +8,9 @@ import {
 const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
 const JUDGE_MODEL = "gpt-5.6-terra";
 const MAX_OUTPUT_TOKENS = 900;
-const MAX_INPUT_TOKENS = 12_000;
+// Worst case for the capped fields plus list contents, JSON overhead, and the
+// uncapped title and target. Must not understate what buildJudgeRequest sends.
+const MAX_INPUT_TOKENS = 20_000;
 const REQUEST_TIMEOUT_MS = 120_000;
 const INPUT_COST_PER_MILLION_USD = 2.5;
 const OUTPUT_COST_PER_MILLION_USD = 15;

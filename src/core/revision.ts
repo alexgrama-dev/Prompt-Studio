@@ -1,4 +1,8 @@
-import type { EnhancementRequest, EnhancementResult } from "./enhancement.ts";
+import {
+  modelProject,
+  type EnhancementRequest,
+  type EnhancementResult,
+} from "./enhancement.ts";
 
 export const MAX_REVISION_INSTRUCTION = 2_000;
 
@@ -52,9 +56,12 @@ export function revisionInput(
       task: "Apply the revision instruction to the previous result.",
       selectedTarget: request.target,
       roughThoughts: request.roughThoughts,
+      // A revision must not silently drop constraints the original run had.
+      oneRunInstruction: request.oneRunInstruction ?? null,
+      researchLevel: request.researchLevel,
       revisionInstruction: revision.instruction,
       previousResult: revision.previous,
-      project: request.project ? { name: request.project.name } : null,
+      project: modelProject(request.project),
       projectContext: request.projectContext ?? null,
       allowedProjectFiles: request.allowedProjectFiles ?? [],
       allowedSources: request.sources ?? [],

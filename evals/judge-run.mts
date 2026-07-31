@@ -19,7 +19,9 @@ const maxUsdIndex = args.indexOf("--max-usd");
 const confirmSpend = args.includes("--confirm-spend");
 
 const reportPath =
-  pathIndex >= 0 ? args[pathIndex + 1] : (await latestEnhancementEvaluation())?.path;
+  pathIndex >= 0
+    ? args[pathIndex + 1]
+    : (await latestEnhancementEvaluation())?.path;
 if (!reportPath) {
   throw new Error(
     "No evaluation report was found. Run pnpm eval:openai first, or pass --report <path>.",
@@ -54,7 +56,9 @@ if (!confirmSpend) {
 
 const maxUsd = Number(maxUsdIndex >= 0 ? args[maxUsdIndex + 1] : Number.NaN);
 if (!Number.isFinite(maxUsd) || maxUsd <= 0) {
-  throw new Error("A positive --max-usd limit is required for a live judging run.");
+  throw new Error(
+    "A positive --max-usd limit is required for a live judging run.",
+  );
 }
 if (maximumCostUsd > maxUsd) {
   throw new Error(
@@ -62,11 +66,20 @@ if (maximumCostUsd > maxUsd) {
   );
 }
 const apiKey = process.env.OPENAI_API_KEY?.trim();
-if (!apiKey) throw new Error("OPENAI_API_KEY is required for a live judging run.");
+if (!apiKey)
+  throw new Error("OPENAI_API_KEY is required for a live judging run.");
 
 let spent = 0;
 let latest = document;
 for (const [index, record] of pending.entries()) {
+  // Defense in depth: stop before a request that could exceed the approval.
+  const worstCaseRemaining = maximumJudgeCostUsd(pending.length - index);
+  if (spent + worstCaseRemaining > maxUsd) {
+    console.log(
+      `Stopping before ${record.caseId}: continuing could exceed the approved $${maxUsd.toFixed(2)}.`,
+    );
+    break;
+  }
   const judged = await judgeEvaluationRecord(record, { apiKey });
   spent += judged.estimatedCostUsd;
   latest = await recordEnhancementEvaluationReview(
