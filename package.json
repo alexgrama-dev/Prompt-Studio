@@ -256,6 +256,18 @@
         "frequent prompts"
       ],
       "mode": "menu-bar"
+    },
+    {
+      "name": "paste-top-prompt",
+      "title": "Paste Top Prompt",
+      "description": "Paste the prompt bound to your current project, or your most-used prompt, without opening a list",
+      "icon": "paste-top-prompt.png",
+      "keywords": [
+        "paste prompt",
+        "top prompt",
+        "quick paste"
+      ],
+      "mode": "no-view"
     }
   ],
   "scripts": {

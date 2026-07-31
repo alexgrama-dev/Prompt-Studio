@@ -149,6 +149,10 @@ import {
   type WebResearchResult,
 } from "./core/web-research";
 import { findDuplicateCandidates } from "./core/overlap";
+import { ProjectContextCache } from "./core/ambient";
+
+// Module scope: one cache per command process, cleared when Raycast unloads it.
+const projectContextCache = new ProjectContextCache<ProjectContextBundle>();
 import { recordRun, type RunStage } from "./core/run-log";
 import {
   buildRevisionRequest,
@@ -836,8 +840,12 @@ function EnhancementWorkspace({
         "Read-only. Nothing is sent yet.",
       );
       try {
-        projectBundle = await collectProjectContext(
-          selectedRepository,
+        // A repeat enhancement against the same repo reuses the last read.
+        const cached = projectContextCache.get(selectedRepository);
+        projectBundle =
+          cached ??
+          (await collectProjectContext(
+            selectedRepository,
           values.roughThoughts,
           {
             ...(preferences.projectRoots
@@ -847,8 +855,11 @@ function EnhancementWorkspace({
               ? { sshProjectRoot: preferences.sshProjectRoot }
               : {}),
             explicitlySelected: Boolean(explicitlySelectedRepository),
-          },
-        );
+            },
+          ));
+        if (!cached && projectBundle) {
+          projectContextCache.set(selectedRepository, projectBundle);
+        }
         toast.style = Toast.Style.Success;
         toast.title = "Project Ready";
         toast.message = "Review included files before enhancement.";

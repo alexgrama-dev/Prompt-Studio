@@ -22,6 +22,10 @@ import {
 import { extractPlaceholders } from "./core/placeholders";
 import { browsePromptsLaunchContext } from "./core/launch-context";
 import {
+  suggestPromptsForProject,
+  type PromptSuggestion,
+} from "./core/library-intelligence";
+import {
   clearLastLibraryPaste,
   completeLastPasteRating,
   lastLibraryPasteWasRated,
@@ -51,6 +55,7 @@ interface LastPaste {
 export default function MenubarPrompts() {
   const preferences = getPreferenceValues<Preferences.MenubarPrompts>();
   const [records, setRecords] = useState<PromptRecord[]>();
+  const [suggestions, setSuggestions] = useState<PromptSuggestion[]>([]);
   const [error, setError] = useState<string>();
   const [feedbackState, setFeedbackState] =
     useState<FeatureState>("disabled");
@@ -69,6 +74,15 @@ export default function MenubarPrompts() {
           loadFeatureStatuses(),
         ]);
         const active = library.records.filter((record) => !record.archivedAt);
+        setSuggestions(
+          suggestPromptsForProject(
+            active,
+            getPreferenceValues<{ projectRoots?: string }>()
+              .projectRoots?.split(",")[0]
+              ?.trim() ?? "",
+            { limit: 3 },
+          ),
+        );
         setRecords(
           rankRecordsByUsage(active, loadPromptUsage()).slice(0, MENU_LIMIT),
         );
@@ -150,6 +164,25 @@ export default function MenubarPrompts() {
     );
   }
 
+  async function copyPrompt(record: PromptRecord) {
+    if (extractPlaceholders(record.body).length > 0) {
+      await launchCommand({
+        name: "browse-prompts",
+        type: LaunchType.UserInitiated,
+        context: browsePromptsLaunchContext(record.id),
+      });
+      await showHUD("Open the prompt to fill its placeholders");
+      return;
+    }
+    await Clipboard.copy(record.body);
+    try {
+      recordPromptUse(record.id);
+    } catch {
+      // ponytail: a missing index only loses ranking, never the copy.
+    }
+    await showHUD("Prompt Copied");
+  }
+
   return (
     <MenuBarExtra
       icon={Icon.TextDocument}
@@ -165,6 +198,25 @@ export default function MenubarPrompts() {
         <MenuBarExtra.Item title="No Prompts Saved Yet" />
       ) : (
         <>
+          {suggestions.length > 0 ? (
+            <MenuBarExtra.Section title="For This Project">
+              {suggestions.map((suggestion) => {
+                const record = records?.find(
+                  (item) => item.id === suggestion.id,
+                );
+                if (!record) return null;
+                return (
+                  <MenuBarExtra.Item
+                    key={suggestion.id}
+                    title={suggestion.title}
+                    subtitle={suggestion.reason}
+                    icon={Icon.Pin}
+                    onAction={() => void copyPrompt(record)}
+                  />
+                );
+              })}
+            </MenuBarExtra.Section>
+          ) : null}
           {quickRatingEnabled(feedbackState) ? (
             <MenuBarExtra.Section title="Rate Last Prompt">
               {lastPaste ? (

@@ -58,6 +58,8 @@ declare namespace Preferences {
   export type QuickCapture = ExtensionPreferences & {}
   /** Preferences accessible in the `menubar-prompts` command */
   export type MenubarPrompts = ExtensionPreferences & {}
+  /** Preferences accessible in the `paste-top-prompt` command */
+  export type PasteTopPrompt = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -77,5 +79,7 @@ declare namespace Arguments {
   export type QuickCapture = {}
   /** Arguments passed to the `menubar-prompts` command */
   export type MenubarPrompts = {}
+  /** Arguments passed to the `paste-top-prompt` command */
+  export type PasteTopPrompt = {}
 }
 

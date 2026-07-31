@@ -108,6 +108,11 @@ import {
   suggestPromptsForProject,
 } from "../src/core/library-intelligence.ts";
 import {
+  pickAmbientPrompt,
+  ProjectContextCache,
+  projectLabel,
+} from "../src/core/ambient.ts";
+import {
   listRuns,
   recordRun,
   runLogPath,
@@ -2418,6 +2423,7 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
     ["idea-studio", "Capture Inbox", "capture-inbox.png"],
     ["quick-capture", "Quick Capture", "quick-capture.png"],
     ["menubar-prompts", "Frequent Prompts Menu", "frequent-prompts.png"],
+    ["paste-top-prompt", "Paste Top Prompt", "paste-top-prompt.png"],
   ];
 
   assert.equal(manifest.title, "Prompt Studio");
@@ -9022,4 +9028,58 @@ test("repository suggestions rank a real binding above a name match", () => {
   });
   assert.equal(withUsage[0]?.id, "bound");
   assert.deepEqual(suggestPromptsForProject(records, "   "), []);
+});
+
+
+test("the ambient pick prefers a bound repository, then real use", () => {
+  const records = [
+    libraryRecord({ id: "bound", title: "Bound", project: { name: "amp", path: "/repo/amp" } }),
+    libraryRecord({ id: "used", title: "Used" }),
+    libraryRecord({ id: "cold", title: "Cold" }),
+  ];
+  const usage = new Map([["used", 12]]);
+
+  const inRepo = pickAmbientPrompt(records, { projectPath: "/repo/amp", usage });
+  assert.equal(inRepo.record?.id, "bound");
+  assert.match(inRepo.reason, /Bound to this repository/);
+
+  // Outside a known repo, the most-used prompt wins over a never-used one.
+  const outside = pickAmbientPrompt(records, { projectPath: "/elsewhere", usage });
+  assert.equal(outside.record?.id, "used");
+  assert.match(outside.reason, /12 uses/);
+
+  // No usage evidence at all still returns something deterministic.
+  assert.ok(pickAmbientPrompt(records).record);
+  // An empty library must say so rather than paste nothing silently.
+  const empty = pickAmbientPrompt([]);
+  assert.equal(empty.record, undefined);
+  assert.match(empty.reason, /empty/);
+  assert.equal(
+    pickAmbientPrompt([
+      libraryRecord({ id: "a", archivedAt: "2026-07-02T00:00:00.000Z" }),
+    ]).record,
+    undefined,
+  );
+});
+
+test("the project context cache expires and never serves another repository", () => {
+  let now = 1_000;
+  const cache = new ProjectContextCache<string>(5_000, () => now);
+  cache.set("/repo/a", "bundle-a");
+  assert.equal(cache.get("/repo/a"), "bundle-a");
+  // A different repository must never read another repository's bundle.
+  assert.equal(cache.get("/repo/b"), undefined);
+
+  now += 4_999;
+  assert.equal(cache.get("/repo/a"), "bundle-a");
+  now += 2;
+  // A stale bundle is worse than no cache, so it expires rather than persists.
+  assert.equal(cache.get("/repo/a"), undefined);
+
+  cache.set("/repo/a", "fresh");
+  cache.clear();
+  assert.equal(cache.get("/repo/a"), undefined);
+
+  assert.equal(projectLabel("/repo/amp/"), "amp");
+  assert.equal(projectLabel("   "), "");
 });
