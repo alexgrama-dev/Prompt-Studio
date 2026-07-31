@@ -34,6 +34,10 @@ export default async function PasteTopPrompt() {
     return;
   }
   await Clipboard.paste(pick.record.body);
-  recordPromptUse(pick.record.id);
+  try {
+    recordPromptUse(pick.record.id);
+  } catch {
+    // ponytail: a missing index only loses ranking, never the paste.
+  }
   await showHUD(`Pasted ${pick.record.title} — ${pick.reason}`);
 }

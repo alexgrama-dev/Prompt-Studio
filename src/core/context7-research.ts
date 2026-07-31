@@ -104,13 +104,10 @@ export function planContext7Research(
   }
   // A planned query is already a documentation topic. Falling back to the rough
   // thoughts only sends a truncated task description, which retrieves noise.
+  // The planner may return a query at its own 500-character maximum, so the
+  // library prefix must truncate rather than throw and lose the enhancement.
   const query = options.intent
-    ? bounded(
-        `For ${library}${version ? ` ${version}` : ""}: ${options.intent.query}`,
-        "query",
-        1,
-        MAX_QUERY_LENGTH,
-      )
+    ? formulateDocumentationQuery(options.intent.query, library, version)
     : formulateDocumentationQuery(roughThoughts, library, version);
   const intent = options.intent ? { intent: options.intent } : {};
   if (library.startsWith("/")) {
@@ -202,6 +199,7 @@ export function projectLibraryNames(
 ): string[] {
   return projectDependencies(bundle)
     .map(({ libraryInput }) => libraryInput)
+    .sort((left, right) => right.length - left.length)
     .slice(0, Math.max(0, limit));
 }
 
@@ -444,9 +442,9 @@ function mentionsLibrary(text: string, library: string): boolean {
     tail === escaped || AMBIGUOUS_PACKAGE_TAILS.has(tail)
       ? escaped
       : `${escaped}|${tail}`;
-  return new RegExp(
-    `(^|[^a-z0-9])(?:${alternatives})(?=$|[^a-z0-9])`,
-  ).test(text);
+  return new RegExp(`(^|[^a-z0-9])(?:${alternatives})(?=$|[^a-z0-9])`).test(
+    text,
+  );
 }
 
 function versionNextTo(text: string, library: string): string | undefined {
@@ -594,7 +592,7 @@ function parseContext(
       url,
       retrievedAt,
       supports: shortText(`Documentation relevant to: ${query}`, 500)!,
-route: "context7" as const,
+      route: "context7" as const,
       content,
     });
   }
@@ -619,7 +617,7 @@ route: "context7" as const,
       url,
       retrievedAt,
       supports: description ?? shortText(`Code relevant to: ${query}`, 500)!,
-route: "context7" as const,
+      route: "context7" as const,
       content: code,
     });
   }

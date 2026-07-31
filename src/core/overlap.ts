@@ -61,16 +61,25 @@ export function findDuplicateCandidates(
   const draftTokens = textTokens(
     `${draft.title} ${draft.summary} ${draft.body}`,
   );
-  return records
-    .filter((record) => !record.archivedAt)
-    .map((record) => ({
-      id: record.id,
-      title: record.title,
-      similarity: Number(jaccard(draftTokens, promptTokens(record)).toFixed(3)),
-    }))
-    .filter((candidate) => candidate.similarity >= threshold)
-    .sort((left, right) => right.similarity - left.similarity)
-    .slice(0, Math.max(0, limit));
+  return (
+    records
+      .filter((record) => !record.archivedAt)
+      // Filter on the raw score, round only for display, so a value just under
+      // the threshold cannot round its way into the result.
+      .map((record) => ({
+        id: record.id,
+        title: record.title,
+        raw: jaccard(draftTokens, promptTokens(record)),
+      }))
+      .filter((candidate) => candidate.raw >= threshold)
+      .map(({ id, title, raw }) => ({
+        id,
+        title,
+        similarity: Number(raw.toFixed(3)),
+      }))
+      .sort((left, right) => right.similarity - left.similarity)
+      .slice(0, Math.max(0, limit))
+  );
 }
 
 function promptTokens(record: PromptRecord): Set<string> {
@@ -84,7 +93,8 @@ function textTokens(value: string): Set<string> {
 function jaccard(left: Set<string>, right: Set<string>): number {
   if (left.size === 0 && right.size === 0) return 0;
   let shared = 0;
-  const [small, large] = left.size <= right.size ? [left, right] : [right, left];
+  const [small, large] =
+    left.size <= right.size ? [left, right] : [right, left];
   for (const token of small) if (large.has(token)) shared += 1;
   return shared / (left.size + right.size - shared);
 }

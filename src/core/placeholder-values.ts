@@ -25,7 +25,8 @@ export async function loadRememberedPlaceholderValues(
     const raw = await storage.getItem(storageKey(prompt.id));
     if (!raw) return {};
     const saved = JSON.parse(raw) as unknown;
-    if (!isObject(saved) || saved.promptUpdatedAt !== prompt.updatedAt) return {};
+    if (!isObject(saved) || saved.promptUpdatedAt !== prompt.updatedAt)
+      return {};
     const values = saved.values;
     if (!isObject(values)) return {};
     return safeValues(prompt.body, values);

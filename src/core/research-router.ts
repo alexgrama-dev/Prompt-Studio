@@ -141,10 +141,7 @@ export function planResearchRoutes(
   return { routes, reasons, noExternalRequest: false };
 }
 
-export type ResearchSupplier = Exclude<
-  ResearchRoute,
-  "none" | "local-project"
->;
+export type ResearchSupplier = Exclude<ResearchRoute, "none" | "local-project">;
 
 export type ResearchSupplierChoice = Partial<Record<ResearchSupplier, boolean>>;
 

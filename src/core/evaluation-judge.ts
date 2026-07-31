@@ -86,7 +86,9 @@ export function maximumJudgeCostUsd(caseCount: number): number {
  * signal shown to the judge, not the score: keyword presence cannot tell whether
  * a requirement survived at full strength, which is what fidelity measures.
  */
-export function factCoverage(record: EnhancementEvaluationRecord): FactCoverage {
+export function factCoverage(
+  record: EnhancementEvaluationRecord,
+): FactCoverage {
   const haystack = normalize(
     [
       record.result.enhancedPrompt,
@@ -105,10 +107,17 @@ export function factCoverage(record: EnhancementEvaluationRecord): FactCoverage 
   };
 }
 
+const MAX_FIELD_CHARS = 8_000;
+const MAX_LIST_ITEMS = 20;
+
 export function buildJudgeRequest(
   record: EnhancementEvaluationRecord,
 ): Record<string, unknown> {
   const coverage = factCoverage(record);
+  // Bound the request so the cost estimate matches what is actually sent.
+  const cap = (value: string) => value.slice(0, MAX_FIELD_CHARS);
+  const capList = (values: readonly string[]) =>
+    values.slice(0, MAX_LIST_ITEMS).map((item) => item.slice(0, 500));
   return {
     model: JUDGE_MODEL,
     reasoning: { effort: "medium" },
@@ -136,9 +145,9 @@ export function buildJudgeRequest(
               {
                 category: record.category,
                 selectedTarget: record.request.target,
-                roughThoughts: record.request.roughThoughts,
-                requiredFacts: record.requiredFacts,
-                prohibitedInventions: record.prohibitedInventions,
+                roughThoughts: cap(record.request.roughThoughts),
+                requiredFacts: capList(record.requiredFacts),
+                prohibitedInventions: capList(record.prohibitedInventions),
                 deterministicCoverage: {
                   requiredFactsMatchedByKeyword: coverage.requiredFacts,
                   requiredFactsTotal: record.requiredFacts.length,
@@ -147,12 +156,12 @@ export function buildJudgeRequest(
                 },
                 compiled: {
                   title: record.result.title,
-                  summary: record.result.summary,
+                  summary: cap(record.result.summary),
                   target: record.result.target,
-                  enhancedPrompt: record.result.enhancedPrompt,
-                  assumptions: record.result.assumptions,
-                  missingInformation: record.result.missingInformation,
-                  validationSteps: record.result.validationSteps,
+                  enhancedPrompt: cap(record.result.enhancedPrompt),
+                  assumptions: capList(record.result.assumptions),
+                  missingInformation: capList(record.result.missingInformation),
+                  validationSteps: capList(record.result.validationSteps),
                 },
               },
               null,
@@ -172,6 +181,10 @@ export async function judgeEvaluationRecord(
   const apiKey = options.apiKey.trim();
   if (!apiKey) {
     throw new Error("Add an OpenAI API key before judging an evaluation run.");
+  }
+  // A caller that already cancelled must not cause a request at all.
+  if (options.signal?.aborted) {
+    throw new Error("Judging was cancelled before any request was made.");
   }
   const controller = new AbortController();
   const cancel = () => controller.abort(options.signal?.reason);
@@ -224,7 +237,9 @@ function parseJudgeResponse(
   caseId: string,
 ): { outputText: string; estimatedCostUsd: number } {
   if (!isObject(value)) {
-    throw new Error(`OpenAI returned an invalid judging response for ${caseId}.`);
+    throw new Error(
+      `OpenAI returned an invalid judging response for ${caseId}.`,
+    );
   }
   if (value.status !== "completed") {
     throw new Error(
@@ -240,7 +255,11 @@ function parseJudgeResponse(
       numberOr(usage.output_tokens) * OUTPUT_COST_PER_MILLION_USD) /
     1_000_000;
   for (const item of value.output) {
-    if (!isObject(item) || item.type !== "message" || !Array.isArray(item.content)) {
+    if (
+      !isObject(item) ||
+      item.type !== "message" ||
+      !Array.isArray(item.content)
+    ) {
       continue;
     }
     for (const content of item.content) {

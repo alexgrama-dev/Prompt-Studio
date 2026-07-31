@@ -43,7 +43,8 @@ export function pickAmbientPrompt(
   }
   const mostUsed = [...active].sort(
     (left, right) =>
-      (options.usage?.get(right.id) ?? 0) - (options.usage?.get(left.id) ?? 0) ||
+      (options.usage?.get(right.id) ?? 0) -
+        (options.usage?.get(left.id) ?? 0) ||
       Number(right.favorite) - Number(left.favorite) ||
       right.updatedAt.localeCompare(left.updatedAt),
   )[0];

@@ -158,9 +158,7 @@ function IdeaInbox({ directory }: { directory: string }) {
 
   const grouped = useMemo(() => {
     return {
-      upNext: ideas.filter(
-        (idea) => promptCaptureSection(idea) === "up-next",
-      ),
+      upNext: ideas.filter((idea) => promptCaptureSection(idea) === "up-next"),
       savedForLater: ideas.filter(
         (idea) => promptCaptureSection(idea) === "saved-for-later",
       ),
@@ -478,11 +476,7 @@ function IdeaActions({
         icon={Icon.Pencil}
         shortcut={Keyboard.Shortcut.Common.Edit}
         target={
-          <EditIdeaForm
-            directory={directory}
-            idea={idea}
-            onSaved={onReload}
-          />
+          <EditIdeaForm directory={directory} idea={idea} onSaved={onReload} />
         }
       />
       <ActionPanel.Submenu
@@ -928,12 +922,7 @@ function ConvertToPromptForm({
         value={title}
         onChange={setTitle}
       />
-      <Form.TextArea
-        id="body"
-        title="Prompt"
-        value={body}
-        onChange={setBody}
-      />
+      <Form.TextArea id="body" title="Prompt" value={body} onChange={setBody} />
       <Form.Dropdown
         id="target"
         title="Target"

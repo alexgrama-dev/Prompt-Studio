@@ -242,20 +242,22 @@ export function focusedResearchIntent(
 }
 
 /**
- * Every planned query for one route. The planning cost is charged once for the
- * whole plan, so it is reported on the first intent only and zero after that.
+ * Every planned query for one route. The planning charge covers the whole plan,
+ * so it is attached to the first query of the plan overall — not the first of
+ * each route, which double-counted it when two routes were planned together.
  */
 export function focusedResearchIntents(
   plan: FocusedResearchPlan,
   route: FocusedResearchRoute,
 ): FocusedResearchIntent[] {
+  const firstOverall = plan.queries[0];
   return plan.queries
     .filter((candidate) => candidate.route === route)
-    .map((query, index) => ({
+    .map((query) => ({
       ...query,
       objective: plan.objective,
       questions: [...plan.questions],
-      planningCostUsd: index === 0 ? plan.usage.estimatedCostUsd : 0,
+      planningCostUsd: query === firstOverall ? plan.usage.estimatedCostUsd : 0,
     }));
 }
 

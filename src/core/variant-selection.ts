@@ -139,7 +139,10 @@ export function rankVariants(scored: ScoredVariant[]): VariantSelection {
       scored.reduce((total, item) => total + item.judgeCostUsd, 0),
     ),
     enhancementCostUsd: round(
-      scored.reduce((total, item) => total + item.run.usage.estimatedCostUsd, 0),
+      scored.reduce(
+        (total, item) => total + item.run.usage.estimatedCostUsd,
+        0,
+      ),
     ),
   };
 }

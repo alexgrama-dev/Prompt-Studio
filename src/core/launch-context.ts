@@ -48,9 +48,7 @@ export function fallbackPromptDecision<T extends FallbackPrompt>(
     : active.filter(
         (record) =>
           normalizeExactText(record.title) === query ||
-          record.aliases.some(
-            (alias) => normalizeExactText(alias) === query,
-          ),
+          record.aliases.some((alias) => normalizeExactText(alias) === query),
       );
   if (matches.length !== 1) return { kind: "none" };
   const record = matches[0]!;
@@ -100,5 +98,9 @@ export function retainPromptSelectionWhileLoading(
 }
 
 function normalizeExactText(value: string): string {
-  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
 }

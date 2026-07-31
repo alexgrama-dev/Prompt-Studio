@@ -137,10 +137,10 @@ test("fallback paste requires one exact active prompt without placeholders", () 
     fallbackPromptDecision(records, "  REPAIR   THE FLAKY CACHE "),
     { kind: "paste", record: exact },
   );
-  assert.deepEqual(
-    fallbackPromptDecision(records, exact.id.toUpperCase()),
-    { kind: "paste", record: exact },
-  );
+  assert.deepEqual(fallbackPromptDecision(records, exact.id.toUpperCase()), {
+    kind: "paste",
+    record: exact,
+  });
   assert.deepEqual(fallbackPromptDecision(records, "release prep"), {
     kind: "review",
     record: placeholder,

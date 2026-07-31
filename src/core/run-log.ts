@@ -73,7 +73,10 @@ export async function recordRun(
   now: () => Date = () => new Date(),
 ): Promise<void> {
   try {
-    const safe = sanitizeRun({ ...record, at: record.at ?? now().toISOString() });
+    const safe = sanitizeRun({
+      ...record,
+      at: record.at ?? now().toISOString(),
+    });
     await mkdir(join(promptDirectory, ".feedback"), { recursive: true });
     await appendFile(
       runLogPath(promptDirectory),
@@ -85,9 +88,7 @@ export async function recordRun(
   }
 }
 
-export async function listRuns(
-  promptDirectory: string,
-): Promise<RunRecord[]> {
+export async function listRuns(promptDirectory: string): Promise<RunRecord[]> {
   let raw: string;
   try {
     raw = await readFile(runLogPath(promptDirectory), "utf8");
@@ -122,9 +123,9 @@ export function tallyRuns(records: readonly RunRecord[]): RunTally {
     else failed += 1;
 
     totalCostUsd +=
-      (record.cost?.planning ?? 0) +
-      (record.cost?.exa ?? 0) +
-      (record.cost?.model ?? 0);
+      finiteAmount(record.cost?.planning) +
+      finiteAmount(record.cost?.exa) +
+      finiteAmount(record.cost?.model);
 
     if (record.status === "failed") {
       byStage.set(record.stage, (byStage.get(record.stage) ?? 0) + 1);
@@ -157,6 +158,12 @@ export function tallyRuns(records: readonly RunRecord[]): RunTally {
       )
       .slice(0, 10),
   };
+}
+
+function finiteAmount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : 0;
 }
 
 const RUN_STATUSES = new Set<string>(["ok", "failed", "cancelled"]);
@@ -205,9 +212,10 @@ function sanitizeRun(record: RunRecord): RunRecord {
         }
       : {}),
     ...optionalNumber("sourceCount", record.sourceCount),
-    ...(record.cost && Object.keys(record.cost).length > 0
-      ? { cost: record.cost }
-      : {}),
+    ...(() => {
+      const cost = sanitizeCost(record.cost);
+      return cost ? { cost } : {};
+    })(),
     ...(record.usage ? { usage: record.usage } : {}),
     ...optionalText("promptId", record.promptId),
     ...optionalText("error", record.error),
@@ -219,7 +227,32 @@ function optionalText<K extends string>(
   value: string | undefined,
 ): Record<K, string> | Record<string, never> {
   const trimmed = value?.trim();
-  return trimmed ? ({ [key]: trimmed.slice(0, MAX_TEXT) } as Record<K, string>) : {};
+  return trimmed
+    ? ({ [key]: truncateToCodePoints(trimmed, MAX_TEXT) } as Record<K, string>)
+    : {};
+}
+
+/**
+ * Slicing by UTF-16 unit can cut a surrogate pair in half and leave a lone
+ * surrogate, which is invalid text even though JSON will happily escape it.
+ */
+function truncateToCodePoints(value: string, maximum: number): string {
+  if (value.length <= maximum) return value;
+  const sliced = value.slice(0, maximum);
+  const last = sliced.charCodeAt(sliced.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? sliced.slice(0, -1) : sliced;
+}
+
+/** A non-finite amount is not a cost; it would make every later total NaN. */
+function sanitizeCost(cost: RunCost | undefined): RunCost | undefined {
+  if (!cost) return undefined;
+  const entries = Object.entries(cost).filter(
+    ([, value]) =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0,
+  );
+  return entries.length > 0
+    ? (Object.fromEntries(entries) as RunCost)
+    : undefined;
 }
 
 function optionalNumber<K extends string>(

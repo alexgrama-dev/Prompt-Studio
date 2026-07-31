@@ -359,7 +359,6 @@ export function enhancementResultSchemaForProvider(): Record<string, unknown> {
   >;
 }
 
-
 export const COMPILER_WORKED_EXAMPLES = `
 Worked examples. Match this level of compression, not this exact wording.
 
@@ -1287,7 +1286,10 @@ export interface MetadataFloors {
  * unchanged, so a rich task can still produce the full set.
  */
 export function metadataFloors(request: EnhancementRequest): MetadataFloors {
-  const words = request.roughThoughts.trim().split(/\s+/).filter(Boolean).length;
+  const words = request.roughThoughts
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
   const hasStructure = /(?:^|\n)\s*(?:[-*+]|\d+[.)]|#{1,6}\s)/m.test(
     request.roughThoughts,
   );

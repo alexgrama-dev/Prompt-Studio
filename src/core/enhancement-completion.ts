@@ -22,6 +22,7 @@ export function enhancementRunWasCancelled(
   return (
     signal?.aborted === true ||
     (error instanceof Error &&
-      (error.name === "AbortError" || /cancelled|canceled/i.test(error.message)))
+      (error.name === "AbortError" ||
+        /cancelled|canceled/i.test(error.message)))
   );
 }

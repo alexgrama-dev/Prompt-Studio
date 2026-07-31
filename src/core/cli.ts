@@ -583,9 +583,10 @@ async function libraryCommand(
 ): Promise<CommandOutcome> {
   assertPositionals(context.parsed, 0, 0);
   const library = await listPrompts(context.directory);
-  const clusters = clusterPrompts(library.records);
-  const lineage = buildPromptLineage(library.records);
-  const drifted = library.records
+  const active = library.records.filter((record) => !record.archivedAt);
+  const clusters = clusterPrompts(active);
+  const lineage = buildPromptLineage(active);
+  const drifted = active
     .map((record) =>
       detectPromptDrift(record, {
         compilerVersion: ENHANCEMENT_COMPILER_VERSION,
@@ -622,19 +623,20 @@ async function suggestCommand(
     data: { projectPath, suggestions },
     human:
       suggestions.length > 0
-        ? suggestions
-            .map((item) => `${item.title} — ${item.reason}`)
-            .join("\n")
+        ? suggestions.map((item) => `${item.title} — ${item.reason}`).join("\n")
         : `No prompt is bound to or names ${projectPath}.`,
   };
 }
 
-async function runsCommand(
-  context: CommandContext,
-): Promise<CommandOutcome> {
+async function runsCommand(context: CommandContext): Promise<CommandOutcome> {
   assertPositionals(context.parsed, 0, 1);
   const filter = context.parsed.positionals[0];
-  if (filter && filter !== "failed" && filter !== "ok" && filter !== "cancelled") {
+  if (
+    filter &&
+    filter !== "failed" &&
+    filter !== "ok" &&
+    filter !== "cancelled"
+  ) {
     throw new CliError(
       "INVALID_ARGUMENT",
       "runs accepts one optional status: ok, failed, or cancelled.",
@@ -645,7 +647,12 @@ async function runsCommand(
   const rawLimit = context.parsed.options.get("limit");
   const limit = Math.max(
     1,
-    Math.min(typeof rawLimit === "string" ? Number(rawLimit) || 20 : 20, 500),
+    Math.min(
+      typeof rawLimit === "string" && Number.isFinite(Number(rawLimit))
+        ? Number(rawLimit)
+        : 20,
+      500,
+    ),
   );
   const summary = tallyRuns(all);
   const selected = (filter ? all.filter((run) => run.status === filter) : all)

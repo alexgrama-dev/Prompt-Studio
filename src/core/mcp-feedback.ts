@@ -9,10 +9,7 @@ import {
 } from "./feedback-store.ts";
 import { getFeatureStatus, type FeatureStatus } from "./features.ts";
 import type { McpAuditWriter } from "./mcp-read.ts";
-import {
-  listPromptVersions,
-  listPromptsReadOnly,
-} from "./prompt-store.ts";
+import { listPromptVersions, listPromptsReadOnly } from "./prompt-store.ts";
 import {
   resolvePromptVersion,
   validPromptVersionToken,

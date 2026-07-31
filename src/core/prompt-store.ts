@@ -30,11 +30,7 @@ const UUID =
 export const PROMPT_TARGETS = ["generic", "codex", "claude-code"] as const;
 export type PromptTarget = (typeof PROMPT_TARGETS)[number];
 
-export const PROMPT_CAPTURE_KINDS = [
-  "next-prompt",
-  "keep",
-  "idea",
-] as const;
+export const PROMPT_CAPTURE_KINDS = ["next-prompt", "keep", "idea"] as const;
 export type PromptCaptureKind = (typeof PROMPT_CAPTURE_KINDS)[number];
 
 export interface PromptCapture {

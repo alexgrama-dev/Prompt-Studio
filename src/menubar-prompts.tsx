@@ -56,9 +56,10 @@ export default function MenubarPrompts() {
   const preferences = getPreferenceValues<Preferences.MenubarPrompts>();
   const [records, setRecords] = useState<PromptRecord[]>();
   const [suggestions, setSuggestions] = useState<PromptSuggestion[]>([]);
+  // Suggestions are drawn from every active prompt, not the truncated menu list.
+  const [suggestable, setSuggestable] = useState<PromptRecord[]>([]);
   const [error, setError] = useState<string>();
-  const [feedbackState, setFeedbackState] =
-    useState<FeatureState>("disabled");
+  const [feedbackState, setFeedbackState] = useState<FeatureState>("disabled");
   const [lastPaste, setLastPaste] = useState<LastPaste>();
   const [lastPasteStatus, setLastPasteStatus] = useState<
     "none" | "rated" | "unavailable"
@@ -74,6 +75,7 @@ export default function MenubarPrompts() {
           loadFeatureStatuses(),
         ]);
         const active = library.records.filter((record) => !record.archivedAt);
+        setSuggestable(active);
         setSuggestions(
           suggestPromptsForProject(
             active,
@@ -159,9 +161,7 @@ export default function MenubarPrompts() {
     }
     setLastPaste(undefined);
     setLastPasteStatus("rated");
-    await showHUD(
-      verdict === "useful" ? "Marked Useful" : "Marked Not Useful",
-    );
+    await showHUD(verdict === "useful" ? "Marked Useful" : "Marked Not Useful");
   }
 
   async function copyPrompt(record: PromptRecord) {
@@ -201,7 +201,7 @@ export default function MenubarPrompts() {
           {suggestions.length > 0 ? (
             <MenuBarExtra.Section title="For This Project">
               {suggestions.map((suggestion) => {
-                const record = records?.find(
+                const record = suggestable.find(
                   (item) => item.id === suggestion.id,
                 );
                 if (!record) return null;
@@ -270,24 +270,7 @@ export default function MenubarPrompts() {
               <MenuBarExtra.Item
                 key={record.id}
                 title={record.title}
-                onAction={async () => {
-                  if (extractPlaceholders(record.body).length > 0) {
-                    await launchCommand({
-                      name: "browse-prompts",
-                      type: LaunchType.UserInitiated,
-                      context: browsePromptsLaunchContext(record.id),
-                    });
-                    await showHUD("Open the prompt to fill its placeholders");
-                    return;
-                  }
-                  await Clipboard.copy(record.body);
-                  try {
-                    recordPromptUse(record.id);
-                  } catch {
-                    // ponytail: a missing index only loses ranking, never the copy.
-                  }
-                  await showHUD("Prompt Copied");
-                }}
+                onAction={() => void copyPrompt(record)}
               />
             ))}
           </MenuBarExtra.Section>

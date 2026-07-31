@@ -54,7 +54,9 @@ export function buildGoogleGenerateContentRequest(
 ): Record<string, unknown> {
   return {
     systemInstruction: {
-      parts: [{ text: override?.system ?? enhancementCompilerInstructions(request) }],
+      parts: [
+        { text: override?.system ?? enhancementCompilerInstructions(request) },
+      ],
     },
     contents: [
       {

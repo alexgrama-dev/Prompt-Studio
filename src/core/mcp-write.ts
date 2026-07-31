@@ -362,9 +362,7 @@ function prepareMutation(
             1_000,
           ),
         }),
-    ...(args.seedId === undefined
-      ? {}
-      : { seedId: selector(args.seedId) }),
+    ...(args.seedId === undefined ? {} : { seedId: selector(args.seedId) }),
   };
   rejectSensitivePayload(payload);
   const confirmationToken = token(args.confirmationToken);

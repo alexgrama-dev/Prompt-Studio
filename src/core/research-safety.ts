@@ -94,7 +94,8 @@ export function mergeReviewedSources(
     .sort(
       (left, right) =>
         researchSourcePriority(left.source.route) -
-          researchSourcePriority(right.source.route) || left.index - right.index,
+          researchSourcePriority(right.source.route) ||
+        left.index - right.index,
     )
     .map(({ source }) => source);
 

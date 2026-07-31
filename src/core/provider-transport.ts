@@ -1,3 +1,5 @@
+import { containsLikelySecret } from "./secrets.ts";
+
 export interface ProviderTransportOptions {
   signal?: AbortSignal;
   fetcher?: typeof fetch;
@@ -62,10 +64,12 @@ export async function providerResponseErrorCode(
     const value = raw.error.code ?? raw.error.status ?? raw.error.type;
     const code = typeof value === "string" ? value.slice(0, 100) : "";
     // The provider message names the rejected field; without it a 400 is undiagnosable.
-    const message =
-      typeof raw.error.message === "string"
-        ? raw.error.message.slice(0, 300)
-        : "";
+    const rawMessage =
+      typeof raw.error.message === "string" ? raw.error.message : "";
+    // The message can echo request content, and it reaches the run log.
+    const message = containsLikelySecret(rawMessage)
+      ? "(redacted: the provider message contained a possible secret)"
+      : rawMessage.slice(0, 300);
     if (!message) return code;
     return code ? `${code}: ${message}` : message;
   } catch {

@@ -148,17 +148,14 @@ import {
   type WebResearchPlan,
   type WebResearchResult,
 } from "./core/web-research";
+import { maximumJudgeCostUsd } from "./core/evaluation-judge";
 import { findDuplicateCandidates } from "./core/overlap";
 import { ProjectContextCache } from "./core/ambient";
 
 // Module scope: one cache per command process, cleared when Raycast unloads it.
 const projectContextCache = new ProjectContextCache<ProjectContextBundle>();
 import { recordRun, type RunStage } from "./core/run-log";
-import {
-  buildRevisionRequest,
-  diffLines,
-  renderDiff,
-} from "./core/revision";
+import { buildRevisionRequest, diffLines, renderDiff } from "./core/revision";
 import {
   MIN_VARIANTS,
   REVIEW_TOTAL,
@@ -239,15 +236,15 @@ function RevisionForm({
       toast.style = Toast.Style.Success;
       toast.title = "Revision Ready";
       toast.message = "Review the difference before keeping it.";
-      void recordRun(
-        resolvePromptDirectory(preferences.libraryDirectory),
-        {
+      const revisionDirectory = safePromptDirectory();
+      if (revisionDirectory) {
+        void recordRun(revisionDirectory, {
           status: "ok",
           stage: "enhancement",
           ...runShape(revisionRequest, run.profile),
           cost: { model: revised.usage.estimatedCostUsd },
-        },
-      );
+        });
+      }
       push(
         <RevisionDiff
           request={revisionRequest}
@@ -410,22 +407,35 @@ function VariantComparison({
   );
 }
 
+/** Never let a preference problem replace the error we are trying to report. */
+function safePromptDirectory(): string | undefined {
+  try {
+    return resolvePromptDirectory(
+      getPreferenceValues<Preferences>().libraryDirectory,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /** Research failures happen before the enhancement, after money is spent. */
 async function logResearchFailure(
   stage: RunStage,
   error: unknown,
-  extra: { libraries?: string[]; cost?: { planning?: number; exa?: number } } = {},
+  extra: {
+    libraries?: string[];
+    cost?: { planning?: number; exa?: number };
+  } = {},
 ) {
-  await recordRun(
-    resolvePromptDirectory(getPreferenceValues<Preferences>().libraryDirectory),
-    {
-      status: "failed",
-      stage,
-      error: error instanceof Error ? error.message : String(error),
-      routes: [stage as never],
-      ...extra,
-    },
-  );
+  const directory = safePromptDirectory();
+  if (!directory) return;
+  await recordRun(directory, {
+    status: "failed",
+    stage,
+    // stage already identifies where this failed; routes would duplicate it.
+    error: error instanceof Error ? error.message : String(error),
+    ...extra,
+  });
 }
 
 /** Fields every run record shares, so success and failure rows stay comparable. */
@@ -751,7 +761,9 @@ function EnhancementWorkspace({
           ...(remote.status === "fulfilled" ? remote.value : []),
         ];
         setProjects(discovered);
-        setRecentProjectPaths(recent.status === "fulfilled" ? recent.value : []);
+        setRecentProjectPaths(
+          recent.status === "fulfilled" ? recent.value : [],
+        );
         const failures = [
           ...(local.status === "rejected"
             ? [
@@ -774,11 +786,7 @@ function EnhancementWorkspace({
         setProjectDiscoveryLoading(false);
       }
     },
-    [
-      preferences.projectRoots,
-      preferences.sshProjectRoot,
-      projectContextState,
-    ],
+    [preferences.projectRoots, preferences.sshProjectRoot, projectContextState],
   );
 
   useEffect(() => {
@@ -846,15 +854,15 @@ function EnhancementWorkspace({
           cached ??
           (await collectProjectContext(
             selectedRepository,
-          values.roughThoughts,
-          {
-            ...(preferences.projectRoots
-              ? { configuredRoots: preferences.projectRoots }
-              : {}),
-            ...(preferences.sshProjectRoot
-              ? { sshProjectRoot: preferences.sshProjectRoot }
-              : {}),
-            explicitlySelected: Boolean(explicitlySelectedRepository),
+            values.roughThoughts,
+            {
+              ...(preferences.projectRoots
+                ? { configuredRoots: preferences.projectRoots }
+                : {}),
+              ...(preferences.sshProjectRoot
+                ? { sshProjectRoot: preferences.sshProjectRoot }
+                : {}),
+              explicitlySelected: Boolean(explicitlySelectedRepository),
             },
           ));
         if (!cached && projectBundle) {
@@ -1119,6 +1127,7 @@ function EnhancementWorkspace({
               }),
             )
           : [];
+        exaPlans = exaPlans.filter((plan) => plan.route === "exa");
         exaPlan = exaPlans[0];
         context7Plans = context7Plan
           ? focusedResearchIntents(focusedPlan, "context7").map((intent) =>
@@ -1131,7 +1140,16 @@ function EnhancementWorkspace({
               ),
             )
           : [];
+        context7Plans = context7Plans.filter(
+          (plan) => plan.route === "context7",
+        );
         context7Plan = context7Plans[0];
+        if (context7Plans.length === 0 && exaPlans.length === 0 && !webPlan) {
+          toast.style = Toast.Style.Failure;
+          toast.title = "No Usable Research Plan";
+          toast.message = "No search was started.";
+          return;
+        }
         toast.style = Toast.Style.Success;
         toast.title = "Focused Research Plan Ready";
         toast.message = "Review the questions and exact provider query next.";
@@ -1358,6 +1376,22 @@ function EnhancementWorkspace({
             "Variant selection needs the OpenAI API key for the blind judge. Add it, or set Variants to Off.",
           );
         }
+        const perRun = estimatedProviderMaximumCostUsd(effectiveRequest);
+        const ceiling = perRun * variants + maximumJudgeCostUsd(variants);
+        const confirmed = await confirmAlert({
+          title: `Generate ${variants} variants?`,
+          message: `Each variant is a separate ${providerDisplayName(effectiveRequest)} request, and each is then scored by a blind judge. Maximum total cost: $${ceiling.toFixed(3)}.`,
+          primaryAction: {
+            title: `Generate Up to $${ceiling.toFixed(3)}`,
+            style: Alert.ActionStyle.Default,
+          },
+        });
+        if (!confirmed) {
+          toast.style = Toast.Style.Failure;
+          toast.title = "Variant Generation Cancelled";
+          toast.message = "No model request was made.";
+          return;
+        }
         const generated: EnhancementVariant[] = [];
         for (let index = 0; index < variants; index += 1) {
           toast.message = `Variant ${index + 1} of ${variants}`;
@@ -1429,13 +1463,15 @@ function EnhancementWorkspace({
       toast.style = Toast.Style.Failure;
       toast.title = cancelled ? "Enhancement Cancelled" : "Enhancement Failed";
       toast.message = error instanceof Error ? error.message : String(error);
-      await recordRun(resolvePromptDirectory(preferences.libraryDirectory), {
-        status: cancelled ? "cancelled" : "failed",
-        stage: "enhancement",
-        durationMs: Date.now() - startedAt,
-        ...runShape(request, selectedProfile),
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const failureDirectory = safePromptDirectory();
+      if (failureDirectory)
+        await recordRun(failureDirectory, {
+          status: cancelled ? "cancelled" : "failed",
+          stage: "enhancement",
+          durationMs: Date.now() - startedAt,
+          ...runShape(request, selectedProfile),
+          error: error instanceof Error ? error.message : String(error),
+        });
     } finally {
       activeController.current = undefined;
       setIsLoading(false);
@@ -1929,8 +1965,8 @@ function EnhancementWorkspace({
           !profileAvailable
             ? `${profile.title} is Disabled. Your task is preserved; choose an enabled provider before enhancing.`
             : setupMode === "smart"
-            ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
-            : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
+              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
+              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
         }
       />
     </Form>
@@ -1991,10 +2027,7 @@ function AdvancedProviderSelection({
           setProfileId(value as SelectableEnhancementProfileId)
         }
       >
-        <Form.Dropdown.Item
-          title="Choose an enabled provider…"
-          value=""
-        />
+        <Form.Dropdown.Item title="Choose an enabled provider…" value="" />
         <Form.Dropdown.Section title="OpenAI">
           <Form.Dropdown.Item
             title="Standard · GPT-5.6 Terra"
@@ -2580,11 +2613,9 @@ function Context7PlanReview({
       toast.style = Toast.Style.Success;
       toast.title = "Context7 Sources Ready";
       toast.message = "Review every source before enhancement.";
-      void recordRun(
-        resolvePromptDirectory(
-          getPreferenceValues<Preferences>().libraryDirectory,
-        ),
-        {
+      const context7Directory = safePromptDirectory();
+      if (context7Directory)
+        void recordRun(context7Directory, {
           status: "ok",
           stage: "context7",
           routes: ["context7"],
@@ -2593,8 +2624,7 @@ function Context7PlanReview({
             (total, item) => total + item.sources.length,
             0,
           ),
-        },
-      );
+        });
       push(
         <Context7SourceReview
           request={request}
@@ -2606,7 +2636,9 @@ function Context7PlanReview({
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = "Context7 Retrieval Failed";
-      void logResearchFailure("context7", error, { libraries: plans.map((item) => item.libraryInput ?? "").filter(Boolean) });
+      void logResearchFailure("context7", error, {
+        libraries: plans.map((item) => item.libraryInput ?? "").filter(Boolean),
+      });
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       controller.current = undefined;
@@ -2621,7 +2653,9 @@ function Context7PlanReview({
     ...plans.flatMap((plan, index) => [
       `## ${index + 1}. ${escapeMarkdown(plan.libraryId ?? plan.libraryInput ?? "(missing)")}`,
       `**Version:** ${inlineCode(plan.version ?? "(not specified)")}${versionSource ? ` — read from ${inlineCode(versionSource)}` : ""}`,
-      ...(plan.intent ? [`**Purpose:** ${escapeMarkdown(plan.intent.purpose)}`] : []),
+      ...(plan.intent
+        ? [`**Purpose:** ${escapeMarkdown(plan.intent.purpose)}`]
+        : []),
       indentCode(plan.query ?? "(missing query)"),
     ]),
     "The existing CONTEXT7_API_KEY environment value is read only after you choose Retrieve. You can instead enter a one-run key.",
@@ -3418,7 +3452,8 @@ function ExaResearchPlanReview({
   const plan = plans[0] as ExaResearchPlan;
   // Every planned query is a separate paid search; disclose the total.
   const maximumCost = plans.reduce(
-    (total, item) => total + (item.maximumCostUsd ?? maximumExaResearchCostUsd()),
+    (total, item) =>
+      total + (item.maximumCostUsd ?? maximumExaResearchCostUsd()),
     0,
   );
   const savedApiKey = getPreferenceValues<Preferences>().exaApiKey?.trim();
@@ -3465,11 +3500,9 @@ function ExaResearchPlanReview({
       toast.style = Toast.Style.Success;
       toast.title = "Exa Sources Ready";
       toast.message = "Review every result before enhancement.";
-      void recordRun(
-        resolvePromptDirectory(
-          getPreferenceValues<Preferences>().libraryDirectory,
-        ),
-        {
+      const exaDirectory = safePromptDirectory();
+      if (exaDirectory)
+        void recordRun(exaDirectory, {
           status: "ok",
           stage: "exa",
           routes: ["exa"],
@@ -3483,8 +3516,7 @@ function ExaResearchPlanReview({
               0,
             ),
           },
-        },
-      );
+        });
       push(
         <ExaResearchSourceReview
           request={request}
@@ -3714,9 +3746,7 @@ function ExaResearchSourceReview({
     "# Review Exa Sources",
     "**The paid Exa request is complete; prompt enhancement has not started.** Review every clickable result and exact extractive highlight below.",
     `**Exact reviewed ${results.length === 1 ? "query" : "queries"}:**`,
-    results
-      .map((item) => `- ${inlineCode(item.plan.query)}`)
-      .join("\n"),
+    results.map((item) => `- ${inlineCode(item.plan.query)}`).join("\n"),
     `**Safe returned sources:** ${allSources.length}`,
     `**Results omitted before enhancement:** ${totalOmissions}`,
     `**Exa cost estimate:** $${totalExaCost.toFixed(4)}${everyCostReported ? " · provider reported" : " · conservative fallback"}`,
@@ -3958,7 +3988,9 @@ function EnhancementPreview({
                 (item) =>
                   `${item.title} (${Math.round(item.similarity * 100)}% overlap)`,
               )
-              .join("; ")}. Revising the existing prompt usually beats adding another one.`,
+              .join(
+                "; ",
+              )}. Revising the existing prompt usually beats adding another one.`,
             primaryAction: {
               title: "Save Anyway",
               style: Alert.ActionStyle.Default,
@@ -3974,7 +4006,9 @@ function EnhancementPreview({
         enhancementHistoryDigest(history),
         revisionOfPromptId,
       );
-      await showHUD(revisionOfPromptId ? "Prompt revision saved" : "Prompt saved");
+      await showHUD(
+        revisionOfPromptId ? "Prompt revision saved" : "Prompt saved",
+      );
     } catch (error) {
       await showToast(
         Toast.Style.Failure,

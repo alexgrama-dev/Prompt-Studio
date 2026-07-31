@@ -1465,7 +1465,12 @@ test("the planner writes documentation topics per library and bounds each route"
       query: `topic number ${index}`,
       library: "next",
     })).concat([
-      { route: "exa", purpose: "P.", query: "examples", library: null } as never,
+      {
+        route: "exa",
+        purpose: "P.",
+        query: "examples",
+        library: null,
+      } as never,
     ]),
     /the limit is 5/,
   );
@@ -2400,9 +2405,8 @@ test("idea titles use one bounded OpenAI request, shared preference, and strict 
   assert.equal(
     manifest.commands
       ?.find((command) => command.name === "enhance-prompt")
-      ?.preferences?.some(
-        (preference) => preference.name === "openaiApiKey",
-      ) ?? false,
+      ?.preferences?.some((preference) => preference.name === "openaiApiKey") ??
+      false,
     false,
   );
 });
@@ -2495,7 +2499,10 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
     assert.ok(nextIndex > priorIndex, `${label} is missing or out of order`);
     priorIndex = nextIndex;
   }
-  assert.match(topLevel, /title=\{completed \? "Restore Item" : "Complete Item"\}/);
+  assert.match(
+    topLevel,
+    /title=\{completed \? "Restore Item" : "Complete Item"\}/,
+  );
   const deleteTitleIndex = topLevel.indexOf('title="Delete Item"');
   const deleteAction = topLevel.slice(
     topLevel.lastIndexOf("<Action", deleteTitleIndex),
@@ -2509,10 +2516,7 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
     ideaActions.indexOf("\n  }\n\n  return (", removeHandlerStart) +
     "\n  }".length;
   assert.ok(removeHandlerStart >= 0 && removeHandlerEnd > removeHandlerStart);
-  const removeHandler = ideaActions.slice(
-    removeHandlerStart,
-    removeHandlerEnd,
-  );
+  const removeHandler = ideaActions.slice(removeHandlerStart, removeHandlerEnd);
   const confirmationIndex = removeHandler.indexOf(
     "const confirmed = await confirmAlert({",
   );
@@ -3346,11 +3350,7 @@ test("completed enhancements stay in history until explicitly saved to the libra
       { syncSearchIndex: false },
     );
     await assert.rejects(
-      saveEnhancementHistoryToLibrary(
-        directory,
-        historical.id,
-        reviewedDigest,
-      ),
+      saveEnhancementHistoryToLibrary(directory, historical.id, reviewedDigest),
       /changed after review/,
     );
     const updated = await saveEnhancementHistoryToLibrary(
@@ -3509,9 +3509,9 @@ test("capture metadata groups typed and legacy ideas without migration", async (
       3,
     );
     assert.equal(
-      (
-        await listPrompts(promptSeedDirectory(directory))
-      ).records.find((record) => record.id === nextPrompt.id)?.capture?.kind,
+      (await listPrompts(promptSeedDirectory(directory))).records.find(
+        (record) => record.id === nextPrompt.id,
+      )?.capture?.kind,
       "next-prompt",
     );
     await writeFile(
@@ -3540,10 +3540,7 @@ test("capture input keeps selected text before clipboard text", () => {
     captureTextFromSources("  selected text  ", "clipboard"),
     "  selected text  ",
   );
-  assert.equal(
-    captureTextFromSources(" ", "clipboard text"),
-    "clipboard text",
-  );
+  assert.equal(captureTextFromSources(" ", "clipboard text"), "clipboard text");
   assert.equal(captureTextFromSources(" ", "\n"), undefined);
 });
 
@@ -3947,7 +3944,10 @@ test("enhancement completion clears drafts only after durable history and retrie
     const controller = new AbortController();
     controller.abort();
     assert.equal(
-      enhancementRunWasCancelled(new Error("provider failed"), controller.signal),
+      enhancementRunWasCancelled(
+        new Error("provider failed"),
+        controller.signal,
+      ),
       true,
     );
     assert.equal(
@@ -5341,9 +5341,8 @@ test("CLI enhancement requires explicit provider confirmation and never exposes 
         data: { history: { id: string; digest: string } };
       }
     ).data.history;
-    const history = (
-      await listPrompts(enhancementHistoryDirectory(directory))
-    ).records;
+    const history = (await listPrompts(enhancementHistoryDirectory(directory)))
+      .records;
     assert.equal(history.length, 1);
     assert.equal(history[0]?.seed?.id, seed.id);
     assert.equal(history[0]?.seed?.thoughts, roughThoughts);
@@ -5373,7 +5372,7 @@ test("CLI enhancement requires explicit provider confirmation and never exposes 
         directory,
       ],
       {
-      featureStatuses: statuses,
+        featureStatuses: statuses,
       },
     );
     assert.equal(saved.exitCode, 0);
@@ -5398,7 +5397,10 @@ test("CLI enhancement requires explicit provider confirmation and never exposes 
     );
     assert.equal(repeated.exitCode, 0);
     assert.equal((await listPrompts(directory)).records.length, 1);
-    assert.equal((await listPromptVersions(directory, records[0]!.id)).length, 0);
+    assert.equal(
+      (await listPromptVersions(directory, records[0]!.id)).length,
+      0,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -6894,9 +6896,8 @@ test("confirmation-gated MCP mutations create, version, archive, and enhance wit
       contentDigest: string;
     };
     assert.equal(
-      (
-        await listPrompts(enhancementHistoryDirectory(directory))
-      ).records.length,
+      (await listPrompts(enhancementHistoryDirectory(directory))).records
+        .length,
       1,
     );
 
@@ -7618,7 +7619,10 @@ test("remembered placeholder values stay prompt-scoped, current, and non-sensiti
     "Removed placeholders are not restored.",
   );
 
-  assert.equal(await forgetRememberedPlaceholderValues(storage, prompt.id), true);
+  assert.equal(
+    await forgetRememberedPlaceholderValues(storage, prompt.id),
+    true,
+  );
   assert.deepEqual(await loadRememberedPlaceholderValues(storage, prompt), {});
 
   const failingStorage = {
@@ -7688,7 +7692,10 @@ test("last-paste ratings are capability-gated, retryable, and one-time", async (
       "disabled",
     );
     assert.equal(await loadLastLibraryPaste(storage, "disabled"), undefined);
-    assert.deepEqual({ reads, writes, removes }, { reads: 0, writes: 0, removes: 0 });
+    assert.deepEqual(
+      { reads, writes, removes },
+      { reads: 0, writes: 0, removes: 0 },
+    );
 
     assert.equal(
       await recordLastLibraryPaste(
@@ -7976,12 +7983,7 @@ test("build freshness resolves installed symlinks and ignores copied bundle sour
   try {
     const source = join(checkout, "src", "core", "cli.ts");
     const copiedSource = join(checkout, "dist-cli", "src", "core", "cli.js");
-    const bundle = join(
-      checkout,
-      "dist-cli",
-      "cli",
-      "prompt-studio.mjs",
-    );
+    const bundle = join(checkout, "dist-cli", "cli", "prompt-studio.mjs");
     const installed = join(checkout, "installed", "prompt-studio");
     await mkdir(join(checkout, "src", "core"), { recursive: true });
     await mkdir(join(checkout, "dist-cli", "src", "core"), {
@@ -8449,14 +8451,16 @@ test("prompt updates can carry revised sources and enhancement provenance", asyn
   }
 });
 
-
 test("metadata floors scale with task size and the compiler states the target", () => {
   const base = {
     target: "generic" as const,
     profileId: "openai-standard-v1" as const,
     researchLevel: "none" as const,
   };
-  const simple = metadataFloors({ ...base, roughThoughts: "make the readme clearer" });
+  const simple = metadataFloors({
+    ...base,
+    roughThoughts: "make the readme clearer",
+  });
   assert.equal(simple.tier, "simple");
   assert.equal(simple.searchTerms, 5);
 
@@ -8529,7 +8533,6 @@ test("the shared source budget is filled by authority, not arrival order", () =>
   // one is the one that was dropped.
   assert.equal(merged.length, 2);
 });
-
 
 test("the run log records failures with the stage that spent the money", async () => {
   const directory = await mkdtemp(join(tmpdir(), "prompt-studio-runs-"));
@@ -8619,7 +8622,6 @@ test("the run log records failures with the stage that spent the money", async (
   }
 });
 
-
 function judgeFixtureRecord() {
   return {
     caseId: "dev-debug-intermittent-api",
@@ -8672,7 +8674,10 @@ test("the evaluation judge is blind, bounded, and cannot inflate a score", async
   assert.equal(body.store, false);
   // The judge must never learn which provider or model produced the result.
   assert.equal(serialized.includes("resp_1"), false);
-  assert.equal(/anthropic|openai-standard|gpt-5\.6-sol|claude/i.test(serialized), false);
+  assert.equal(
+    /anthropic|openai-standard|gpt-5\.6-sol|claude/i.test(serialized),
+    false,
+  );
   assert.match(serialized, /requiredFacts/);
   assert.ok(maximumJudgeCostUsd(24) > 0);
 
@@ -8730,7 +8735,6 @@ test("the evaluation judge is blind, bounded, and cannot inflate a score", async
     /declined to judge/,
   );
 });
-
 
 test("variant selection is blind, hard-failure-aware, and deterministic on ties", () => {
   assert.equal(REVIEW_TOTAL, 100);
@@ -8791,7 +8795,6 @@ test("variant selection is blind, hard-failure-aware, and deterministic on ties"
   assert.throws(() => rankVariants([]), /no winner/);
 });
 
-
 test("a revision changes only what was asked and shows what moved", () => {
   const request = enhancementRequest();
   const previous = enhancementFixture();
@@ -8801,7 +8804,10 @@ test("a revision changes only what was asked and shows what moved", () => {
   assert.equal(revised.revision?.previous, previous);
   // The original request is untouched, so a failed revision cannot corrupt it.
   assert.equal("revision" in request, false);
-  assert.throws(() => buildRevisionRequest(request, previous, "   "), /Enter what/);
+  assert.throws(
+    () => buildRevisionRequest(request, previous, "   "),
+    /Enter what/,
+  );
   assert.throws(
     () => buildRevisionRequest(request, previous, "x".repeat(2_001)),
     /2000 characters or fewer/,
@@ -8815,7 +8821,10 @@ test("a revision changes only what was asked and shows what moved", () => {
   assert.match(instructions, /Revision pass/);
   assert.match(instructions, /keep the stricter reading/);
   // A plain run must not pick up revision guidance.
-  assert.doesNotMatch(enhancementCompilerInstructions(request), /Revision pass/);
+  assert.doesNotMatch(
+    enhancementCompilerInstructions(request),
+    /Revision pass/,
+  );
 
   const summary = diffLines(
     "line one\nline two\nline three\nline four",
@@ -8841,7 +8850,6 @@ test("a revision changes only what was asked and shows what moved", () => {
   assert.match(renderDiff(long), /…/);
 });
 
-
 test("a near-duplicate is caught before the save, not in a later audit", () => {
   const record = (
     id: string,
@@ -8863,7 +8871,11 @@ test("a near-duplicate is caught before the save, not in a later audit", () => {
       "Adversarial test sweep",
       "Run a comprehensive adversarial test sweep targeting edge cases, malformed inputs, and race conditions.",
     ),
-    record("b", "Write release notes", "Summarise the changes for the release."),
+    record(
+      "b",
+      "Write release notes",
+      "Summarise the changes for the release.",
+    ),
     record(
       "c",
       "Archived duplicate",
@@ -8907,7 +8919,6 @@ test("a near-duplicate is caught before the save, not in a later audit", () => {
     /between 0.2 and 0.95/,
   );
 });
-
 
 function libraryRecord(over: Record<string, unknown> = {}) {
   return {
@@ -8956,7 +8967,10 @@ test("drift is reported only when the bound repository actually moved", () => {
   assert.deepEqual(superseded?.reasons, ["compiler-superseded"]);
 
   // Unbound and archived prompts cannot drift against a repository.
-  assert.equal(detectPromptDrift(libraryRecord(), { commit: "bbb" }), undefined);
+  assert.equal(
+    detectPromptDrift(libraryRecord(), { commit: "bbb" }),
+    undefined,
+  );
   assert.equal(
     detectPromptDrift(
       libraryRecord({
@@ -8992,9 +9006,21 @@ test("lineage links prompts from one draft and clustering groups by vocabulary",
   );
 
   const clusters = clusterPrompts([
-    libraryRecord({ id: "t1", title: "Adversarial test sweep", tags: ["testing"] }),
-    libraryRecord({ id: "t2", title: "Adversarial test hardening", tags: ["testing"] }),
-    libraryRecord({ id: "r1", title: "Write release notes", tags: ["release"] }),
+    libraryRecord({
+      id: "t1",
+      title: "Adversarial test sweep",
+      tags: ["testing"],
+    }),
+    libraryRecord({
+      id: "t2",
+      title: "Adversarial test hardening",
+      tags: ["testing"],
+    }),
+    libraryRecord({
+      id: "r1",
+      title: "Write release notes",
+      tags: ["release"],
+    }),
   ]);
   assert.equal(clusters.length, 1);
   assert.deepEqual(clusters[0]?.ids, ["t1", "t2"]);
@@ -9004,7 +9030,11 @@ test("lineage links prompts from one draft and clustering groups by vocabulary",
 
 test("repository suggestions rank a real binding above a name match", () => {
   const records = [
-    libraryRecord({ id: "bound", title: "Bound", project: { name: "amp", path: "/repo/amp" } }),
+    libraryRecord({
+      id: "bound",
+      title: "Bound",
+      project: { name: "amp", path: "/repo/amp" },
+    }),
     libraryRecord({ id: "named", title: "Named", tags: ["amp"] }),
     libraryRecord({ id: "other", title: "Other", tags: ["unrelated"] }),
     libraryRecord({
@@ -9030,21 +9060,30 @@ test("repository suggestions rank a real binding above a name match", () => {
   assert.deepEqual(suggestPromptsForProject(records, "   "), []);
 });
 
-
 test("the ambient pick prefers a bound repository, then real use", () => {
   const records = [
-    libraryRecord({ id: "bound", title: "Bound", project: { name: "amp", path: "/repo/amp" } }),
+    libraryRecord({
+      id: "bound",
+      title: "Bound",
+      project: { name: "amp", path: "/repo/amp" },
+    }),
     libraryRecord({ id: "used", title: "Used" }),
     libraryRecord({ id: "cold", title: "Cold" }),
   ];
   const usage = new Map([["used", 12]]);
 
-  const inRepo = pickAmbientPrompt(records, { projectPath: "/repo/amp", usage });
+  const inRepo = pickAmbientPrompt(records, {
+    projectPath: "/repo/amp",
+    usage,
+  });
   assert.equal(inRepo.record?.id, "bound");
   assert.match(inRepo.reason, /Bound to this repository/);
 
   // Outside a known repo, the most-used prompt wins over a never-used one.
-  const outside = pickAmbientPrompt(records, { projectPath: "/elsewhere", usage });
+  const outside = pickAmbientPrompt(records, {
+    projectPath: "/elsewhere",
+    usage,
+  });
   assert.equal(outside.record?.id, "used");
   assert.match(outside.reason, /12 uses/);
 
@@ -9082,4 +9121,273 @@ test("the project context cache expires and never serves another repository", ()
 
   assert.equal(projectLabel("/repo/amp/"), "amp");
   assert.equal(projectLabel("   "), "");
+});
+
+test("adversarial: the run log survives concurrency, unicode, and hostile fields", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-adv-"));
+  try {
+    // Concurrent appends must all land; appendFile is atomic for small writes.
+    await Promise.all(
+      Array.from({ length: 20 }, (_unused, index) =>
+        recordRun(directory, {
+          status: "ok",
+          stage: "enhancement",
+          model: `m${index}`,
+        }),
+      ),
+    );
+    assert.equal((await listRuns(directory)).length, 20);
+
+    // REGRESSION: truncating at a UTF-16 boundary used to cut a surrogate pair
+    // in half and store a lone surrogate. JSON escapes it, so nothing throws,
+    // but the stored text is invalid and breaks stricter downstream consumers.
+    await recordRun(directory, {
+      status: "failed",
+      stage: "exa",
+      error: `a${"\u{1F525}".repeat(400)}`,
+    });
+    const runs = await listRuns(directory);
+    const truncated = runs.at(-1)!.error!;
+    assert.equal(truncated.length <= 300, true);
+    assert.doesNotMatch(
+      truncated,
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+    );
+
+    // Hostile numeric inputs must not reach the log as NaN or Infinity, which
+    // JSON.stringify turns into null and breaks downstream arithmetic.
+    await recordRun(directory, {
+      status: "ok",
+      stage: "web",
+      durationMs: Number.NaN,
+      sourceCount: Number.POSITIVE_INFINITY,
+    });
+    const hostile = (await listRuns(directory)).at(-1)!;
+    assert.equal("durationMs" in hostile, false);
+    assert.equal("sourceCount" in hostile, false);
+
+    // A negative duration is not a real measurement and must be dropped.
+    await recordRun(directory, {
+      status: "ok",
+      stage: "web",
+      durationMs: -5,
+    });
+    assert.equal("durationMs" in (await listRuns(directory)).at(-1)!, false);
+
+    // An unknown status or stage must be rejected on read, not trusted.
+    await appendFile(
+      runLogPath(directory),
+      `${JSON.stringify({ at: "2026-07-31T00:00:00.000Z", status: "weird", stage: "enhancement" })}\n`,
+      "utf8",
+    );
+    await appendFile(
+      runLogPath(directory),
+      `${JSON.stringify({ at: "2026-07-31T00:00:00.000Z", status: "ok", stage: "not-a-stage" })}\n`,
+      "utf8",
+    );
+    const before = runs.length;
+    assert.equal((await listRuns(directory)).length >= before, true);
+    assert.equal(
+      (await listRuns(directory)).some(
+        (run) =>
+          String(run.status) === "weird" || String(run.stage) === "not-a-stage",
+      ),
+      false,
+    );
+
+    // REGRESSION: a non-finite cost made every later total NaN. The JSON round
+    // trip hid it, so this asserts on in-memory records where it actually bit.
+    assert.equal(
+      Number.isNaN(
+        tallyRuns([
+          {
+            at: "2026-07-31T00:00:00.000Z",
+            status: "ok",
+            stage: "exa",
+            cost: { exa: Number.NaN },
+          },
+        ]).totalCostUsd,
+      ),
+      false,
+    );
+    await recordRun(directory, {
+      status: "ok",
+      stage: "exa",
+      cost: { exa: Number.NaN, model: -1, planning: 0.5 },
+    });
+    assert.deepEqual((await listRuns(directory)).at(-1)!.cost, {
+      planning: 0.5,
+    });
+
+    // A tally over an empty log must not divide by zero or throw.
+    const emptyTally = tallyRuns([]);
+    assert.equal(emptyTally.total, 0);
+    assert.equal(emptyTally.totalCostUsd, 0);
+    assert.deepEqual(emptyTally.failuresByStage, []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("adversarial: the judge rejects malformed scores instead of passing a run", async () => {
+  const record = judgeFixtureRecord();
+  const respond = (payload: unknown) =>
+    judgeEvaluationRecord(record, {
+      apiKey: "k",
+      fetcher: (async () =>
+        Response.json({
+          id: "r",
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "output_text", text: JSON.stringify(payload) }],
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        })) as typeof fetch,
+    });
+
+  const full = {
+    fidelity: 25,
+    completeness: 20,
+    unsupportedFacts: 20,
+    actionability: 15,
+    validation: 10,
+    authorization: 5,
+    appropriateLength: 5,
+    hardFailure: false,
+    notes: "",
+  };
+  // A missing dimension must fail loudly; silently scoring it zero would let a
+  // broken judge quietly fail every run, and treating it as full marks would
+  // let a broken judge pass every run.
+  const { fidelity: _dropped, ...missing } = full;
+  await assert.rejects(respond(missing), /no fidelity score/);
+  await assert.rejects(
+    respond({ ...full, validation: Number.NaN }),
+    /no validation score/,
+  );
+  await assert.rejects(
+    respond({ ...full, authorization: "5" }),
+    /no authorization score/,
+  );
+
+  // A negative score must clamp to zero, not subtract from the total.
+  const negative = await respond({ ...full, validation: -50 });
+  assert.equal(negative.review.validation, 0);
+  // hardFailure must be strictly boolean: a truthy string is not a pass signal.
+  const truthy = await respond({ ...full, hardFailure: "no" });
+  assert.equal(truthy.review.hardFailure, false);
+
+  // A non-completed response must never be scored.
+  await assert.rejects(
+    judgeEvaluationRecord(record, {
+      apiKey: "k",
+      fetcher: (async () =>
+        Response.json({
+          id: "r",
+          status: "incomplete",
+          output: [],
+        })) as typeof fetch,
+    }),
+    /incomplete/,
+  );
+  await assert.rejects(
+    judgeEvaluationRecord(record, {
+      apiKey: "k",
+      fetcher: (async () =>
+        new Response("nope", { status: 500 })) as typeof fetch,
+    }),
+    /rejected the judging request/,
+  );
+  await assert.rejects(
+    judgeEvaluationRecord(record, { apiKey: "   " }),
+    /Add an OpenAI API key/,
+  );
+});
+
+test("adversarial: a planner query at its own maximum does not kill the run", () => {
+  // REGRESSION: the planner schema allows a 500-character query. Prefixing it
+  // with "For <library> <version>: " pushed past the Context7 cap, and the
+  // builder threw instead of truncating, losing the whole enhancement.
+  const intent = {
+    route: "context7" as const,
+    purpose: "p",
+    query: "x".repeat(500),
+    library: "next",
+    objective: "o",
+    questions: [],
+    planningCostUsd: 0,
+  };
+  const plan = planContext7Research("thoughts", "auto", undefined, "15.1.0", {
+    intent,
+  });
+  assert.equal(plan.route, "context7");
+  assert.equal(plan.query!.length, 500);
+  assert.match(plan.query!, /^For next 15\.1\.0: /);
+
+  // An explicit Context7 library ID from the planner still resolves directly.
+  const byId = planContext7Research("t", "auto", undefined, undefined, {
+    intent: { ...intent, query: "routing", library: "/vercel/next.js" },
+  });
+  assert.equal(byId.libraryId, "/vercel/next.js");
+
+  // An intent for another route must never be applied to Context7.
+  assert.throws(
+    () =>
+      planContext7Research("t", "auto", "next", undefined, {
+        intent: { ...intent, route: "exa" as never },
+      }),
+    /does not match Context7/,
+  );
+});
+
+test("adversarial: diffing and clustering hold at their boundaries", () => {
+  // CRLF must not make every line read as changed.
+  const crlf = diffLines("a\r\nb\r\nc", "a\nb\nc");
+  assert.equal(crlf.added, 0);
+  assert.equal(crlf.removed, 0);
+
+  // Empty inputs are a valid revision result, not a crash.
+  assert.equal(diffLines("", "").added, 0);
+  const fromEmpty = diffLines("", "new line");
+  assert.equal(fromEmpty.added, 1);
+  assert.equal(fromEmpty.removed, 1);
+
+  // The line cap bounds the O(n*m) table so a 30 KB prompt cannot stall the view.
+  const huge = Array.from({ length: 5_000 }, (_u, i) => `line ${i}`).join("\n");
+  const capped = diffLines(huge, `${huge}\nextra`, 50);
+  assert.equal(capped.lines.length <= 100, true);
+
+  // Every variant failing hard still yields a deterministic winner rather than
+  // leaving the caller with nothing to save.
+  const allFailed = rankVariants([
+    {
+      index: 1,
+      run: { usage: { estimatedCostUsd: 0 } } as never,
+      score: 10,
+      judgeCostUsd: 0,
+      review: { ...fullMarksHumanReview(), hardFailure: true },
+    },
+    {
+      index: 0,
+      run: { usage: { estimatedCostUsd: 0 } } as never,
+      score: 10,
+      judgeCostUsd: 0,
+      review: { ...fullMarksHumanReview(), hardFailure: true },
+    },
+  ]);
+  assert.equal(allFailed.winner.index, 0);
+
+  // Clustering must not group a single prompt with itself, and identical
+  // prompts must land in one cluster rather than N clusters of one.
+  assert.deepEqual(clusterPrompts([libraryRecord({ id: "only" })]), []);
+  const identical = clusterPrompts([
+    libraryRecord({ id: "x", title: "Same title here", tags: ["t"] }),
+    libraryRecord({ id: "y", title: "Same title here", tags: ["t"] }),
+    libraryRecord({ id: "z", title: "Same title here", tags: ["t"] }),
+  ]);
+  assert.equal(identical.length, 1);
+  assert.equal(identical[0]?.ids.length, 3);
 });

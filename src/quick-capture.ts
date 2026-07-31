@@ -1,8 +1,4 @@
-import {
-  Clipboard,
-  getSelectedText,
-  showHUD,
-} from "@raycast/api";
+import { Clipboard, getSelectedText, showHUD } from "@raycast/api";
 import {
   captureTextFromSources,
   captureTitleFromText,

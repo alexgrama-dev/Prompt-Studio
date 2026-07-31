@@ -200,14 +200,13 @@ export function suggestPromptsForProject(
       title: record.title,
       // Binding dominates; use count only orders prompts of equal evidence.
       score: (bound ? 1_000 : 100) + Math.min(uses, 99),
-      reason: bound
-        ? "Bound to this repository"
-        : `Mentions ${projectName}`,
+      reason: bound ? "Bound to this repository" : `Mentions ${projectName}`,
     });
   }
   return suggestions
     .sort(
-      (left, right) => right.score - left.score || left.title.localeCompare(right.title),
+      (left, right) =>
+        right.score - left.score || left.title.localeCompare(right.title),
     )
     .slice(0, Math.max(1, Math.min(options.limit ?? MAX_SUGGESTIONS, 50)));
 }
@@ -221,7 +220,9 @@ function clusterLabel(members: readonly PromptRecord[]): string {
   }
   const top = [...counts.entries()]
     .filter(([, count]) => count > 1)
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )
     .slice(0, 2)
     .map(([tag]) => tag);
   return top.length > 0 ? top.join(" · ") : (members[0]?.title ?? "Untitled");
@@ -242,7 +243,8 @@ function promptTokens(record: PromptRecord): Set<string> {
 function jaccard(left: Set<string>, right: Set<string>): number {
   if (left.size === 0 || right.size === 0) return 0;
   let shared = 0;
-  const [small, large] = left.size <= right.size ? [left, right] : [right, left];
+  const [small, large] =
+    left.size <= right.size ? [left, right] : [right, left];
   for (const token of small) if (large.has(token)) shared += 1;
   return shared / (left.size + right.size - shared);
 }

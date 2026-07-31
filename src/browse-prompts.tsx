@@ -142,8 +142,7 @@ export default function BrowsePrompts({
   const [searchText, setSearchText] = useState(fallbackText ?? "");
   const [sqliteActive, setSqliteActive] = useState(false);
   const [qmdActive, setQmdActive] = useState(false);
-  const [feedbackState, setFeedbackState] =
-    useState<FeatureState>("disabled");
+  const [feedbackState, setFeedbackState] = useState<FeatureState>("disabled");
   const [enhancementEnabled, setEnhancementEnabled] = useState(false);
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [indexedResults, setIndexedResults] = useState<SearchResult[]>();
@@ -250,12 +249,7 @@ export default function BrowsePrompts({
   }, [load]);
 
   useEffect(() => {
-    if (
-      handledFallback.current ||
-      loading ||
-      error ||
-      !fallbackText?.trim()
-    ) {
+    if (handledFallback.current || loading || error || !fallbackText?.trim()) {
       return;
     }
     handledFallback.current = true;
@@ -915,11 +909,7 @@ async function useLibraryPrompt(
   if (mode === "paste") {
     await closeMainWindow();
     await Clipboard.paste(body);
-    await recordLastLibraryPaste(
-      raycastLocalStorage,
-      feedbackState,
-      record,
-    );
+    await recordLastLibraryPaste(raycastLocalStorage, feedbackState, record);
   } else {
     await Clipboard.copy(body);
   }
@@ -1068,9 +1058,7 @@ function PlaceholderForm({
     };
   }, [record.body, record.id, record.updatedAt]);
 
-  async function submit(
-    mode: "paste" | "copy",
-  ) {
+  async function submit(mode: "paste" | "copy") {
     pop();
     await onUse(fillPlaceholders(record.body, values), mode);
     if (!remember) return;
