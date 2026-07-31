@@ -38,6 +38,11 @@ export function detectPromptDrift(
 ): PromptDrift | undefined {
   if (!record.project || record.archivedAt) return undefined;
   const reasons: DriftReason[] = [];
+  // Ordered by how strongly each signal invalidates the prompt: a cited file
+  // that is gone breaks it outright, a moved commit only might, and an older
+  // compiler is the weakest signal of all.
+  if (state.missingFiles?.length) reasons.push("files-missing");
+  if (state.changedFiles?.length) reasons.push("files-changed");
   if (
     record.project.commit &&
     state.commit &&
@@ -45,8 +50,6 @@ export function detectPromptDrift(
   ) {
     reasons.push("commit-moved");
   }
-  if (state.missingFiles?.length) reasons.push("files-missing");
-  if (state.changedFiles?.length) reasons.push("files-changed");
   if (
     record.enhancement &&
     state.compilerVersion &&

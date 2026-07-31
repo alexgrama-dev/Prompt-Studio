@@ -9391,3 +9391,115 @@ test("adversarial: diffing and clustering hold at their boundaries", () => {
   assert.equal(identical.length, 1);
   assert.equal(identical[0]?.ids.length, 3);
 });
+
+
+test("adversarial: the planner charges once, refuses unapproved routes, and bounds the budget", async () => {
+  const responder = (payload: unknown) =>
+    (async () =>
+      Response.json({
+        id: "r",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [{ type: "output_text", text: JSON.stringify(payload) }],
+          },
+        ],
+        usage: { input_tokens: 1_000, output_tokens: 200 },
+      })) as typeof fetch;
+
+  // REGRESSION: the planning charge was attached to the first query of each
+  // route, so a plan covering two routes reported it twice on the review
+  // screens and in the run log.
+  const plan = await planFocusedResearch(
+    {
+      roughThoughts: "compare alternatives and check the latest docs for next",
+      researchLevel: "deep",
+      routes: ["context7", "exa"],
+    },
+    {
+      apiKey: "k",
+      retryLimit: 0,
+      fetcher: responder({
+        objective: "o",
+        questions: ["q?"],
+        queries: [
+          { route: "context7", purpose: "p", query: "routing", library: "next" },
+          {
+            route: "exa",
+            purpose: "p",
+            query: "community examples",
+            library: null,
+          },
+        ],
+      }),
+    },
+  );
+  const reported = [
+    ...focusedResearchIntents(plan, "context7"),
+    ...focusedResearchIntents(plan, "exa"),
+  ].reduce((total, intent) => total + intent.planningCostUsd, 0);
+  assert.equal(reported, plan.usage.estimatedCostUsd);
+
+  // A route the user never approved must never reach a paid provider.
+  await assert.rejects(
+    planFocusedResearch(
+      { roughThoughts: "compare alternatives", researchLevel: "deep", routes: ["exa"] },
+      {
+        apiKey: "k",
+        retryLimit: 0,
+        fetcher: responder({
+          objective: "o",
+          questions: ["q?"],
+          queries: [{ route: "web", purpose: "p", query: "x", library: null }],
+        }),
+      },
+    ),
+    /web query that was not approved/,
+  );
+
+  // The shared budget must hold under a flood of oversized sources.
+  const many = Array.from({ length: 60 }, (_unused, index) => ({
+    title: `t${index}`,
+    url: `https://e.example/${index}`,
+    retrievedAt: "2026-07-31T00:00:00.000Z",
+    supports: "s",
+    content: "x".repeat(400),
+    route: "exa" as const,
+  }));
+  const merged = mergeReviewedSources([], many);
+  assert.equal(merged.length <= 30, true);
+  assert.equal(
+    merged.reduce(
+      (total, source) => total + new TextEncoder().encode(source.content).length,
+      0,
+    ) <= 30_000,
+    true,
+  );
+});
+
+test("adversarial: drift reports the strongest signal first", () => {
+  // REGRESSION: reasons were built in source order, so a moved commit masked a
+  // missing cited file in the badge even though the missing file is the
+  // stronger signal that the prompt no longer applies.
+  const drift = detectPromptDrift(
+    libraryRecord({
+      id: "x",
+      project: { name: "p", path: "/p", commit: "a" },
+      enhancement: { compilerVersion: "1" },
+    }),
+    {
+      commit: "b",
+      missingFiles: ["src/a.ts"],
+      changedFiles: ["src/b.ts"],
+      compilerVersion: "2",
+    },
+  );
+  assert.deepEqual(drift?.reasons, [
+    "files-missing",
+    "files-changed",
+    "commit-moved",
+    "compiler-superseded",
+  ]);
+  assert.match(String(drift?.headline), /no longer exist/);
+});
