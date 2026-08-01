@@ -34,6 +34,17 @@
 - [x] 5.1 Capture the baseline stats snapshot in `docs/verification/` the day items 1-4 land
   - 2026-07-21: `docs/verification/2026-07-21-closed-loop-baseline-stats.json` — 13 active prompts, 0 uses, 0 feedback records.
 - [ ] 5.2 Run two weeks of normal work with recall and agent feedback live (target end 2026-08-04)
+  - 2026-08-01 diagnosis: 3 feedback records over 2 prompts (expected ~20 over
+    5). Root cause found in session logs: agents received the recall
+    instruction (12/13 sessions) but (a) search rarely fired, (b) the MCP
+    tools lazy-load via tool_search and unload before task end, so
+    `prompt_studio_record_feedback` was unreachable, (c) nothing prompts the
+    agent at task end. Shipped fix: CLI fallback block added to
+    ~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, and project AGENTS.md
+    (`prompt-studio search/get` + `feedback add <id> --yes --input -`),
+    proven end-to-end against a throwaway library; plus a verify-script
+    isolation fix (1609519). The 8/4 verdict should count records from this
+    date, since the recording path only became reachable today.
 - [ ] 5.3 Evaluate exit criteria: ≥20 feedback records over ≥5 prompts, one optimization proposal generated and evaluated on the frozen 24 cases, accepted only without protected-case regression
 - [ ] 5.4 Record the outcome — accepted improvement, documented rejection, or a friction finding that redirects the next change
 
