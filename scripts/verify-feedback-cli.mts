@@ -24,6 +24,7 @@ const cliPath = resolve("dist-cli/cli/prompt-studio.mjs");
 const disabledLibrary = join(root, "disabled-library");
 const library = join(root, "library");
 const featureConfig = join(root, "features.json");
+const disabledFeatureConfig = join(root, "features-disabled.json");
 
 try {
   assert.equal(
@@ -33,7 +34,15 @@ try {
   );
 
   const disabled = runCli(
-    ["feedback", "list", "--json", "--library", disabledLibrary],
+    [
+      "feedback",
+      "list",
+      "--json",
+      "--library",
+      disabledLibrary,
+      "--feature-config",
+      disabledFeatureConfig,
+    ],
     undefined,
   );
   assert.equal(disabled.status, 3);
