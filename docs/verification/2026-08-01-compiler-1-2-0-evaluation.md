@@ -57,3 +57,48 @@ would isolate the cause if needed (~$0.25 + judge).
   rules (threshold preservation, conditional UI verification, grounded
   metadata) while restoring 1.0.0's anti-invention strength.
 - Re-run this exact evaluation against the reworked compiler.
+
+## Follow-up: rework attempts and the variance wall — same day
+
+Two reworked compilers were evaluated the same day (same cases, profile,
+judge):
+
+| Run | Compiler | Change | Avg | Hard fails | Protected fails |
+| --- | --- | --- | --- | --- | --- |
+| 10-50 | 1.2.0 | original | 91.67 | 6 | 1 |
+| 11-40 | 1.2.1 | + action-scope rule (diagnose stays diagnose, plan stays plan) | 95.25 | 1 | 0 |
+| 11-46 | 1.2.1 | + no-supplied-repository clause in target instructions | 92.71 | 4 | 3 |
+
+The third run scored worse than the second despite a strictly additive
+instruction. A cross-run comparison shows why: 8 of 24 cases flip
+pass/fail across the three runs with no relevant instruction change —
+including `protected-untrusted-reference` (F, pass, F) on near-identical
+output text. Both compiler output (sampling) and judge verdicts vary
+run-to-run; a single 24-case generation plus single judge pass cannot
+rank compilers that differ by less than roughly ±3 points or ±2 hard
+failures. Single-run verdicts below that bar are noise, not signal.
+
+Two systemic findings independent of the noise:
+
+1. The appended Execution Guardrails block (execution-guardrails/1.0.0)
+   adds a fixed ~700 characters of repository/editing guidance to every
+   enhanced prompt, including research-only and summarize-only tasks. The
+   judge cited guardrail padding in 8 of 10 hard-failure notes across all
+   three runs. The eval rubric does not mention guardrails, so the product
+   and its quality gate disagree about what a good prompt looks like.
+2. Two judge verdicts were factually wrong about case data: run 2 judged
+   `dev-test-flake` as inventing `test/jobs/worker.test.ts`, which the
+   case itself supplies in `allowedProjectFiles`, and judged
+   `val-multilingual` as fix-overreach where the rough input says
+   "Analizeaza" (analyze), a scope reading at least one other run
+   rewarded. Judge instructions need the case's supplied context
+   surfaced as inadmissible-for-invention, or those verdicts stay coin
+   flips.
+
+Consequence: no further single-run rework iterations. Next step is an
+eval-hardening change before any compiler verdict: (a) fix the guardrail
+disagreement (exempt the guardrails block in judging, or make the block
+conditional in product), (b) put supplied allowlist content on the
+judge's not-an-invention list, (c) require N>=3 generations with
+majority-vote judging for accept/reject decisions, with per-case flip
+rates reported.

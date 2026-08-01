@@ -448,7 +448,7 @@ test("execution guardrails normalize every frozen case without changing its task
     "claude-code": "applicable CLAUDE.md and repository instructions",
   } as const;
 
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.2.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.2.1");
   for (const item of raw.cases) {
     const taskPrompt = `${item.roughInput.trim()}\n\nPreserve this case's stricter evidence and authorization thresholds.`;
     const request: EnhancementRequest = {
@@ -8267,10 +8267,12 @@ test("stats skips feedback-owned files when feedback is disabled", async () => {
   }
 });
 
-test("compiler 1.2.0 pins threshold preservation, conditional UI verification, and grounded metadata", () => {
+test("compiler 1.2.1 pins threshold preservation, action scope, conditional UI verification, and grounded metadata", () => {
   const base = enhancementCompilerInstructions({ target: "generic" });
   assert.match(base, /exact lower bounds/);
   assert.match(base, /never soften them/);
+  assert.match(base, /action scope exactly/);
+  assert.match(base, /must not direct the agent to implement/);
   assert.match(base, /only when the user or supplied context named it/);
   assert.equal(
     base.includes("rendered UI verification"),
@@ -8284,6 +8286,7 @@ test("compiler 1.2.0 pins threshold preservation, conditional UI verification, a
       /only when the task itself can change rendered user-interface behavior/,
     );
     assert.match(composed, /omit UI verification entirely/);
+    assert.match(composed, /when no repository is supplied, omit repository inspection entirely/);
   }
 });
 

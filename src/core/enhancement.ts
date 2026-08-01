@@ -16,7 +16,7 @@ import {
 } from "./revision.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
-export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.2.0";
+export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.2.1";
 export const ENHANCEMENT_GUARDRAILS_VERSION = "execution-guardrails/1.0.0";
 export const ENHANCEMENT_GUARDRAILS_MARKER = `<!-- prompt-studio:${ENHANCEMENT_GUARDRAILS_VERSION} -->`;
 export const ENHANCEMENT_OUTPUT_SCHEMA_VERSION = 1;
@@ -396,6 +396,13 @@ never soften them: if the user requires a proven cause, the prompt must
 require proof, not strong suggestion; if the user forbids an action, the
 prompt must forbid it without adding permissive exceptions.
 
+Match the user's requested action scope exactly. A request to diagnose,
+investigate, analyze, review, plan, or summarize authorizes only that: the
+prompt must not direct the agent to implement, apply a fix, change files, run
+a pilot, or contact external parties. For a bounded task, keep the fix as a
+recommended next step, not an action. A request that includes fixing or
+building stays limited to what was asked.
+
 Build the smallest complete prompt:
 - state the user-visible outcome;
 - include only relevant supplied or verified context;
@@ -436,9 +443,9 @@ const TARGET_INSTRUCTIONS: Readonly<Record<PromptTarget, string>> = {
   generic:
     "Write a portable prompt with no assumptions about a particular coding agent, command syntax, tool names, or repository instruction file.",
   codex:
-    "Adapt for Codex: make read-only versus implementation authority explicit; tell the agent to inspect applicable AGENTS.md instructions and current state when a repository is available; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
+    "Adapt for Codex: make read-only versus implementation authority explicit; when a repository is supplied, tell the agent to inspect applicable AGENTS.md instructions and current state, and when no repository is supplied, omit repository inspection entirely instead of assuming one; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
   "claude-code":
-    "Adapt for Claude Code: make read-only versus implementation authority explicit; tell the agent to inspect applicable CLAUDE.md and repository instructions when available; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
+    "Adapt for Claude Code: make read-only versus implementation authority explicit; when a repository is supplied, tell the agent to inspect applicable CLAUDE.md and repository instructions, and when no repository is supplied, omit repository inspection entirely instead of assuming one; require relevant non-destructive checks. Mention rendered UI verification only when the task itself can change rendered user-interface behavior; for tasks that cannot, omit UI verification entirely. Do not invent commands or claim checks ran.",
 };
 
 const TARGET_REPOSITORY_INSTRUCTIONS: Readonly<Record<PromptTarget, string>> = {
@@ -457,7 +464,8 @@ requirements, invented project or technical facts, hidden assumptions,
 unauthorized destructive or external action, vague success criteria, validation
 claims that were not run, unnecessary length, target mismatch, project files or
 sources outside the supplied allowlists, duplicate metadata, or search metadata
-outside its required bounds.
+outside its required bounds, or action scope beyond the user's request (a
+diagnose, plan, review, or summarize task must not direct implementation).
 
 Do not expand a correct concise prompt merely to make it look more detailed.
 Return only the structured result.

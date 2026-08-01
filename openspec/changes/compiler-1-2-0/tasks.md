@@ -18,3 +18,11 @@
     any optimization cycle. Report:
     `docs/verification/2026-08-01-compiler-1-2-0-evaluation.md`,
     run file `evals/runs/2026-08-01T10-50-59.659Z--openai-standard-v1.json`.
+  - 2026-08-01 follow-up: two rework runs (1.2.1 + action-scope rule, then
+    + no-supplied-repository clause) scored 95.25/1-fail and 92.71/4-fail —
+    but 8/24 cases flip verdicts across identical runs, so single-run
+    scores below ±3 points or ±2 hard failures are noise. Compiler verdicts
+    are blocked on `eval-hardening` (judge context, guardrail disagreement,
+    repeated decisions), not on more instruction tweaks. 1.2.1's
+    action-scope and repository clauses stay in the tree as strictly-better
+    instructions; baseline acceptance waits for a stable measurement.
