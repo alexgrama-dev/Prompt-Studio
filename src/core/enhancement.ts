@@ -236,6 +236,9 @@ interface ModelPass {
   usage: EnhancementUsage;
 }
 
+export const ENHANCEMENT_TITLE_MAX_LENGTH = 120;
+export const ENHANCEMENT_SUMMARY_MAX_LENGTH = 240;
+
 export const ENHANCEMENT_RESULT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -255,8 +258,16 @@ export const ENHANCEMENT_RESULT_SCHEMA = {
     "sources",
   ],
   properties: {
-    title: { type: "string", minLength: 1, maxLength: 120 },
-    summary: { type: "string", minLength: 1, maxLength: 240 },
+    title: {
+      type: "string",
+      minLength: 1,
+      maxLength: ENHANCEMENT_TITLE_MAX_LENGTH,
+    },
+    summary: {
+      type: "string",
+      minLength: 1,
+      maxLength: ENHANCEMENT_SUMMARY_MAX_LENGTH,
+    },
     target: { type: "string", enum: ["generic", "codex", "claude-code"] },
     enhancedPrompt: { type: "string", minLength: 1, maxLength: 30_000 },
     assumptions: {
@@ -353,7 +364,7 @@ export const ENHANCEMENT_RESULT_SCHEMA = {
 } as const;
 
 export function enhancementResultSchemaForProvider(): Record<string, unknown> {
-  return stripUnsupportedSchemaBounds(ENHANCEMENT_RESULT_SCHEMA) as Record<
+  return describeUnsupportedSchemaBounds(ENHANCEMENT_RESULT_SCHEMA) as Record<
     string,
     unknown
   >;
@@ -686,6 +697,32 @@ export function validateEnhancementRequest(
   };
 }
 
+// A provider cannot enforce the title and summary length limits, so an
+// over-long label is trimmed instead of discarding a paid enhancement run.
+// Every other field stays strict.
+export function normalizeProviderResultBounds(value: unknown): unknown {
+  if (!isObject(value)) return value;
+  return {
+    ...value,
+    ...(typeof value.title === "string"
+      ? { title: clampText(value.title, ENHANCEMENT_TITLE_MAX_LENGTH) }
+      : {}),
+    ...(typeof value.summary === "string"
+      ? { summary: clampText(value.summary, ENHANCEMENT_SUMMARY_MAX_LENGTH) }
+      : {}),
+  };
+}
+
+function clampText(value: string, maximum: number): string {
+  const text = value.trim();
+  if (text.length <= maximum) return text;
+  const head = text.slice(0, maximum - 1);
+  const boundary = head.lastIndexOf(" ");
+  const kept =
+    boundary >= Math.floor(maximum / 2) ? head.slice(0, boundary) : head;
+  return `${kept.trimEnd()}…`;
+}
+
 export function validateEnhancementResult(
   value: unknown,
   request: EnhancementRequest,
@@ -751,8 +788,13 @@ export function validateEnhancementResult(
   }
 
   return {
-    title: boundedString(value.title, "title", 1, 120),
-    summary: boundedString(value.summary, "summary", 1, 240),
+    title: boundedString(value.title, "title", 1, ENHANCEMENT_TITLE_MAX_LENGTH),
+    summary: boundedString(
+      value.summary,
+      "summary",
+      1,
+      ENHANCEMENT_SUMMARY_MAX_LENGTH,
+    ),
     target: request.target,
     enhancedPrompt: appendExecutionGuardrails(
       boundedString(value.enhancedPrompt, "enhancedPrompt", 1, 30_000),
@@ -987,7 +1029,7 @@ async function runOpenAIPass(
   const raw: unknown = await response.json();
   const parsed = parseOpenAIResponse(raw);
   const result = validateEnhancementResult(
-    JSON.parse(parsed.outputText) as unknown,
+    normalizeProviderResultBounds(JSON.parse(parsed.outputText) as unknown),
     request,
   );
   return {
@@ -1515,7 +1557,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 // Anthropic and Google structured outputs reject string-length and array-length
-// keywords. validateEnhancementResult still enforces every bound after the run.
+// keywords, so each removed bound moves into the description the model does
+// read. validateEnhancementResult still enforces every bound after the run.
 const UNSUPPORTED_SCHEMA_BOUNDS = new Set([
   "minLength",
   "maxLength",
@@ -1523,14 +1566,38 @@ const UNSUPPORTED_SCHEMA_BOUNDS = new Set([
   "maxItems",
 ]);
 
-function stripUnsupportedSchemaBounds(value: unknown): unknown {
+function describeUnsupportedSchemaBounds(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map(stripUnsupportedSchemaBounds);
+    return value.map(describeUnsupportedSchemaBounds);
   }
   if (!isObject(value)) return value;
-  return Object.fromEntries(
+  const node = Object.fromEntries(
     Object.entries(value)
       .filter(([key]) => !UNSUPPORTED_SCHEMA_BOUNDS.has(key))
-      .map(([key, child]) => [key, stripUnsupportedSchemaBounds(child)]),
+      .map(([key, child]) => [key, describeUnsupportedSchemaBounds(child)]),
   );
+  const bounds = [
+    boundDescription(value.minLength, value.maxLength, "characters"),
+    boundDescription(value.minItems, value.maxItems, "items"),
+  ]
+    .filter((text) => text)
+    .join(" ");
+  if (!bounds) return node;
+  const existing = typeof node.description === "string" ? node.description : "";
+  return { ...node, description: existing ? `${existing} ${bounds}` : bounds };
+}
+
+function boundDescription(
+  minimum: unknown,
+  maximum: unknown,
+  unit: string,
+): string {
+  const hasMinimum = typeof minimum === "number";
+  const hasMaximum = typeof maximum === "number";
+  if (hasMinimum && hasMaximum) {
+    return `Use ${minimum}-${maximum} ${unit}.`;
+  }
+  if (hasMaximum) return `Use at most ${maximum} ${unit}.`;
+  if (hasMinimum) return `Use at least ${minimum} ${unit}.`;
+  return "";
 }

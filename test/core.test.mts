@@ -73,8 +73,10 @@ import {
   ENHANCEMENT_GUARDRAILS_MARKER,
   ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
   enhanceWithOpenAI,
+  enhancementResultSchemaForProvider,
   enhancementResultToPromptDraft,
   getEnhancementProfile,
+  normalizeProviderResultBounds,
   validateEnhancementRequest,
   validateEnhancementResult,
   type EnhancementRequest,
@@ -2719,6 +2721,86 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     /zero-data-retention/,
   );
   assert.match(providerPrivacyDisclosure(googleProfile), /free-tier/);
+});
+
+test("provider schemas state string bounds and over-long labels are trimmed instead of discarding the run", async () => {
+  const schema = enhancementResultSchemaForProvider() as {
+    properties: {
+      title: { description?: string };
+      summary: { description?: string };
+    };
+  };
+  assert.equal(JSON.stringify(schema).includes("minLength"), false);
+  assert.equal(JSON.stringify(schema).includes("maxLength"), false);
+  assert.equal(schema.properties.title.description, "Use 1-120 characters.");
+  assert.equal(schema.properties.summary.description, "Use 1-240 characters.");
+
+  const longSummary = `${"Establish the cause of the intermittent failure and ship only an evidence-backed fix. ".repeat(5)}end`;
+  assert.ok(longSummary.length > 240);
+  const clamped = normalizeProviderResultBounds({
+    ...enhancementFixture(),
+    summary: longSummary,
+  }) as { summary: string };
+  assert.ok(clamped.summary.length <= 240);
+  assert.ok(clamped.summary.endsWith("…"));
+  assert.ok(longSummary.startsWith(clamped.summary.slice(0, -1)));
+
+  const anthropicRequest: EnhancementRequest = {
+    ...enhancementRequest(),
+    profileId: "anthropic-sonnet-5-v1",
+  };
+  const anthropicRun = await enhanceWithAnthropic(anthropicRequest, {
+    apiKey: "anthropic-test-key",
+    retryLimit: 0,
+    fetcher: (async () =>
+      Response.json({
+        id: "msg_long_summary",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-5",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ...enhancementFixture(),
+              summary: longSummary,
+            }),
+          },
+        ],
+        stop_reason: "end_turn",
+        stop_details: null,
+        usage: { input_tokens: 900, output_tokens: 500 },
+      })) as typeof fetch,
+  });
+  assert.ok(anthropicRun.result.summary.length <= 240);
+  assert.equal(anthropicRun.result.summary, clamped.summary);
+
+  await assert.rejects(
+    enhanceWithAnthropic(anthropicRequest, {
+      apiKey: "anthropic-test-key",
+      retryLimit: 0,
+      fetcher: (async () =>
+        Response.json({
+          id: "msg_long_prompt",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-5",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ...enhancementFixture(),
+                enhancedPrompt: "x".repeat(30_001),
+              }),
+            },
+          ],
+          stop_reason: "end_turn",
+          stop_details: null,
+          usage: { input_tokens: 900, output_tokens: 500 },
+        })) as typeof fetch,
+    }),
+    /enhancedPrompt must contain 1-30000 characters/,
+  );
 });
 
 test("native Anthropic and Google adapters keep keys in headers, validate output, and record usage", async () => {
@@ -8286,7 +8368,10 @@ test("compiler 1.2.1 pins threshold preservation, action scope, conditional UI v
       /only when the task itself can change rendered user-interface behavior/,
     );
     assert.match(composed, /omit UI verification entirely/);
-    assert.match(composed, /when no repository is supplied, omit repository inspection entirely/);
+    assert.match(
+      composed,
+      /when no repository is supplied, omit repository inspection entirely/,
+    );
   }
 });
 
