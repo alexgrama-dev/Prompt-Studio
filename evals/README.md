@@ -15,6 +15,15 @@ invent. `rubric.md` defines the human score and hard failure rules.
 `profiles.json` fixes the candidate model settings and the measurements every
 run must record.
 
+Accept or reject decisions use three generations per case by default, then
+majority-vote judging. Reports include per-case adjacent flip rates. A
+single-generation run remains valid for debugging. It cannot become an accepted
+baseline. Historical 2026-08-01 reports stay readable.
+
+The judge receives supplied project context and allowed file paths as
+case-provided evidence. Product-appended Execution Guardrails are shown
+separately from the task prompt. Length scoring uses the task prompt only.
+
 OpenAI, Anthropic, and Google use the same runner and report format:
 
 ```bash
@@ -25,7 +34,8 @@ pnpm eval:google -- --limit 1
 
 These commands are dry runs unless `--confirm-spend --max-usd <limit>` is
 present. A live run reads only the selected provider's environment key, writes a
-private mode-0600 report, and never stores the key.
+private mode-0600 report, and never stores the key. Default cost estimates
+include all generations.
 
 The baseline is append-only after the first accepted live run. Existing cases
 may gain clarification, but their identifiers, split, rough input, required

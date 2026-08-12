@@ -57,6 +57,7 @@ import {
 } from "./core/enhancement-form-draft";
 import {
   blindEvaluationRecords,
+  evaluationRecordKey,
   fullMarksHumanReview,
   getEnhancementEvaluationPlan,
   HUMAN_REVIEW_SCORE_MAXIMUMS,
@@ -1609,7 +1610,7 @@ function EnhancementWorkspace({
     const confirmedMaximumUsd = Math.ceil(plan.maximumCostUsd * 100) / 100;
     const confirmed = await confirmAlert({
       title: `Run ${plan.cases.length}-case ${plan.profile.title} evaluation?`,
-      message: `This sends the same frozen, non-secret evaluation cases to ${providerName(plan.profile.provider)} using ${plan.profile.model}. The maximum model-token cost is $${confirmedMaximumUsd.toFixed(2)}; actual usage is recorded and is usually lower. No prompt is saved to your library.`,
+      message: `This sends each frozen, non-secret evaluation case ${plan.generationCount} times to ${providerName(plan.profile.provider)} using ${plan.profile.model}. Accept or reject uses majority vote. The maximum model-token cost is $${confirmedMaximumUsd.toFixed(2)}; actual usage is recorded and is usually lower. No prompt is saved to your library.`,
       primaryAction: {
         title: `Run Up to $${confirmedMaximumUsd.toFixed(2)}`,
         style: Alert.ActionStyle.Default,
@@ -1623,7 +1624,7 @@ function EnhancementWorkspace({
     const toast = await showToast(
       Toast.Style.Animated,
       "Running Enhancement Evaluation",
-      `0/${plan.cases.length} cases`,
+      `0/${plan.cases.length * plan.generationCount} generations`,
     );
     try {
       const report = await runEnhancementEvaluation({
@@ -1632,22 +1633,22 @@ function EnhancementWorkspace({
         confirmedMaximumUsd,
         signal: controller.signal,
         onProgress: (progress) => {
-          toast.message = `${progress.completed}/${progress.total} · ${progress.caseId}`;
+          toast.message = `${progress.completed}/${progress.total} · ${progress.caseId} · gen ${progress.generation}`;
         },
       });
       setEvaluationReport(report);
       if (report.status === "cancelled") {
         toast.style = Toast.Style.Failure;
         toast.title = "Evaluation Cancelled";
-        toast.message = `${report.completedCount}/${report.caseCount} completed; partial report saved.`;
+        toast.message = `${report.completedCount}/${report.generationAttemptCount} generations across ${report.caseCount} cases; partial report saved.`;
       } else if (report.status === "incomplete") {
         toast.style = Toast.Style.Failure;
         toast.title = "Evaluation Incomplete";
-        toast.message = `${report.failedCount} case${report.failedCount === 1 ? "" : "s"} failed; report saved.`;
+        toast.message = `${report.failedCount} generation${report.failedCount === 1 ? "" : "s"} failed; report saved.`;
       } else {
         toast.style = Toast.Style.Success;
         toast.title = "Evaluation Ready for Review";
-        toast.message = `${report.completedCount} cases · $${report.actualCostUsd.toFixed(4)} actual estimated cost`;
+        toast.message = `${report.caseCount} cases × ${report.generationCount} generations · $${report.actualCostUsd.toFixed(4)} actual estimated cost`;
       }
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -2108,6 +2109,7 @@ function EvaluationReview({ path }: { path: string }) {
         path,
         record.caseId,
         fullMarksHumanReview(),
+        record.generation ?? 1,
       );
       setReport(updated);
       toast.style = Toast.Style.Success;
@@ -2156,12 +2158,18 @@ function EvaluationReview({ path }: { path: string }) {
       >
         {records.map((record, index) => {
           const number = String(index + 1).padStart(2, "0");
+          const generation = record.generation ?? 1;
           return (
             <List.Item
-              key={record.caseId}
+              key={evaluationRecordKey(record)}
               title={`Review ${number}`}
-              subtitle={`${title(record.split)} · ${title(record.category)}`}
-              keywords={[record.split, record.category, number]}
+              subtitle={`${title(record.split)} · ${title(record.category)} · gen ${generation}`}
+              keywords={[
+                record.split,
+                record.category,
+                number,
+                `gen ${generation}`,
+              ]}
               accessories={[
                 {
                   text:
@@ -2260,6 +2268,7 @@ function EvaluationScoreForm({
         path,
         record.caseId,
         input,
+        record.generation ?? 1,
       );
       onSaved(updated);
       await showToast(
@@ -4285,9 +4294,13 @@ function evaluationRecordMarkdown(
     "## Rough Input",
     indentCode(record.request.roughThoughts),
     `**Target:** ${escapeMarkdown(targetTitle(record.request.target))}`,
+    `**Generation:** ${record.generation ?? 1}`,
     record.request.project
       ? `**Project:** ${escapeMarkdown(record.request.project.name)}`
       : "**Project:** None",
+    record.request.allowedProjectFiles.length > 0
+      ? `**Allowed files:** ${record.request.allowedProjectFiles.map(inlineCode).join(" ")}`
+      : "**Allowed files:** None",
     "## Required Facts",
     markdownList(record.requiredFacts, "None recorded."),
     "## Prohibited Inventions",

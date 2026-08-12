@@ -145,6 +145,9 @@ import {
 } from "../src/core/anthropic-enhancement.ts";
 import {
   blindEvaluationRecords,
+  DEFAULT_EVALUATION_GENERATIONS,
+  evaluationCaseDecisions,
+  evaluationReviewSummary,
   fullMarksHumanReview,
   getEnhancementEvaluationPlan,
   loadEnhancementEvaluation,
@@ -3181,7 +3184,8 @@ test("Anthropic and Google never preview refused, truncated, unsafe, or malforme
 test("the Standard evaluation plan is frozen, complete, and bounded before a model call", () => {
   const plan = getEnhancementEvaluationPlan("openai-standard-v1");
   assert.equal(plan.cases.length, 24);
-  assert.equal(plan.maximumCostUsd, 2.294055);
+  assert.equal(plan.generationCount, DEFAULT_EVALUATION_GENERATIONS);
+  assert.equal(plan.maximumCostUsd, 6.882165);
   assert.equal(plan.profile.model, "gpt-5.6-terra");
   assert.match(plan.privacyDisclosure, /store:false/);
 });
@@ -3217,6 +3221,98 @@ test("the evaluation runner refuses an unapproved budget without making a model 
   assert.equal(calls, 0);
 });
 
+test("evaluation decisions use majority votes and report adjacent flips", () => {
+  const base = judgeFixtureRecord();
+  const review = (passes: boolean) => ({
+    ...base,
+    humanReview: {
+      status: "reviewed" as const,
+      ...(passes
+        ? fullMarksHumanReview()
+        : { ...fullMarksHumanReview(), hardFailure: false, fidelity: 0 }),
+      reviewedAt: "2026-08-12T12:00:00.000Z",
+    },
+  });
+  const decisions = evaluationCaseDecisions([
+    { ...review(false), generation: 1 },
+    { ...review(true), generation: 2 },
+    { ...review(false), generation: 3 },
+  ]);
+  assert.deepEqual(decisions, [
+    {
+      caseId: base.caseId,
+      generationCount: 3,
+      reviewedCount: 3,
+      passVotes: 1,
+      failVotes: 2,
+      majorityVerdict: "fail",
+      adjacentFlipCount: 2,
+      adjacentPairCount: 2,
+      adjacentFlipRate: 1,
+    },
+  ]);
+});
+
+test("a minority hard failure does not fail a majority-pass case", () => {
+  const base = judgeFixtureRecord();
+  const reviewed = (
+    overrides: { hardFailure?: boolean },
+    generation: number,
+  ) => ({
+    ...base,
+    generation,
+    humanReview: {
+      status: "reviewed" as const,
+      ...fullMarksHumanReview(),
+      ...overrides,
+      reviewedAt: "2026-08-12T12:00:00.000Z",
+    },
+  });
+  const summary = evaluationReviewSummary([
+    reviewed({}, 1),
+    reviewed({ hardFailure: true }, 2),
+    reviewed({}, 3),
+  ]);
+  assert.equal(summary.hardFailureCount, 1);
+  assert.equal(summary.caseDecisions[0]?.majorityVerdict, "pass");
+  assert.equal(summary.baselineEligible, true);
+  assert.equal(summary.passing, true);
+});
+
+test("evaluation decisions accept any complete reviewed generation count of at least three", () => {
+  const base = judgeFixtureRecord();
+  const records = Array.from({ length: 5 }, (_, index) => ({
+    ...base,
+    generation: index + 1,
+    humanReview: {
+      status: "reviewed" as const,
+      ...fullMarksHumanReview(),
+      reviewedAt: "2026-08-12T12:00:00.000Z",
+    },
+  }));
+
+  assert.equal(evaluationReviewSummary(records).baselineEligible, true);
+});
+
+test("a historical single-generation report remains readable but cannot become a baseline", async () => {
+  const loaded = await loadEnhancementEvaluation(
+    join(
+      process.cwd(),
+      "evals",
+      "runs",
+      "2026-08-01T10-50-59.659Z--openai-standard-v1.json",
+    ),
+  );
+  assert.equal(loaded.generationCount, 1);
+  assert.equal(loaded.records.length, 24);
+  assert.equal(
+    loaded.records.every((record) => record.generation === 1),
+    true,
+  );
+  assert.equal(loaded.reviewSummary?.baselineEligible, false);
+  assert.equal(loaded.reviewSummary?.passing, false);
+});
+
 test("an Anthropic evaluation writes the same private blind-review report without its key", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "prompt-studio-anthropic-eval-"),
@@ -3224,12 +3320,14 @@ test("an Anthropic evaluation writes the same private blind-review report withou
   try {
     const plan = getEnhancementEvaluationPlan("anthropic-sonnet-5-v1", {
       limit: 1,
+      generationCount: 1,
     });
     const run = await runEnhancementEvaluation({
       profileId: "anthropic-sonnet-5-v1",
       apiKey: "anthropic-eval-secret",
       confirmedMaximumUsd: plan.maximumCostUsd,
       selection: { limit: 1 },
+      generationCount: 1,
       outputDirectory: directory,
       fetcher: (async () =>
         Response.json({
@@ -3278,7 +3376,9 @@ test("a bounded evaluation writes a private review report without persisting its
 
     assert.equal(run.status, "awaiting-human-review");
     assert.equal(run.caseCount, 1);
-    assert.equal(run.completedCount, 1);
+    assert.equal(run.generationCount, 3);
+    assert.equal(run.generationAttemptCount, 3);
+    assert.equal(run.completedCount, 3);
     assert.equal(run.failedCount, 0);
     const report = await readFile(run.path, "utf8");
     assert.equal(report.includes("test-secret-key"), false);
@@ -3308,16 +3408,44 @@ test("a bounded evaluation writes a private review report without persisting its
       "dev-debug-intermittent-api",
       fullMarksHumanReview(),
     );
-    assert.equal(reviewed.status, "human-review-complete");
-    assert.deepEqual(reviewed.reviewSummary, {
-      reviewedCount: 1,
+    assert.equal(reviewed.status, "awaiting-human-review");
+    assert.equal(reviewed.reviewSummary?.baselineEligible, false);
+    await recordEnhancementEvaluationReview(
+      run.path,
+      "dev-debug-intermittent-api",
+      fullMarksHumanReview(),
+      2,
+    );
+    const fullyReviewed = await recordEnhancementEvaluationReview(
+      run.path,
+      "dev-debug-intermittent-api",
+      fullMarksHumanReview(),
+      3,
+    );
+    assert.equal(fullyReviewed.status, "human-review-complete");
+    assert.deepEqual(fullyReviewed.reviewSummary, {
+      reviewedCount: 3,
       pendingCount: 0,
       averageScore: 100,
       hardFailureCount: 0,
       protectedFailureCount: 0,
+      baselineEligible: true,
+      caseDecisions: [
+        {
+          caseId: "dev-debug-intermittent-api",
+          generationCount: 3,
+          reviewedCount: 3,
+          passVotes: 3,
+          failVotes: 0,
+          majorityVerdict: "pass",
+          adjacentFlipCount: 0,
+          adjacentPairCount: 2,
+          adjacentFlipRate: 0,
+        },
+      ],
       passing: true,
     });
-    assert.equal(blindEvaluationRecords(reviewed).length, 1);
+    assert.equal(blindEvaluationRecords(fullyReviewed).length, 3);
     assert.equal(
       (await readFile(run.path, "utf8")).includes("test-secret-key"),
       false,
@@ -6139,6 +6267,45 @@ test("optimization blocks protected regressions, conflicting evidence, and incom
       1,
     );
 
+    const singleGeneration = optimizationScores(fixture.proposal, {
+      baseline: {
+        development: 86,
+        validation: 86,
+        protected: 88,
+        cost: 0.01,
+      },
+      "ownership-trace": {
+        development: 92,
+        validation: 90,
+        protected: 87,
+        cost: 0.011,
+      },
+      "concise-evidence": {
+        development: 88,
+        validation: 87,
+        protected: 88,
+        cost: 0.009,
+      },
+    });
+    singleGeneration[0] = { ...singleGeneration[0]!, generationCount: 1 };
+    await assert.rejects(
+      recordOptimizationScores(
+        fixture.proposalDirectory,
+        fixture.proposal.id,
+        singleGeneration,
+      ),
+      /generationCount must be between 3 and 20/,
+    );
+    singleGeneration[0] = { ...singleGeneration[0]!, generationCount: 3.5 };
+    await assert.rejects(
+      recordOptimizationScores(
+        fixture.proposalDirectory,
+        fixture.proposal.id,
+        singleGeneration,
+      ),
+      /generationCount must be a whole number/,
+    );
+
     const blocked = await recordOptimizationScores(
       fixture.proposalDirectory,
       fixture.proposal.id,
@@ -7563,6 +7730,7 @@ function optimizationScores(
       return {
         subjectId,
         caseId,
+        generationCount: 3,
         split,
         scores: optimizationRubric(total),
         total,
@@ -8839,6 +9007,115 @@ test("the evaluation judge is blind, bounded, and cannot inflate a score", async
   );
 });
 
+test("the evaluation judge treats supplied project context as evidence", () => {
+  const base = judgeFixtureRecord();
+  const record = {
+    ...base,
+    request: {
+      ...base.request,
+      project: {
+        name: "Example Service",
+        path: "/prompt-studio-eval/example-service",
+      },
+      allowedProjectFiles: ["test/jobs/worker.test.ts"],
+    },
+    result: {
+      ...base.result,
+      enhancedPrompt:
+        "Diagnose the intermittent API failure using test/jobs/worker.test.ts as evidence.",
+    },
+  };
+
+  const body = buildJudgeRequest(record);
+  const serialized = JSON.stringify(body);
+  assert.match(serialized, /Example Service/);
+  assert.match(serialized, /\/prompt-studio-eval\/example-service/);
+  assert.match(serialized, /test\/jobs\/worker\.test\.ts/);
+  assert.match(
+    String(body.instructions),
+    /supplied project context.*allowed file paths.*case-provided evidence/i,
+  );
+  assert.match(String(body.instructions), /must not be treated as inventions/i);
+});
+
+test("the evaluation judge excludes product guardrails from length scoring", () => {
+  const base = judgeFixtureRecord();
+  const taskPrompt = "Rename the helper and update its focused test.";
+  const guardrails = [
+    ENHANCEMENT_GUARDRAILS_MARKER,
+    "## Execution Guardrails",
+    "- Do not publish without explicit authorization.",
+  ].join("\n");
+  const body = buildJudgeRequest({
+    ...base,
+    result: {
+      ...base.result,
+      enhancedPrompt: `${taskPrompt}\n\n${guardrails}`,
+    },
+  });
+  const payload = JSON.parse(
+    (body.input as Array<{ content: Array<{ text: string }> }>)[0]!.content[0]!
+      .text,
+  ) as {
+    compiled: {
+      taskPrompt: string;
+      productAppendedExecutionGuardrails: string;
+      enhancedPrompt?: string;
+    };
+  };
+
+  assert.equal(payload.compiled.taskPrompt, taskPrompt);
+  assert.match(
+    payload.compiled.productAppendedExecutionGuardrails,
+    /Do not publish without explicit authorization/,
+  );
+  assert.equal(payload.compiled.enhancedPrompt, undefined);
+  assert.match(
+    String(body.instructions),
+    /Score appropriate length from the task prompt only/i,
+  );
+  assert.match(
+    String(body.instructions),
+    /inspect the guardrails for contradictions/i,
+  );
+});
+
+test("the evaluation judge keeps unmarked prompts and ignores guardrails in fact coverage", () => {
+  const base = judgeFixtureRecord();
+  const unmarkedBody = buildJudgeRequest({
+    ...base,
+    result: { ...base.result, enhancedPrompt: "Keep this exact task." },
+  });
+  const unmarkedPayload = JSON.parse(
+    (unmarkedBody.input as Array<{ content: Array<{ text: string }> }>)[0]!
+      .content[0]!.text,
+  ) as {
+    compiled: {
+      taskPrompt: string;
+      productAppendedExecutionGuardrails: string | null;
+    };
+  };
+  assert.equal(unmarkedPayload.compiled.taskPrompt, "Keep this exact task.");
+  assert.equal(
+    unmarkedPayload.compiled.productAppendedExecutionGuardrails,
+    null,
+  );
+
+  const covered = factCoverage({
+    ...base,
+    requiredFacts: ["intermittent API failure", "publish authorization"],
+    result: {
+      ...base.result,
+      enhancedPrompt: [
+        "Diagnose the intermittent API failure.",
+        ENHANCEMENT_GUARDRAILS_MARKER,
+        "Publish authorization is required.",
+      ].join("\n\n"),
+    },
+  });
+  assert.equal(covered.requiredFacts, 1);
+});
+
 test("variant selection is blind, hard-failure-aware, and deterministic on ties", () => {
   assert.equal(REVIEW_TOTAL, 100);
   // Only 2-4 variants are meaningful; anything else means one plain enhancement.
@@ -9365,7 +9642,8 @@ test("adversarial: the judge rejects malformed scores instead of passing a run",
   // A missing dimension must fail loudly; silently scoring it zero would let a
   // broken judge quietly fail every run, and treating it as full marks would
   // let a broken judge pass every run.
-  const { fidelity: _dropped, ...missing } = full;
+  const missing = { ...full } as Partial<typeof full>;
+  delete missing.fidelity;
   await assert.rejects(respond(missing), /no fidelity score/);
   await assert.rejects(
     respond({ ...full, validation: Number.NaN }),

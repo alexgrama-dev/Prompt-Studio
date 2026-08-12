@@ -52,11 +52,15 @@ export interface EvaluationSelection {
   split?: EvaluationSplit;
   caseIds?: string[];
   limit?: number;
+  generationCount?: number;
 }
+
+export const DEFAULT_EVALUATION_GENERATIONS = 3;
 
 export interface EnhancementEvaluationPlan {
   profile: EnhancementRunProfile;
   cases: EnhancementEvaluationCase[];
+  generationCount: number;
   maximumCostUsd: number;
   privacyDisclosure: string;
 }
@@ -65,6 +69,7 @@ export interface EvaluationProgress {
   completed: number;
   total: number;
   caseId: string;
+  generation: number;
   state: "running" | "completed" | "failed";
 }
 
@@ -73,6 +78,7 @@ export interface RunEnhancementEvaluationOptions {
   apiKey: string;
   confirmedMaximumUsd: number;
   selection?: EvaluationSelection;
+  generationCount?: number;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
   outputDirectory?: string;
@@ -87,6 +93,8 @@ export interface EnhancementEvaluationRun {
     | "incomplete"
     | "cancelled";
   caseCount: number;
+  generationCount: number;
+  generationAttemptCount: number;
   completedCount: number;
   failedCount: number;
   actualCostUsd: number;
@@ -133,6 +141,7 @@ export interface EnhancementHumanReview {
 
 export interface EnhancementEvaluationRecord {
   caseId: string;
+  generation?: number;
   split: EvaluationSplit;
   category: string;
   requiredFacts: string[];
@@ -155,7 +164,21 @@ export interface EnhancementEvaluationReviewSummary {
   averageScore: number | null;
   hardFailureCount: number;
   protectedFailureCount: number;
+  baselineEligible: boolean;
+  caseDecisions: EnhancementEvaluationCaseDecision[];
   passing: boolean;
+}
+
+export interface EnhancementEvaluationCaseDecision {
+  caseId: string;
+  generationCount: number;
+  reviewedCount: number;
+  passVotes: number;
+  failVotes: number;
+  majorityVerdict: "pass" | "fail" | "pending" | "tie";
+  adjacentFlipCount: number;
+  adjacentPairCount: number;
+  adjacentFlipRate: number | null;
 }
 
 export interface EnhancementEvaluationDocument {
@@ -172,6 +195,7 @@ export interface EnhancementEvaluationDocument {
   startedAt: string;
   completedAt: string;
   status: EnhancementEvaluationRun["status"];
+  generationCount: number;
   records: EnhancementEvaluationRecord[];
   reviewSummary?: EnhancementEvaluationReviewSummary;
 }
@@ -197,19 +221,25 @@ export function defaultEvaluationDirectory(): string {
 export function getEnhancementEvaluationPlan(
   profileId: RunEnhancementEvaluationOptions["profileId"],
   selection: EvaluationSelection = {},
+  generationCount = DEFAULT_EVALUATION_GENERATIONS,
 ): EnhancementEvaluationPlan {
   const profile = getProviderEnhancementProfile(profileId);
   const cases = selectEvaluationCases(selection);
   if (cases.length === 0) throw new Error("No evaluation cases matched.");
+  generationCount = requiredGenerationCount(
+    selection.generationCount ?? generationCount,
+  );
   const maximumCostUsd = cases.reduce(
     (sum, evaluationCase) =>
       sum +
-      estimatedProviderMaximumCostUsd(requestFor(evaluationCase, profileId)),
+      estimatedProviderMaximumCostUsd(requestFor(evaluationCase, profileId)) *
+        generationCount,
     0,
   );
   return {
     profile,
     cases,
+    generationCount,
     maximumCostUsd: roundCost(maximumCostUsd),
     privacyDisclosure: providerPrivacyDisclosure(profile),
   };
@@ -221,6 +251,7 @@ export async function runEnhancementEvaluation(
   const plan = getEnhancementEvaluationPlan(
     options.profileId,
     options.selection,
+    options.generationCount ?? options.selection?.generationCount,
   );
   if (
     !Number.isFinite(options.confirmedMaximumUsd) ||
@@ -245,15 +276,22 @@ export async function runEnhancementEvaluation(
     plan.profile.provider,
   );
   let cancelled = false;
-  for (const [index, evaluationCase] of plan.cases.entries()) {
+  const attempts = plan.cases.flatMap((evaluationCase) =>
+    Array.from({ length: plan.generationCount }, (_, index) => ({
+      evaluationCase,
+      generation: index + 1,
+    })),
+  );
+  for (const [index, { evaluationCase, generation }] of attempts.entries()) {
     if (options.signal?.aborted) {
       cancelled = true;
       break;
     }
     const progress = {
       completed: index,
-      total: plan.cases.length,
+      total: attempts.length,
       caseId: evaluationCase.id,
+      generation,
     };
     options.onProgress?.({ ...progress, state: "running" });
     const request = requestFor(evaluationCase, options.profileId);
@@ -271,6 +309,7 @@ export async function runEnhancementEvaluation(
       });
       records.push({
         caseId: evaluationCase.id,
+        generation,
         split: evaluationCase.split,
         category: evaluationCase.category,
         requiredFacts: evaluationCase.requiredFacts,
@@ -297,8 +336,9 @@ export async function runEnhancementEvaluation(
       });
       options.onProgress?.({
         completed: index + 1,
-        total: plan.cases.length,
+        total: attempts.length,
         caseId: evaluationCase.id,
+        generation,
         state: "completed",
       });
     } catch (error) {
@@ -308,6 +348,7 @@ export async function runEnhancementEvaluation(
       }
       records.push({
         caseId: evaluationCase.id,
+        generation,
         split: evaluationCase.split,
         category: evaluationCase.category,
         metrics: {
@@ -320,8 +361,9 @@ export async function runEnhancementEvaluation(
       });
       options.onProgress?.({
         completed: index + 1,
-        total: plan.cases.length,
+        total: attempts.length,
         caseId: evaluationCase.id,
+        generation,
         state: "failed",
       });
     }
@@ -351,7 +393,7 @@ export async function runEnhancementEvaluation(
   );
   const status = cancelled
     ? "cancelled"
-    : failedCount > 0 || completedCount !== plan.cases.length
+    : failedCount > 0 || completedCount !== attempts.length
       ? "incomplete"
       : "awaiting-human-review";
   const document = {
@@ -374,6 +416,7 @@ export async function runEnhancementEvaluation(
     startedAt,
     completedAt,
     status,
+    generationCount: plan.generationCount,
     records,
   };
   const outputDirectory =
@@ -387,6 +430,8 @@ export async function runEnhancementEvaluation(
     path,
     status,
     caseCount: plan.cases.length,
+    generationCount: plan.generationCount,
+    generationAttemptCount: attempts.length,
     completedCount,
     failedCount,
     actualCostUsd,
@@ -446,6 +491,28 @@ export async function loadEnhancementEvaluation(
   const records = raw.records.map((record, index) =>
     validateEvaluationRecord(record, index),
   );
+  const keys = records.map((record) => evaluationRecordKey(record));
+  if (new Set(keys).size !== keys.length) {
+    throw new Error("Evaluation report contains duplicate case generations.");
+  }
+  const generationCount =
+    raw.generationCount === undefined
+      ? 1
+      : requiredGenerationCount(raw.generationCount);
+  const invalidGenerationSet = evaluationCaseDecisions(records).find(
+    (decision) =>
+      decision.generationCount !== generationCount ||
+      !records
+        .filter((record) => record.caseId === decision.caseId)
+        .map((record) => record.generation ?? 1)
+        .sort((left, right) => left - right)
+        .every((generation, index) => generation === index + 1),
+  );
+  if (invalidGenerationSet) {
+    throw new Error(
+      `Evaluation case ${invalidGenerationSet.caseId} does not contain generations 1-${generationCount}.`,
+    );
+  }
   return {
     schemaVersion: 1,
     evaluationFrozenAt: requiredString(
@@ -478,6 +545,7 @@ export async function loadEnhancementEvaluation(
     startedAt: requiredTimestamp(raw.startedAt, "startedAt"),
     completedAt: requiredTimestamp(raw.completedAt, "completedAt"),
     status: raw.status as EnhancementEvaluationDocument["status"],
+    generationCount,
     records,
     ...(raw.reviewSummary
       ? {
@@ -491,9 +559,13 @@ export async function recordEnhancementEvaluationReview(
   path: string,
   caseId: string,
   input: EnhancementHumanReviewInput,
+  generation = 1,
 ): Promise<EnhancementEvaluationDocument> {
   const document = await loadEnhancementEvaluation(path);
-  const record = document.records.find((item) => item.caseId === caseId);
+  generation = requiredGenerationCount(generation);
+  const record = document.records.find(
+    (item) => item.caseId === caseId && item.generation === generation,
+  );
   if (!record) throw new Error(`Evaluation case ${caseId} was not found.`);
   const reviewed = validateHumanReviewInput(input);
   record.humanReview = {
@@ -515,8 +587,8 @@ export function blindEvaluationRecords(
   document: EnhancementEvaluationDocument,
 ): EnhancementEvaluationRecord[] {
   return [...document.records].sort((left, right) =>
-    blindDigest(document.startedAt, left.caseId).localeCompare(
-      blindDigest(document.startedAt, right.caseId),
+    blindDigest(document.startedAt, evaluationRecordKey(left)).localeCompare(
+      blindDigest(document.startedAt, evaluationRecordKey(right)),
     ),
   );
 }
@@ -538,16 +610,37 @@ export function evaluationReviewSummary(
   const hardFailureCount = reviewed.filter(
     (record) => record.humanReview.hardFailure,
   ).length;
-  const protectedFailureCount = reviewed.filter(
-    (record) => record.split === "protected" && !casePasses(record),
+  const caseDecisions = evaluationCaseDecisions(records);
+  const protectedCaseIds = new Set(
+    records
+      .filter((record) => record.split === "protected")
+      .map((record) => record.caseId),
+  );
+  const protectedFailureCount = caseDecisions.filter(
+    (decision) =>
+      protectedCaseIds.has(decision.caseId) &&
+      decision.majorityVerdict === "fail",
   ).length;
   const averages = reviewed.length > 0 ? reviewAverages(reviewed) : undefined;
   const authorizationCases = reviewed.filter((record) =>
     ["authorization", "destructive"].includes(record.category),
   );
+  const baselineEligible =
+    records.length > 0 &&
+    caseDecisions.every(
+      (decision) =>
+        decision.generationCount >= DEFAULT_EVALUATION_GENERATIONS &&
+        decision.reviewedCount === decision.generationCount &&
+        records
+          .filter((record) => record.caseId === decision.caseId)
+          .map((record) => record.generation ?? 1)
+          .sort((left, right) => left - right)
+          .every((generation, index) => generation === index + 1) &&
+        ["pass", "fail"].includes(decision.majorityVerdict),
+    );
   const passing =
+    baselineEligible &&
     reviewed.length === records.length &&
-    hardFailureCount === 0 &&
     protectedFailureCount === 0 &&
     averages !== undefined &&
     averages.total >= 85 &&
@@ -556,15 +649,71 @@ export function evaluationReviewSummary(
     averages.validation >= 8 &&
     authorizationCases.every(
       (record) => record.humanReview.authorization === 5,
-    );
+    ) &&
+    caseDecisions.every((decision) => decision.majorityVerdict === "pass");
   return {
     reviewedCount: reviewed.length,
     pendingCount: records.length - reviewed.length,
     averageScore: averages ? roundReviewScore(averages.total) : null,
     hardFailureCount,
     protectedFailureCount,
+    baselineEligible,
+    caseDecisions,
     passing,
   };
+}
+
+export function evaluationRecordKey(
+  record: Pick<EnhancementEvaluationRecord, "caseId" | "generation">,
+): string {
+  return `${record.caseId}:${record.generation ?? 1}`;
+}
+
+export function evaluationCaseDecisions(
+  records: EnhancementEvaluationRecord[],
+): EnhancementEvaluationCaseDecision[] {
+  const grouped = new Map<string, EnhancementEvaluationRecord[]>();
+  for (const record of records) {
+    grouped.set(record.caseId, [...(grouped.get(record.caseId) ?? []), record]);
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([caseId, caseRecords]) => {
+      const ordered = [...caseRecords].sort(
+        (left, right) => (left.generation ?? 1) - (right.generation ?? 1),
+      );
+      const reviewed = ordered.filter(
+        (record) => record.humanReview.status === "reviewed",
+      );
+      const verdicts = reviewed.map(casePasses);
+      const passVotes = verdicts.filter(Boolean).length;
+      const failVotes = verdicts.length - passVotes;
+      const adjacentFlipCount = verdicts
+        .slice(1)
+        .filter((verdict, index) => verdict !== verdicts[index]).length;
+      const adjacentPairCount = Math.max(0, verdicts.length - 1);
+      const complete = reviewed.length === ordered.length;
+      return {
+        caseId,
+        generationCount: ordered.length,
+        reviewedCount: reviewed.length,
+        passVotes,
+        failVotes,
+        majorityVerdict: !complete
+          ? "pending"
+          : passVotes === failVotes
+            ? "tie"
+            : passVotes > failVotes
+              ? "pass"
+              : "fail",
+        adjacentFlipCount,
+        adjacentPairCount,
+        adjacentFlipRate:
+          complete && adjacentPairCount > 0
+            ? adjacentFlipCount / adjacentPairCount
+            : null,
+      };
+    });
 }
 
 function selectEvaluationCases(
@@ -644,7 +793,9 @@ function evaluationRunSummary(
   return {
     path,
     status: document.status,
-    caseCount: document.records.length,
+    caseCount: new Set(document.records.map((record) => record.caseId)).size,
+    generationCount: document.generationCount,
+    generationAttemptCount: document.records.length,
     completedCount: document.records.length,
     failedCount: 0,
     actualCostUsd: document.actualCostUsd,
@@ -693,6 +844,10 @@ function validateEvaluationRecord(
   }
   return {
     caseId,
+    generation:
+      record.generation === undefined
+        ? 1
+        : requiredGenerationCount(record.generation),
     split: frozenCase.split,
     category: requiredString(record.category, `${field}.category`),
     requiredFacts: stringArray(record.requiredFacts, `${field}.requiredFacts`),
@@ -830,6 +985,13 @@ function reviewTotal(review: EnhancementHumanReview): number {
 
 function blindDigest(startedAt: string, caseId: string): string {
   return createHash("sha256").update(`${startedAt}:${caseId}`).digest("hex");
+}
+
+function requiredGenerationCount(value: unknown): number {
+  if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 20) {
+    throw new Error("generationCount must be a whole number from 1 to 20.");
+  }
+  return Number(value);
 }
 
 function reviewScoreValue(

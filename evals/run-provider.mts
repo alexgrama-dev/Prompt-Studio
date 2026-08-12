@@ -36,6 +36,8 @@ console.log(
         passes: plan.profile.passes,
       },
       cases: plan.cases.length,
+      generationsPerCase: plan.generationCount,
+      generationAttempts: plan.cases.length * plan.generationCount,
       splits: countBy(plan.cases, (item) => item.split),
       maximumModelTokenCostUsd: plan.maximumCostUsd,
       privacyDisclosure: plan.privacyDisclosure,
@@ -67,7 +69,7 @@ if (!args.confirmSpend) {
     outputDirectory: join(process.cwd(), "evals", "runs"),
     onProgress: (progress) => {
       process.stdout.write(
-        `[${progress.completed}/${progress.total}] ${progress.caseId} · ${progress.state}\n`,
+        `[${progress.completed}/${progress.total}] ${progress.caseId} · generation ${progress.generation} · ${progress.state}\n`,
       );
     },
   });
@@ -76,6 +78,8 @@ if (!args.confirmSpend) {
       {
         status: report.status,
         cases: report.caseCount,
+        generationsPerCase: report.generationCount,
+        generationAttempts: report.generationAttemptCount,
         completed: report.completedCount,
         failed: report.failedCount,
         actualCostUsd: report.actualCostUsd,

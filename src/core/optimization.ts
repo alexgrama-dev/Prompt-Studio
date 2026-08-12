@@ -100,6 +100,7 @@ export interface OptimizationCriteria {
 export interface OptimizationCaseScore {
   subjectId: string;
   caseId: string;
+  generationCount: number;
   split: EvaluationSplit;
   scores: OptimizationRubricScores;
   total: number;
@@ -751,6 +752,15 @@ function validateScore(score: OptimizationCaseScore): OptimizationCaseScore {
   if (score.reviewed !== true) {
     throw new Error(`Score for ${caseId} requires completed human review.`);
   }
+  const generationCount = boundedNumber(
+    score.generationCount,
+    "generationCount",
+    3,
+    20,
+  );
+  if (!Number.isInteger(generationCount)) {
+    throw new Error("generationCount must be a whole number.");
+  }
   const hardFailureReason = score.hardFailureReason?.trim();
   if (score.hardFailure && !hardFailureReason) {
     throw new Error(`Hard failure for ${caseId} requires a reason.`);
@@ -763,6 +773,7 @@ function validateScore(score: OptimizationCaseScore): OptimizationCaseScore {
   return {
     subjectId: identifier(score.subjectId, "score.subjectId"),
     caseId,
+    generationCount,
     split: score.split,
     scores,
     total,

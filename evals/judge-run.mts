@@ -70,6 +70,7 @@ if (!apiKey)
   throw new Error("OPENAI_API_KEY is required for a live judging run.");
 
 let spent = 0;
+let judgedCount = 0;
 let latest = document;
 for (const [index, record] of pending.entries()) {
   // Defense in depth: stop before a request that could exceed the approval.
@@ -86,7 +87,9 @@ for (const [index, record] of pending.entries()) {
     reportPath,
     judged.caseId,
     judged.review,
+    judged.generation,
   );
+  judgedCount += 1;
   const total =
     judged.review.fidelity +
     judged.review.completeness +
@@ -96,7 +99,7 @@ for (const [index, record] of pending.entries()) {
     judged.review.authorization +
     judged.review.appropriateLength;
   process.stdout.write(
-    `[${index + 1}/${pending.length}] ${judged.caseId} · ${total}/100${judged.review.hardFailure ? " · HARD FAILURE" : ""} · facts ${judged.coverage.requiredFacts}/${record.requiredFacts.length}\n`,
+    `[${index + 1}/${pending.length}] ${judged.caseId} · generation ${judged.generation} · ${total}/100${judged.review.hardFailure ? " · HARD FAILURE" : ""} · facts ${judged.coverage.requiredFacts}/${record.requiredFacts.length}\n`,
   );
 }
 
@@ -105,7 +108,7 @@ console.log(
   JSON.stringify(
     {
       report: reportPath,
-      judgedCases: pending.length,
+      judgedCases: judgedCount,
       actualJudgeCostUsd: Math.round(spent * 10_000) / 10_000,
       summary,
     },
@@ -115,4 +118,4 @@ console.log(
 );
 
 // A failing gate must fail the command, so this can run in a check pipeline.
-if (!summary.passing) process.exitCode = 1;
+if (!summary.passing || !summary.baselineEligible) process.exitCode = 1;
