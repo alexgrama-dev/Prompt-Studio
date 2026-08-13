@@ -18,6 +18,7 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm lint
