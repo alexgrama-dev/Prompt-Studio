@@ -369,7 +369,7 @@ function hasUntrustedParaphrase(prompt: string): boolean {
 }
 
 function removeSentencesContaining(text: string, span: string): string {
-  const parts = text.split(/((?<=[.!?])["'`“”‘’]?(?:[ \t]+|\n+))/);
+  const parts = text.split(/((?<=[.!?])["'`“”‘’]?(?:[ \t]+|(?:\r\n|\n)+))/);
   let out = "";
   for (let index = 0; index < parts.length; index += 2) {
     const sentence = parts[index] ?? "";

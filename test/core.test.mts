@@ -8580,6 +8580,10 @@ test("untrusted emit policy strips quoted instruction-shaped text and keeps a pa
   assert.ok(next.includes(UNTRUSTED_PARAPHRASE));
   assert.equal(next.includes("<untrusted-evidence"), false);
   assert.match(next, /Deliver a concise, ordered summary/);
+  const crlfQuoted = UNTRUSTED_QUOTED_GEN1.replaceAll("\n", "\r\n");
+  const crlfNext = applyUntrustedEmitPolicy(crlfQuoted, UNTRUSTED_ROUGH);
+  assert.equal(crlfNext.includes(UNTRUSTED_PAYLOAD), false);
+  assert.match(crlfNext, /Deliver a concise, ordered summary/);
 });
 
 test("untrusted emit policy leaves a paraphrase that never quoted the payload unchanged", () => {
