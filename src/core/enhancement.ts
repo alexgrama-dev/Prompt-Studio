@@ -15,9 +15,21 @@ import {
   type RevisionContext,
 } from "./revision.ts";
 import { containsLikelySecret } from "./secrets.ts";
-import { applyUntrustedEmitPolicy, EXECUTION_GUARDRAILS_MARKER_PATTERN } from "./anti-patterns.ts";
+import {
+  applyUntrustedEmitPolicy,
+  detectAntiPatterns,
+  extractInstructionShapedSpans,
+  EXECUTION_GUARDRAILS_MARKER_PATTERN,
+  type AntiPatternFinding,
+} from "./anti-patterns.ts";
+import { planCompilerStages } from "./compiler-pipeline.ts";
+import {
+  compilerRenderingAddendum,
+  resolveRenderingProfile,
+  type RenderingProfileId,
+} from "./rendering-profiles.ts";
 
-export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.2.2";
+export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.3.0";
 export const ENHANCEMENT_GUARDRAILS_VERSION = "execution-guardrails/1.0.0";
 export const ENHANCEMENT_GUARDRAILS_MARKER = `<!-- prompt-studio:${ENHANCEMENT_GUARDRAILS_VERSION} -->`;
 export const ENHANCEMENT_OUTPUT_SCHEMA_VERSION = 1;
@@ -199,6 +211,8 @@ export interface EnhancementRun {
   latencyMs: number;
   usage: EnhancementUsage;
   responseIds: string[];
+  antiPatternFindings?: AntiPatternFinding[];
+  renderingProfileId?: RenderingProfileId;
 }
 
 export interface OpenAIEnhancementOptions {
@@ -516,7 +530,16 @@ export function isOpenAIEnhancementProfileId(
 
 export function enhancementCompilerInstructions(
   request: Pick<EnhancementRequest, "target" | "compilerPolicy"> &
-    Partial<Pick<EnhancementRequest, "roughThoughts" | "sources" | "revision">>,
+    Partial<
+      Pick<
+        EnhancementRequest,
+        | "roughThoughts"
+        | "sources"
+        | "revision"
+        | "project"
+        | "allowedProjectFiles"
+      >
+    >,
 ): string {
   const instructions = request.compilerPolicy
     ? validateEnhancementCompilerPolicy(request.compilerPolicy).instructions
@@ -536,6 +559,17 @@ export function enhancementCompilerInstructions(
     );
   }
   sections.push(`Target adaptation:\n${TARGET_INSTRUCTIONS[request.target]}`);
+  sections.push(compilerRenderingAddendum(request.target));
+  if (typeof request.roughThoughts === "string") {
+    const stages = planCompilerStages({
+      roughThoughts: request.roughThoughts,
+      target: request.target,
+      hasProject: Boolean(
+        request.project || (request.allowedProjectFiles?.length ?? 0) > 0,
+      ),
+    });
+    sections.push(stages.gapAddendum);
+  }
   return sections.join("\n\n");
 }
 
@@ -749,6 +783,30 @@ function clampText(value: string, maximum: number): string {
   return `${kept.trimEnd()}…`;
 }
 
+export function attachCompilerCritique(
+  run: EnhancementRun,
+  request: EnhancementRequest,
+): EnhancementRun {
+  const { taskPrompt } = splitExecutionGuardrails(run.result.enhancedPrompt);
+  const profile = resolveRenderingProfile(request.target);
+  const findings = detectAntiPatterns({
+    prompt: taskPrompt,
+    roughInput: request.roughThoughts,
+    ...(request.allowedProjectFiles
+      ? { allowedProjectFiles: request.allowedProjectFiles }
+      : {}),
+    untrustedSpans: extractInstructionShapedSpans(request.roughThoughts),
+    reasoningTier:
+      profile.tier === "non-reasoning" ? "non-reasoning" : "reasoning",
+    identifierMarkup: profile.identifierMarkup,
+  });
+  return {
+    ...run,
+    antiPatternFindings: findings,
+    renderingProfileId: profile.id,
+  };
+}
+
 export function finalizeEnhancementResult(
   value: unknown,
   request: EnhancementRequest,
@@ -913,17 +971,20 @@ export async function enhanceWithOpenAI(
 
   const completedAt = new Date();
   const result = passes.at(-1)!.result;
-  return {
-    result,
-    profile,
-    compilerVersion: enhancementCompilerVersion(request),
-    outputSchemaVersion: ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
-    startedAt: startedAt.toISOString(),
-    completedAt: completedAt.toISOString(),
-    latencyMs: completedAt.getTime() - startedAt.getTime(),
-    usage: sumUsage(passes.map((pass) => pass.usage)),
-    responseIds: passes.map((pass) => pass.responseId),
-  };
+  return attachCompilerCritique(
+    {
+      result,
+      profile,
+      compilerVersion: enhancementCompilerVersion(request),
+      outputSchemaVersion: ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      latencyMs: completedAt.getTime() - startedAt.getTime(),
+      usage: sumUsage(passes.map((pass) => pass.usage)),
+      responseIds: passes.map((pass) => pass.responseId),
+    },
+    request,
+  );
 }
 
 export function buildOpenAIResponseRequest(

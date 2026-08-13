@@ -200,74 +200,12 @@
       "keywords": [
         "prompt studio",
         "browse prompts",
-        "saved prompts"
+        "saved prompts",
+        "enhance prompt",
+        "capture inbox",
+        "idea studio"
       ],
       "mode": "view"
-    },
-    {
-      "name": "enhance-prompt",
-      "title": "Enhance Prompt",
-      "description": "Turn an idea into a complete prompt when enhancement is activated",
-      "icon": "enhance-prompt.png",
-      "mode": "view",
-      "arguments": [
-        {
-          "name": "thoughts",
-          "type": "text",
-          "placeholder": "Rough thoughts",
-          "required": false
-        }
-      ]
-    },
-    {
-      "name": "idea-studio",
-      "title": "Capture Inbox",
-      "description": "Review and manage captured text, next prompts, and ideas",
-      "icon": "capture-inbox.png",
-      "keywords": [
-        "idea studio",
-        "captured items",
-        "ideas"
-      ],
-      "mode": "view",
-      "arguments": [
-        {
-          "name": "idea",
-          "type": "text",
-          "placeholder": "Idea to capture",
-          "required": false
-        }
-      ]
-    },
-    {
-      "name": "quick-capture",
-      "title": "Quick Capture",
-      "description": "Save selected or clipboard text to Capture Inbox immediately",
-      "icon": "quick-capture.png",
-      "mode": "no-view"
-    },
-    {
-      "name": "menubar-prompts",
-      "title": "Frequent Prompts Menu",
-      "description": "Copy frequent prompts from the macOS menu bar",
-      "icon": "frequent-prompts.png",
-      "keywords": [
-        "most-used prompts",
-        "frequent prompts"
-      ],
-      "mode": "menu-bar"
-    },
-    {
-      "name": "paste-top-prompt",
-      "title": "Paste Top Prompt",
-      "description": "Paste the prompt bound to your current project, or your most-used prompt, without opening a list",
-      "icon": "paste-top-prompt.png",
-      "keywords": [
-        "paste prompt",
-        "top prompt",
-        "quick paste"
-      ],
-      "mode": "no-view"
     }
   ],
   "scripts": {
@@ -294,7 +232,8 @@
     "eval:anthropic": "node --experimental-strip-types evals/run-provider.mts --profile anthropic-sonnet-5-v1",
     "eval:google": "node --experimental-strip-types evals/run-provider.mts --profile google-gemini-3.5-flash-v1",
     "check": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm build:cli && pnpm build:mcp && pnpm verify:mcp-runtime && pnpm verify:mcp-bundle && pnpm verify:mcp-mutations && pnpm verify:feedback-cli && pnpm verify:optimization-cli",
-    "eval:judge": "node --experimental-strip-types evals/judge-run.mts"
+    "eval:judge": "node --experimental-strip-types evals/judge-run.mts",
+    "eval:downstream": "node --experimental-strip-types evals/downstream-run.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

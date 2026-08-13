@@ -2,12 +2,14 @@
 
 Read date: 2026-08-13.
 Repo HEAD at branch start: `fa03008477ad4221eac69ee1b0a5860071b9a234`.
-Compiler in tree: `prompt-studio-compiler/1.2.2`.
+Compiler in tree: `prompt-studio-compiler/1.3.0`.
 Guidance is taken from the current-model pages named below, not from
 predecessor cookbooks. The GPT-5 prompting guide is a predecessor and
 is cited only as a rejected source.
 
-This document is Phase 0. It does not change generation logic.
+This document is Phase 0 inventory plus later generate-path notes.
+`BASE_COMPILER_INSTRUCTIONS` is unchanged. Compiler `1.3.0` appends
+profile and gap addenda at generate time.
 
 ---
 
@@ -43,18 +45,26 @@ before eval-hardening; encoding GPT-5 cookbook frontend defaults.
 
 ### 2.1 Raycast commands (`package.json`)
 
+Personal development launcher:
+
 | Command | Mode | Role |
 | --- | --- | --- |
 | `browse-prompts` | view | Library find, preview, paste, manage |
-| `enhance-prompt` | view | Compile rough thoughts; optional `thoughts` argument |
-| `idea-studio` | view | Capture Inbox |
-| `quick-capture` | no-view | Selected text, else clipboard, into Capture Inbox |
-| `menubar-prompts` | menu-bar | Frequent prompt copy |
-| `paste-top-prompt` | no-view | Paste project-bound or most-used prompt |
 
-Enhance Prompt also accepts `fallbackText` and `launchContext`
-(`thoughts`, `target`, `seedId`, `revisionOfPromptId`). It does not
-read selection or clipboard itself. Quick Capture does.
+Enhance Prompt and Capture Inbox are nested screens opened from Prompt
+Library. They are not personal launcher commands. The Store package
+keeps `browse-prompts` and `menubar-prompts`. Source files
+`src/enhance-prompt.tsx`, `src/idea-studio.tsx`, `src/quick-capture.ts`,
+`src/paste-top-prompt.ts`, and `src/menubar-prompts.tsx` remain.
+
+Enhance Prompt still accepts `fallbackText` and `launchContext`
+(`thoughts`, `target`, `seedId`, `revisionOfPromptId`,
+`untrustedSurface`) when Prompt Library pushes that screen. Selected
+text that matches `fallbackText` is fenced as untrusted evidence.
+Typed library search is the user task and is not fenced. Insert
+Selected Text as Evidence and Insert Clipboard as Evidence append a
+fenced block. Capture Inbox More Actions still captures clipboard
+text and typed items.
 
 ### 2.2 Generation path
 
@@ -75,9 +85,12 @@ read selection or clipboard itself. Quick Capture does.
 | `src/enhance-prompt.tsx` | Form, preview, paste, history, activation eval |
 
 `BASE_COMPILER_INSTRUCTIONS` is one shared blob. Target adaptation is
-two short paragraphs (`codex`, `claude-code`) plus `generic`. There is
-no vendor×tier rendering profile, no classifier, no elicitation form,
-and no block library.
+two short paragraphs (`codex`, `claude-code`) plus `generic`. Generate
+time also appends a vendor×tier rendering addendum from
+`src/core/rendering-profiles.ts` and a rules-based task/gap addendum
+from `src/core/compiler-pipeline.ts`. There is no elicitation form and
+no block library. Profile bake-off versus `generic-fallback-v1` is not
+measured.
 
 Pinned generator models:
 
@@ -102,12 +115,14 @@ QMD are disposable indexes.
 
 | Item | State |
 | --- | --- |
-| Cases | 24, frozen 2026-07-19, splits development/validation/protected |
-| Rubric | 0–100, seven criteria, hard failures |
-| Judge | `gpt-5.6-terra` via Responses API, same family as generator |
-| Runner | `evals/run-provider.mts`, spend gated |
-| CI | No GitHub workflow runs evals |
-| Baseline | compiler 1.0.0 accepted; 1.2.x rejected as noisy |
+| Frozen cases | 24, frozen 2026-07-19, splits development/validation/protected |
+| Extended cases | 36 additive ids in `evals/cases-extended.json` (`--corpus all` = 60) |
+| Default paid plan | Frozen 24. `--repeats` default 1 |
+| Rubric | v1 0–100 seven criteria (default). v2 0–4 twelve dimensions behind `--rubric v2` |
+| Judge | v1 `gpt-5.6-terra` via Responses API, same family as generator. v2 Anthropic, unrun |
+| Runner | `evals/run-provider.mts`, spend gated by `--confirm-spend` |
+| CI | `.github/workflows/mini-gate.yml` runs test/typecheck/lint. No paid evals |
+| Baseline | compiler 1.0.0 accepted; 1.2.x and 1.3.0 not shipping baselines |
 
 Categories in the 24: debugging, implementation, review, research, UI,
 destructive, rename, missing-information, tests, docs, data,
@@ -154,8 +169,8 @@ Fetched 2026-08-13 from developers.raycast.com.
 | API | Confirmed | Used today |
 | --- | --- | --- |
 | Preferences (`getPreferenceValues`, manifest schema) | yes | yes |
-| Clipboard copy/paste/readText | yes | paste and capture |
-| `getSelectedText` | yes; rejects if none | Quick Capture only |
+| Clipboard copy/paste/readText | yes | paste, capture, Insert Clipboard as Evidence |
+| `getSelectedText` | yes; rejects if none | Insert Selected Text as Evidence; unused Quick Capture source |
 | `getFrontmostApplication` | yes (environment/utilities) | not used by Enhance |
 | LocalStorage (encrypted, extension-scoped) | yes | drafts, recents |
 | Cache (disk LRU, default 10 MB) | yes | not used; project context has its own cache |
@@ -418,8 +433,8 @@ here.
 | Google prompting page | deferred | Ingest before shipping a Google-specific profile |
 
 Existing `BASE_COMPILER_INSTRUCTIONS` already matches O-56-01, O-56-04,
-O-56-05, and "do not invent facts". It does not branch C1–C4. That is
-the rebuild gap.
+O-56-05, and "do not invent facts". Compiler `1.3.0` appends C1–C4
+addenda. Bake-off versus `generic-fallback-v1` is unmeasured.
 
 ---
 
@@ -427,15 +442,15 @@ the rebuild gap.
 
 | Spec | Repo today |
 | --- | --- |
-| ≥60 golden cases | 24 |
-| 12 dimensions, 0–4 | 7 criteria, 0–100 |
-| Judge on another family | Same family (`gpt-5.6-terra`) |
-| Span citations | Free-text notes |
-| Human calibration / agreement | Not reported |
-| N≥3 majority vote | Single run (eval-hardening unimplemented) |
-| Downstream fixture-repo agents | Not built |
-| CI gate on generation changes | No eval workflow |
-| Anti-pattern automated checks | Partial via required/prohibited lists |
+| ≥60 golden cases | 60 on disk. Default paid plan is still frozen 24 |
+| 12 dimensions, 0–4 | Code behind `--rubric v2`. Default judge is still 0–100 |
+| Judge on another family | v2 Anthropic implemented, not live-run |
+| Span citations | v2 schema requires them. v1 is free-text notes |
+| Human calibration / agreement | Procedure only. No scores |
+| N≥3 majority vote | CLI `--repeats 3` wired. Last full run is 1.2.1. No 1.3.0 run |
+| Downstream fixture-repo agents | Planner loads `evals/fixtures/*.json`. Directory has no repos |
+| CI gate on generation changes | Offline `mini-gate` only. No paid eval in CI |
+| Anti-pattern automated checks | Unit fixtures plus advisory generate critique |
 
 Honcho and `eval-hardening` agree: do not retune compiler text until
 the measuring stick is trustworthy.

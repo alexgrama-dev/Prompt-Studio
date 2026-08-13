@@ -1,64 +1,55 @@
 # Final report (incomplete)
 
 Date: 2026-08-13.
-Branch: `compiler-rebuild`.
+Branch: `simplify-launcher` with compiler 1.3.0 generate-path wiring.
 
-This is not a completion report. Measurements that the gate requires
-do not exist yet.
+This is not a completion report. Paid N≥3, human calibration, and
+downstream agent evals still do not exist.
 
 ## What is true
 
-- Current-model vendor pages were read on 2026-08-13. Rules, conflicts,
-  and a versioned tier map are in `docs/00-ground-truth.md`.
-- The 24-case 0–100 eval remains the frozen default plan. 36 additive
-  cases live in `evals/cases-extended.json` (`corpus: "all"` ≥ 60).
-- The judge now receives supplied project files as not-an-invention
-  and does not score product-appended Execution Guardrails as padding.
-  `--repeats` is wired. Flip rates land in `reviewSummary` after
-  review when N>1.
-- Live OpenAI Standard N=3 on compiler 1.2.1 ran on 2026-08-13.
-  Receipt: `evals/runs/2026-08-13T08-27-15.482Z--openai-standard-v1.json`.
-  Average 98.1. `passing` is false. 7/24 cases still flip. Protected
-  injection majority-fails. Details in
-  `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.
-- Compiler 1.2.2 adds a generate-path untrusted emit policy. A
-  targeted OpenAI Standard N=3 on two cases ran on 2026-08-13.
-  Receipt: `evals/runs/2026-08-13T09-14-02.668Z--openai-standard-v1.json`.
-  `protected-untrusted-reference` passed 3/3. `dev-test-flake` still
-  majority-fails. Details in
-  `docs/verification/2026-08-13-compiler-1-2-2-two-case-n3-eval.md`.
-  Do not accept 1.2.2 as the shipping baseline. 1.0.0 remains accepted.
-- Profiles are documented, not wired into generate.
-- Phase 4 anti-pattern checks live in `src/core/anti-patterns.ts`.
-  `applyUntrustedEmitPolicy` runs in the three generate adapters.
-  `detectAntiPatterns` is still not a generate gate.
+- Current-model vendor pages were read on 2026-08-13.
+- Compiler `1.3.0` resolves vendor×tier profiles at generate time and
+  appends C1–C4 branches. `BASE_COMPILER_INSTRUCTIONS` is unchanged.
+- Stages A–C and E are rules-only pure functions. Stage D reuses
+  project context. Stage H critique is advisory.
+- v2 Anthropic judge is implemented behind `--rubric v2`. Default paid
+  judge remains v1 OpenAI 0–100.
+- Downstream eval is a planner. It loads `evals/fixtures/*.json`.
+  No fixture repos are in the tree. Live agent execution is not built.
+- CI `mini-gate` runs `pnpm test`, `pnpm typecheck`, and `pnpm lint`.
+- Last live receipts remain 1.2.1 full N=3 and 1.2.2 two-case N=3.
+- 1.0.0 remains the accepted shipping quality baseline.
+- Typed Prompt Library search is the user task. It is not fenced.
+  Raycast fallback, command argument, and Insert actions fence evidence.
 
 ## Versus raw user input
 
-Not measured. No downstream agent eval. No v2 judge calibration.
+Not measured.
 
 ## Completion gate
 
 | Gate | Result |
 | --- | --- |
-| Every vendor directive in a profile or explicitly deferred | partial (documented, not implemented in generate) |
-| Guidance from current-model pages | yes |
-| Profiles keyed vendor × tier at generate time | no |
-| Four conflicts branched in emitted prompts | no (documented only) |
-| No merged-conflict rendering | unmeasured |
-| Context-placement vs caching measured | no |
-| Profile fields cited + dated | yes in `docs/03-rendering-profiles.md` |
-| Golden corpus covers classes + adversarial | yes in extended file; default plan still 24 |
-| Judge calibrated vs human, agreement reported | no |
-| Downstream e2e on real repos and agents | no |
-| Generated prompts beat raw input per class | no |
-| Phase 4 anti-pattern checks + failing tests | yes (detector plus generate-path emit policy) |
-| Injection treated as data on three surfaces | generate-path strip + paraphrase yes; Enhance Prompt still does not read clipboard/selection |
-| Full suite run; numbers from that run | 1.2.1 full N=3 plus 1.2.2 two-case N=3; see verification notes |
-| No fabricated paths in sampled output | `dev-ui-empty-state` used `src/browse-prompts.ts` vs allowed `.tsx` |
+| Every vendor directive in a profile or deferred with a reason | Partial. Wired as addenda. Bake-off unmeasured. |
+| Guidance from current-model pages | Yes. Read 2026-08-13. |
+| Profiles keyed vendor × tier at generate time | Yes |
+| Four vendor conflicts branched in compiler instructions | Yes |
+| No merged-conflict rendering | Unmeasured on live output |
+| Context-placement versus caching measured | No |
+| Profile fields cited and dated | Yes |
+| Golden corpus covers classes and adversarial | Yes in extended file. Default paid plan is still 24. |
+| Judge calibrated against human scores | No. `evals/calibration-v2.md` waits on human scores. |
+| Downstream eval on real repos and agents | No. Dry-run skips without fixtures. |
+| Generated prompts beat raw input per class | No |
+| Phase 4 anti-pattern checks + failing tests | Yes. Critique is advisory, not a generate throw. |
+| Injection treated as data on argument, selection, and clipboard | Yes on fallback, command argument, and Insert actions. Typed library search is not fenced |
+| Full suite run; numbers from that run | No 1.3.0 live eval. Last receipts are 1.2.1/1.2.2. |
+| No fabricated paths in sampled output | Unmeasured on 1.3.0 |
 
 ## What was not verified and why
 
-Paid Anthropic/Google evals and real coding-agent runs still lack
-keys or fixtures. Human calibration slice not scored. Rams unavailable.
-Do not retune the whole compiler blob on the 1.2.1 or 1.2.2 results.
+Paid Anthropic/Google evals, v2 live judging, and coding-agent runs
+need `--confirm-spend` and keys. Human calibration needs Alex. MacBook
+Raycast paths are out of Mini scope. Do not retune the whole compiler
+blob on the 1.2.x results.

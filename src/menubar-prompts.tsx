@@ -53,7 +53,7 @@ interface LastPaste {
 }
 
 export default function MenubarPrompts() {
-  const preferences = getPreferenceValues<Preferences.MenubarPrompts>();
+  const preferences = getPreferenceValues<Preferences>();
   const [records, setRecords] = useState<PromptRecord[]>();
   const [suggestions, setSuggestions] = useState<PromptSuggestion[]>([]);
   // Suggestions are drawn from every active prompt, not the truncated menu list.

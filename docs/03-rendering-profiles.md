@@ -2,9 +2,10 @@
 
 Date: 2026-08-13.
 Depends on: `docs/00-ground-truth.md`.
-Status: declarative schema and cited defaults. No profile has beaten
-`generic-fallback` on a measured eval yet. Unmeasured profiles do not
-ship as generation logic.
+Status: schema-validated data in `src/core/rendering-profiles.ts`,
+resolved at generate time from `PromptTarget`. No profile has beaten
+`generic-fallback-v1` on a measured eval yet. Bake-off still required
+before claiming a vendor profile beats the fallback.
 
 ## Key
 

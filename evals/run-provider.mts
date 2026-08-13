@@ -14,6 +14,7 @@ interface Arguments {
   caseIds?: string[];
   limit?: number;
   repeats?: number;
+  corpus?: "frozen" | "all";
   maxUsd?: number;
   confirmSpend: boolean;
 }
@@ -24,6 +25,7 @@ const selection = {
   ...(args.caseIds?.length ? { caseIds: args.caseIds } : {}),
   ...(args.limit ? { limit: args.limit } : {}),
   ...(args.repeats ? { repeats: args.repeats } : {}),
+  ...(args.corpus ? { corpus: args.corpus } : {}),
 };
 const plan = getEnhancementEvaluationPlan(args.profileId, selection);
 
@@ -112,6 +114,7 @@ function parseArguments(values: string[]): Arguments {
   const caseIds: string[] = [];
   let limit: number | undefined;
   let repeats: number | undefined;
+  let corpus: "frozen" | "all" | undefined;
   let maxUsd: number | undefined;
   let confirmSpend = false;
 
@@ -149,6 +152,12 @@ function parseArguments(values: string[]): Arguments {
     } else if (value === "--repeats" && next) {
       repeats = normalizeEvaluationRepeats(positiveInteger(next, "--repeats"));
       index += 1;
+    } else if (value === "--corpus" && next) {
+      if (next !== "frozen" && next !== "all") {
+        throw new Error(`Unsupported evaluation corpus: ${next}.`);
+      }
+      corpus = next;
+      index += 1;
     } else if (value === "--max-usd" && next) {
       maxUsd = Number(next);
       index += 1;
@@ -165,6 +174,7 @@ function parseArguments(values: string[]): Arguments {
     ...(caseIds.length > 0 ? { caseIds } : {}),
     ...(limit ? { limit } : {}),
     ...(repeats ? { repeats } : {}),
+    ...(corpus ? { corpus } : {}),
     ...(maxUsd !== undefined ? { maxUsd } : {}),
     confirmSpend,
   };

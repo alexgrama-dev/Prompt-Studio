@@ -8,13 +8,11 @@ import {
   Detail,
   Form,
   getPreferenceValues,
+  getSelectedText,
   Icon,
   Keyboard,
-  launchCommand,
-  LaunchType,
   List,
   LocalStorage,
-  openCommandPreferences,
   openExtensionPreferences,
   showHUD,
   showToast,
@@ -129,9 +127,15 @@ import {
   type PromptTarget,
 } from "./core/prompt-store";
 import {
+  appendUntrustedEvidence,
+  applyCaptureFence,
+} from "./core/compiler-pipeline";
+import {
+  enhancePromptEntryUntrustedSurface,
   ideaStudioLaunchContext,
   type EnhancePromptLaunchContext,
 } from "./core/launch-context";
+import { pushCaptureInbox } from "./open-studio-views";
 import {
   enhancementProfileIsAvailable,
   estimatedProviderMaximumCostUsd,
@@ -515,6 +519,13 @@ export default function EnhancePrompt(props: {
     ? { id: props.launchContext.seedId, thoughts: initialThoughts }
     : undefined;
   const revisionOfPromptId = props.launchContext?.revisionOfPromptId;
+  const initialUntrustedSurface = enhancePromptEntryUntrustedSurface({
+    ...(props.launchContext ? { launchContext: props.launchContext } : {}),
+    ...(props.arguments?.thoughts
+      ? { argumentThoughts: props.arguments.thoughts }
+      : {}),
+    ...(props.fallbackText ? { fallbackText: props.fallbackText } : {}),
+  });
   const [state, setState] = useState<
     "checking" | "disabled" | "preview" | "active" | "error"
   >("checking");
@@ -573,6 +584,9 @@ export default function EnhancePrompt(props: {
         state={state}
         initialThoughts={initialThoughts}
         initialTarget={initialTarget}
+        {...(initialUntrustedSurface
+          ? { initialUntrustedSurface }
+          : {})}
         {...(initialSeed ? { initialSeed } : {})}
         revisionOfPromptId={revisionOfPromptId}
         projectContextState={projectContextState}
@@ -605,6 +619,7 @@ function EnhancementWorkspace({
   googleState,
   initialThoughts,
   initialTarget,
+  initialUntrustedSurface,
   initialSeed,
   revisionOfPromptId,
 }: {
@@ -618,6 +633,7 @@ function EnhancementWorkspace({
   googleState: FeatureState;
   initialThoughts: string;
   initialTarget: PromptTarget;
+  initialUntrustedSurface?: EnhancePromptLaunchContext["untrustedSurface"];
   initialSeed?: PromptSeedReference;
   revisionOfPromptId?: string | undefined;
 }) {
@@ -635,7 +651,12 @@ function EnhancementWorkspace({
   );
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
-  const [roughThoughts, setRoughThoughts] = useState(initialThoughts);
+  const [roughThoughts, setRoughThoughts] = useState(() =>
+    applyCaptureFence(initialThoughts, initialUntrustedSurface),
+  );
+  const [untrustedSurface, setUntrustedSurface] = useState(
+    initialUntrustedSurface,
+  );
   const [target, setTarget] = useState<PromptTarget>(initialTarget);
   const [oneRunInstruction, setOneRunInstruction] = useState("");
   const [activeSeed, setActiveSeed] = useState<PromptSeedReference | undefined>(
@@ -687,6 +708,9 @@ function EnhancementWorkspace({
         const draft = restorableEnhancementFormDraft(stored, initialThoughts);
         if (!draft) return;
         setRoughThoughts(draft.roughThoughts);
+        if (draft.roughThoughts !== initialThoughts) {
+          setUntrustedSurface(undefined);
+        }
         setTarget(draft.target);
         setProject(draft.project);
         setRepositoryFolder(draft.repositoryFolder);
@@ -1167,7 +1191,7 @@ function EnhancementWorkspace({
       }
     }
     const request: EnhancementRequest = {
-      roughThoughts: values.roughThoughts,
+      roughThoughts: applyCaptureFence(values.roughThoughts, untrustedSurface),
       target: values.target,
       profileId: values.profileId,
       researchLevel: values.researchLevel,
@@ -1685,6 +1709,64 @@ function EnhancementWorkspace({
               onAction={cancel}
             />
           ) : null}
+          <Action
+            title="Insert Selected Text as Evidence"
+            icon={Icon.TextCursor}
+            onAction={() => {
+              void getSelectedText()
+                .then((text) => {
+                  if (!text?.trim()) {
+                    return showToast(
+                      Toast.Style.Failure,
+                      "No Selected Text",
+                      "Select text, then insert it as untrusted evidence.",
+                    );
+                  }
+                  setRoughThoughts((current) =>
+                    appendUntrustedEvidence(
+                      applyCaptureFence(current, untrustedSurface),
+                      text,
+                      "selection",
+                    ),
+                  );
+                  setUntrustedSurface(undefined);
+                  setActiveSeed(undefined);
+                  return undefined;
+                })
+                .catch(() =>
+                  showToast(
+                    Toast.Style.Failure,
+                    "No Selected Text",
+                    "Select text, then insert it as untrusted evidence.",
+                  ),
+                );
+            }}
+          />
+          <Action
+            title="Insert Clipboard as Evidence"
+            icon={Icon.Clipboard}
+            onAction={() => {
+              void Clipboard.readText().then((text) => {
+                if (!text?.trim()) {
+                  return showToast(
+                    Toast.Style.Failure,
+                    "Clipboard Has No Plain Text",
+                    "Copy text, then insert it as untrusted evidence.",
+                  );
+                }
+                setRoughThoughts((current) =>
+                  appendUntrustedEvidence(
+                    applyCaptureFence(current, untrustedSurface),
+                    text,
+                    "clipboard",
+                  ),
+                );
+                setUntrustedSurface(undefined);
+                setActiveSeed(undefined);
+                return undefined;
+              });
+            }}
+          />
           <ActionPanel.Submenu
             title="Setup & Context"
             icon={Icon.Folder}
@@ -1744,10 +1826,11 @@ function EnhancementWorkspace({
               icon={Icon.LightBulb}
               shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
               onAction={() =>
-                launchCommand({
-                  name: "idea-studio",
-                  type: LaunchType.UserInitiated,
-                  context: ideaStudioLaunchContext(roughThoughts, target),
+                void pushCaptureInbox(push, {
+                  launchContext: ideaStudioLaunchContext(
+                    roughThoughts,
+                    target,
+                  ),
                 })
               }
             />
@@ -1819,10 +1902,10 @@ function EnhancementWorkspace({
               target={<FeatureStatus />}
             />
             <Action
-              title="Open Enhancement Preferences"
+              title="Open Extension Preferences"
               icon={Icon.Gear}
               shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
-              onAction={openCommandPreferences}
+              onAction={openExtensionPreferences}
             />
           </ActionPanel.Submenu>
         </ActionPanel>
@@ -1835,6 +1918,7 @@ function EnhancementWorkspace({
         value={roughThoughts}
         onChange={(value) => {
           setRoughThoughts(value);
+          if (value !== initialThoughts) setUntrustedSurface(undefined);
           if (activeSeed?.thoughts !== value) setActiveSeed(undefined);
         }}
       />

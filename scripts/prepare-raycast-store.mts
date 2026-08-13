@@ -41,6 +41,7 @@ const sourceFiles = [
   "src/feature-status.tsx",
   "src/feedback-form.tsx",
   "src/menubar-prompts.tsx",
+  "src/open-studio-views.ts",
   "src/prompt-feedback.tsx",
   "src/prompt-form.tsx",
 ] as const;
@@ -87,6 +88,10 @@ await cp(
 await cp(
   join(repositoryRoot, "store", "src", "core", "features.ts"),
   join(outputDirectory, "src", "core", "features.ts"),
+);
+await cp(
+  join(repositoryRoot, "store", "src", "open-studio-views.ts"),
+  join(outputDirectory, "src", "open-studio-views.ts"),
 );
 await cp(
   join(repositoryRoot, "store", "package-lock.json"),
