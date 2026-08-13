@@ -2,7 +2,7 @@
 
 Read date: 2026-08-13.
 Repo HEAD at branch start: `fa03008477ad4221eac69ee1b0a5860071b9a234`.
-Compiler in tree: `prompt-studio-compiler/1.2.1`.
+Compiler in tree: `prompt-studio-compiler/1.2.2`.
 Guidance is taken from the current-model pages named below, not from
 predecessor cookbooks. The GPT-5 prompting guide is a predecessor and
 is cited only as a rejected source.

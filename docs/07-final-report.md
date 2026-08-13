@@ -21,10 +21,17 @@ do not exist yet.
   Average 98.1. `passing` is false. 7/24 cases still flip. Protected
   injection majority-fails. Details in
   `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.
-- Compiler text is still `prompt-studio-compiler/1.2.1`. Profiles are
-  documented, not wired into generate.
-- Phase 4 anti-pattern checks live in `src/core/anti-patterns.ts` with
-  a failing fixture per class. They are not yet in the generate path.
+- Compiler 1.2.2 adds a generate-path untrusted emit policy. A
+  targeted OpenAI Standard N=3 on two cases ran on 2026-08-13.
+  Receipt: `evals/runs/2026-08-13T09-14-02.668Z--openai-standard-v1.json`.
+  `protected-untrusted-reference` passed 3/3. `dev-test-flake` still
+  majority-fails. Details in
+  `docs/verification/2026-08-13-compiler-1-2-2-two-case-n3-eval.md`.
+  Do not accept 1.2.2 as the shipping baseline. 1.0.0 remains accepted.
+- Profiles are documented, not wired into generate.
+- Phase 4 anti-pattern checks live in `src/core/anti-patterns.ts`.
+  `applyUntrustedEmitPolicy` runs in the three generate adapters.
+  `detectAntiPatterns` is still not a generate gate.
 
 ## Versus raw user input
 
@@ -45,13 +52,13 @@ Not measured. No downstream agent eval. No v2 judge calibration.
 | Judge calibrated vs human, agreement reported | no |
 | Downstream e2e on real repos and agents | no |
 | Generated prompts beat raw input per class | no |
-| Phase 4 anti-pattern checks + failing tests | yes (detector only; not in generate) |
-| Injection treated as data on three surfaces | detector + fence helper yes; Enhance Prompt does not read clipboard/selection |
-| Full suite run; numbers from that run | yes for OpenAI Standard N=3; see verification note |
+| Phase 4 anti-pattern checks + failing tests | yes (detector plus generate-path emit policy) |
+| Injection treated as data on three surfaces | generate-path strip + paraphrase yes; Enhance Prompt still does not read clipboard/selection |
+| Full suite run; numbers from that run | 1.2.1 full N=3 plus 1.2.2 two-case N=3; see verification notes |
 | No fabricated paths in sampled output | `dev-ui-empty-state` used `src/browse-prompts.ts` vs allowed `.tsx` |
 
 ## What was not verified and why
 
 Paid Anthropic/Google evals and real coding-agent runs still lack
 keys or fixtures. Human calibration slice not scored. Rams unavailable.
-Do not retune compiler text on this 1.2.1 N=3 result.
+Do not retune the whole compiler blob on the 1.2.1 or 1.2.2 results.

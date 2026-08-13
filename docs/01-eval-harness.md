@@ -125,9 +125,10 @@ Live OpenAI Standard N=3 (2026-08-13): 72/72 generated, 72/72 judged.
 Average 98.1. `passing` false. 7/24 cases flip. See
 `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.
 
-Pass `--repeats 3` on the CLI. Default remains 1 so documented
-`--max-usd 2.30` dry-runs stay valid. Cost in the plan is
-`per-case estimate × repeats`. Each record stores `generationIndex`.
+Pass `--repeats 3` on the CLI. Repeat `--case <id>` to pin a subset.
+Default remains 1 so documented `--max-usd 2.30` dry-runs stay valid.
+Cost in the plan is `per-case estimate × repeats`. Each record stores
+`generationIndex`.
 After review, the summary includes `flipRates` when a case has more
 than one generation. Protected accept/reject uses majority vote, not
 a single flake.

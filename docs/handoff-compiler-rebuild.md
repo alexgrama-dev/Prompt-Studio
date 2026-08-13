@@ -7,7 +7,7 @@ Host: Mac Mini (source and non-runtime checks only)
 ## Starting state
 
 Prompt Studio already compiles rough thoughts into a structured prompt.
-Compiler version is `prompt-studio-compiler/1.2.1`. Targets are
+Compiler version is `prompt-studio-compiler/1.2.2`. Targets are
 `generic`, `codex`, and `claude-code`. Generation uses user API keys
 (OpenAI, Anthropic, Google), not Raycast `AI.ask`.
 

@@ -11,7 +11,7 @@ import type { SelectableEnhancementProfileId } from "../src/core/provider-profil
 interface Arguments {
   profileId: SelectableEnhancementProfileId;
   split?: EvaluationSplit;
-  caseId?: string;
+  caseIds?: string[];
   limit?: number;
   repeats?: number;
   maxUsd?: number;
@@ -21,7 +21,7 @@ interface Arguments {
 const args = parseArguments(process.argv.slice(2));
 const selection = {
   ...(args.split ? { split: args.split } : {}),
-  ...(args.caseId ? { caseIds: [args.caseId] } : {}),
+  ...(args.caseIds?.length ? { caseIds: args.caseIds } : {}),
   ...(args.limit ? { limit: args.limit } : {}),
   ...(args.repeats ? { repeats: args.repeats } : {}),
 };
@@ -109,7 +109,7 @@ if (!args.confirmSpend) {
 function parseArguments(values: string[]): Arguments {
   let profileId: SelectableEnhancementProfileId = "openai-standard-v1";
   let split: EvaluationSplit | undefined;
-  let caseId: string | undefined;
+  const caseIds: string[] = [];
   let limit: number | undefined;
   let repeats: number | undefined;
   let maxUsd: number | undefined;
@@ -141,7 +141,7 @@ function parseArguments(values: string[]): Arguments {
       split = next as EvaluationSplit;
       index += 1;
     } else if (value === "--case" && next) {
-      caseId = next;
+      caseIds.push(next);
       index += 1;
     } else if (value === "--limit" && next) {
       limit = positiveInteger(next, "--limit");
@@ -162,7 +162,7 @@ function parseArguments(values: string[]): Arguments {
   return {
     profileId,
     ...(split ? { split } : {}),
-    ...(caseId ? { caseId } : {}),
+    ...(caseIds.length > 0 ? { caseIds } : {}),
     ...(limit ? { limit } : {}),
     ...(repeats ? { repeats } : {}),
     ...(maxUsd !== undefined ? { maxUsd } : {}),

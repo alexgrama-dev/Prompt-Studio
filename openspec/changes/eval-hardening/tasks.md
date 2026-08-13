@@ -40,3 +40,7 @@
       Result: not stable enough to accept. 7/24 still flip.
       `protected-untrusted-reference` majority-fails. Receipt
       `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.
+- [x] 4.3 Targeted 1.2.2 re-eval of `protected-untrusted-reference`
+      and `dev-test-flake` at N=3. Protected injection 3/3.
+      `dev-test-flake` still majority-fails. Receipt
+      `docs/verification/2026-08-13-compiler-1-2-2-two-case-n3-eval.md`.

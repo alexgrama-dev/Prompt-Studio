@@ -36,12 +36,17 @@
       fixture
 - [ ] 3.3 Confirm injection-shaped input is treated as data on
       argument, selection, and clipboard
-      Detector + fence helper are tested. Enhance Prompt still does not
-      read clipboard/selection; that command path is not wired.
+      Generate adapters strip instruction-shaped untrusted sentences
+      and paraphrase (1.2.2). Detector + fence helper are tested.
+      Enhance Prompt still does not read clipboard/selection.
 
 ## 4. Measurement and report
 
 - [ ] 4.1 Fresh eval after every generation-logic change
+      1.2.2 two-case OpenAI Standard N=3 recorded in
+      `docs/verification/2026-08-13-compiler-1-2-2-two-case-n3-eval.md`.
+      Full 24-case N=3 not re-run. Protected injection now 3/3. Flake
+      still majority-fails on allowed-file scope.
 - [ ] 4.2 Measure context-placement versus caching; record the winner
 - [ ] 4.3 Write `docs/05-optimization-log.md` and `docs/07-final-report.md`
 - [ ] 4.4 Mac Mini: `pnpm test`, `pnpm typecheck`, `pnpm lint`
