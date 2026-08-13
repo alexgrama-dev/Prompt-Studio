@@ -50,36 +50,10 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `browse-prompts` command */
   export type BrowsePrompts = ExtensionPreferences & {}
-  /** Preferences accessible in the `enhance-prompt` command */
-  export type EnhancePrompt = ExtensionPreferences & {}
-  /** Preferences accessible in the `idea-studio` command */
-  export type IdeaStudio = ExtensionPreferences & {}
-  /** Preferences accessible in the `quick-capture` command */
-  export type QuickCapture = ExtensionPreferences & {}
-  /** Preferences accessible in the `menubar-prompts` command */
-  export type MenubarPrompts = ExtensionPreferences & {}
-  /** Preferences accessible in the `paste-top-prompt` command */
-  export type PasteTopPrompt = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `browse-prompts` command */
   export type BrowsePrompts = {}
-  /** Arguments passed to the `enhance-prompt` command */
-  export type EnhancePrompt = {
-  /** Rough thoughts */
-  "thoughts": string
-}
-  /** Arguments passed to the `idea-studio` command */
-  export type IdeaStudio = {
-  /** Idea to capture */
-  "idea": string
-}
-  /** Arguments passed to the `quick-capture` command */
-  export type QuickCapture = {}
-  /** Arguments passed to the `menubar-prompts` command */
-  export type MenubarPrompts = {}
-  /** Arguments passed to the `paste-top-prompt` command */
-  export type PasteTopPrompt = {}
 }
 

@@ -10,9 +10,7 @@ import {
   Form,
   Icon,
   Keyboard,
-  launchCommand,
   LaunchProps,
-  LaunchType,
   List,
   LocalStorage,
   openExtensionPreferences,
@@ -88,13 +86,19 @@ import {
   recordLastLibraryPaste,
 } from "./core/last-library-paste";
 import {
-  enhancePromptThoughtsLaunchContext,
+  enhancePromptLibraryLaunchContext,
   fallbackPromptDecision,
   ideaStudioLaunchContext,
   retainPromptSelectionWhileLoading,
   type BrowsePromptsLaunchContext,
 } from "./core/launch-context";
-import { browseEmptyState } from "./core/browse-state";
+import {
+  browseEmptyState,
+  CAPTURE_INBOX_ITEM_ID,
+  ENHANCE_PROMPT_ITEM_ID,
+  selectedLibraryItemId,
+  type BrowseEmptyState,
+} from "./core/browse-state";
 import {
   commaSeparated,
   PromptForm,
@@ -110,6 +114,11 @@ import {
 } from "./core/feedback-revision";
 import { FeedbackForm, feedbackDraftFromForm } from "./feedback-form";
 import FeatureStatus from "./feature-status";
+import {
+  STUDIO_SCREENS_AVAILABLE,
+  pushCaptureInbox,
+  pushEnhancePrompt,
+} from "./open-studio-views";
 import PromptFeedback from "./prompt-feedback";
 
 type LibraryFilter =
@@ -396,13 +405,33 @@ export default function BrowsePrompts({
     visibleCount: visible.length + invalid.length,
     query: searchText,
   });
+  const showEnhanceRow =
+    STUDIO_SCREENS_AVAILABLE &&
+    enhancementEnabled &&
+    emptyState !== "load-failure" &&
+    emptyState !== "empty-library";
+  const showCaptureRow =
+    STUDIO_SCREENS_AVAILABLE &&
+    emptyState !== "load-failure" &&
+    emptyState !== "empty-library";
+  const studioRowIds = [
+    ...(showEnhanceRow ? [ENHANCE_PROMPT_ITEM_ID] : []),
+    ...(showCaptureRow ? [CAPTURE_INBOX_ITEM_ID] : []),
+  ];
+  const selectedItemId = selectedLibraryItemId(
+    selectedPromptId,
+    visible.map((record) => record.id),
+    studioRowIds,
+  );
 
   return (
     <List
       isLoading={loading || semanticSearching}
-      isShowingDetail={visible.length + invalid.length > 0}
+      isShowingDetail={
+        visible.length + invalid.length > 0 || studioRowIds.length > 0
+      }
       filtering={false}
-      {...(selectedPromptId ? { selectedItemId: selectedPromptId } : {})}
+      {...(selectedItemId ? { selectedItemId } : {})}
       onSelectionChange={(nextId) =>
         setSelectedPromptId((currentId) =>
           retainPromptSelectionWhileLoading(currentId, nextId, loading),
@@ -454,7 +483,7 @@ export default function BrowsePrompts({
         </List.Dropdown>
       }
     >
-      {emptyState ? (
+      {emptyState && studioRowIds.length === 0 ? (
         <List.EmptyView
           icon={Icon.TextDocument}
           title={
@@ -492,53 +521,40 @@ export default function BrowsePrompts({
                   />
                 </>
               ) : emptyState === "empty-library" ? (
-                <Action.Push
-                  title={
-                    directory
-                      ? "Save Existing Prompt"
-                      : "Review Prompt Directory"
-                  }
-                  icon={directory ? Icon.Plus : Icon.ExclamationMark}
-                  target={
-                    directory ? (
-                      <CreateFromLibrary
-                        directory={directory}
-                        onCreate={load}
-                      />
-                    ) : (
-                      <Detail
-                        navigationTitle="Prompt Directory"
-                        markdown="# Prompt Directory Is Invalid\n\nUse an absolute path or a path beginning with ~/ in Prompt Studio preferences."
-                      />
-                    )
-                  }
-                />
+                <>
+                  <Action.Push
+                    title={
+                      directory
+                        ? "Save Existing Prompt"
+                        : "Review Prompt Directory"
+                    }
+                    icon={directory ? Icon.Plus : Icon.ExclamationMark}
+                    target={
+                      directory ? (
+                        <CreateFromLibrary
+                          directory={directory}
+                          onCreate={load}
+                        />
+                      ) : (
+                        <Detail
+                          navigationTitle="Prompt Directory"
+                          markdown="# Prompt Directory Is Invalid\n\nUse an absolute path or a path beginning with ~/ in Prompt Studio preferences."
+                        />
+                      )
+                    }
+                  />
+                  <StudioScreenActions
+                    searchText={searchText}
+                    fallbackText={fallbackText}
+                    enhancementEnabled={enhancementEnabled}
+                  />
+                </>
               ) : emptyState === "no-results" ? (
                 <>
-                  {enhancementEnabled ? (
-                    <Action
-                      title="Enhance This Search"
-                      icon={Icon.Wand}
-                      onAction={() =>
-                        launchCommand({
-                          name: "enhance-prompt",
-                          type: LaunchType.UserInitiated,
-                          context:
-                            enhancePromptThoughtsLaunchContext(searchText),
-                        })
-                      }
-                    />
-                  ) : null}
-                  <Action
-                    title="Open Capture Inbox"
-                    icon={Icon.LightBulb}
-                    onAction={() =>
-                      launchCommand({
-                        name: "idea-studio",
-                        type: LaunchType.UserInitiated,
-                        context: ideaStudioLaunchContext(searchText),
-                      })
-                    }
+                  <StudioScreenActions
+                    searchText={searchText}
+                    fallbackText={fallbackText}
+                    enhancementEnabled={enhancementEnabled}
                   />
                   <Action
                     title="Clear Search"
@@ -548,11 +564,18 @@ export default function BrowsePrompts({
                   />
                 </>
               ) : (
-                <Action
-                  title="Show All Prompts"
-                  icon={Icon.List}
-                  onAction={() => setFilter("all")}
-                />
+                <>
+                  <Action
+                    title="Show All Prompts"
+                    icon={Icon.List}
+                    onAction={() => setFilter("all")}
+                  />
+                  <StudioScreenActions
+                    searchText={searchText}
+                    fallbackText={fallbackText}
+                    enhancementEnabled={enhancementEnabled}
+                  />
+                </>
               )}
               <Action.Push
                 title="Prompt Studio Status"
@@ -564,11 +587,35 @@ export default function BrowsePrompts({
           }
         />
       ) : null}
+      {studioRowIds.length > 0 ? (
+        <List.Section>
+          {showEnhanceRow ? (
+            <EnhancePromptListItem
+              searchText={searchText}
+              fallbackText={fallbackText}
+              emptyState={emptyState}
+              onClearSearch={() => setSearchText("")}
+              onShowAll={() => setFilter("all")}
+            />
+          ) : null}
+          {showCaptureRow ? (
+            <CaptureInboxListItem
+              searchText={searchText}
+              emptyState={emptyState}
+              onClearSearch={() => setSearchText("")}
+              onShowAll={() => setFilter("all")}
+            />
+          ) : null}
+        </List.Section>
+      ) : null}
       <List.Section title="Prompts" subtitle={`${visible.length}`}>
         {visible.map((record) => (
           <PromptItem
             key={record.id}
             record={record}
+            searchText={searchText}
+            fallbackText={fallbackText}
+            enhancementEnabled={enhancementEnabled}
             matchReason={
               searchText.trim() ? matchesById.get(record.id) : undefined
             }
@@ -604,6 +651,132 @@ export default function BrowsePrompts({
   );
 }
 
+function EnhancePromptListItem({
+  searchText,
+  fallbackText,
+  emptyState,
+  onClearSearch,
+  onShowAll,
+}: {
+  searchText: string;
+  fallbackText?: string | undefined;
+  emptyState: BrowseEmptyState | undefined;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+}) {
+  const { push } = useNavigation();
+  const thoughts = searchText.trim();
+  return (
+    <List.Item
+      id={ENHANCE_PROMPT_ITEM_ID}
+      icon={Icon.Wand}
+      title="Enhance Prompt"
+      detail={<List.Item.Detail markdown="# Enhance Prompt" />}
+      actions={
+        <ActionPanel>
+          <Action
+            title="Enhance Prompt"
+            icon={Icon.Wand}
+            onAction={() =>
+              void pushEnhancePrompt(
+                push,
+                thoughts
+                  ? {
+                      launchContext: enhancePromptLibraryLaunchContext(
+                        thoughts,
+                        fallbackText,
+                      ),
+                    }
+                  : {},
+              )
+            }
+          />
+          <StudioRowExtraActions
+            emptyState={emptyState}
+            onClearSearch={onClearSearch}
+            onShowAll={onShowAll}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function CaptureInboxListItem({
+  searchText,
+  emptyState,
+  onClearSearch,
+  onShowAll,
+}: {
+  searchText: string;
+  emptyState: BrowseEmptyState | undefined;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+}) {
+  const { push } = useNavigation();
+  const thoughts = searchText.trim();
+  return (
+    <List.Item
+      id={CAPTURE_INBOX_ITEM_ID}
+      icon={Icon.LightBulb}
+      title="Capture Inbox"
+      detail={<List.Item.Detail markdown="# Capture Inbox" />}
+      actions={
+        <ActionPanel>
+          <Action
+            title="Capture Inbox"
+            icon={Icon.LightBulb}
+            shortcut={{ modifiers: ["cmd"], key: "i" }}
+            onAction={() =>
+              void pushCaptureInbox(
+                push,
+                thoughts
+                  ? { launchContext: ideaStudioLaunchContext(thoughts) }
+                  : {},
+              )
+            }
+          />
+          <StudioRowExtraActions
+            emptyState={emptyState}
+            onClearSearch={onClearSearch}
+            onShowAll={onShowAll}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function StudioRowExtraActions({
+  emptyState,
+  onClearSearch,
+  onShowAll,
+}: {
+  emptyState: BrowseEmptyState | undefined;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+}) {
+  return (
+    <>
+      {emptyState === "no-results" ? (
+        <Action
+          title="Clear Search"
+          icon={Icon.XMarkCircle}
+          shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
+          onAction={onClearSearch}
+        />
+      ) : null}
+      {emptyState === "filtered-empty" ? (
+        <Action
+          title="Show All Prompts"
+          icon={Icon.List}
+          onAction={onShowAll}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function CreateFromLibrary({
   directory,
   onCreate,
@@ -634,8 +807,59 @@ function CreateFromLibrary({
   );
 }
 
+function StudioScreenActions({
+  searchText,
+  fallbackText,
+  enhancementEnabled,
+}: {
+  searchText: string;
+  fallbackText?: string | undefined;
+  enhancementEnabled: boolean;
+}) {
+  const { push } = useNavigation();
+  const thoughts = searchText.trim();
+  if (!STUDIO_SCREENS_AVAILABLE) return null;
+  return (
+    <>
+      {enhancementEnabled ? (
+        <Action
+          title="Enhance Prompt"
+          icon={Icon.Wand}
+          onAction={() =>
+            void pushEnhancePrompt(
+              push,
+              thoughts
+                ? {
+                    launchContext: enhancePromptLibraryLaunchContext(
+                      thoughts,
+                      fallbackText,
+                    ),
+                  }
+                : {},
+            )
+          }
+        />
+      ) : null}
+      <Action
+        title="Open Capture Inbox"
+        icon={Icon.LightBulb}
+        shortcut={{ modifiers: ["cmd"], key: "i" }}
+        onAction={() =>
+          void pushCaptureInbox(
+            push,
+            thoughts ? { launchContext: ideaStudioLaunchContext(thoughts) } : {},
+          )
+        }
+      />
+    </>
+  );
+}
+
 function PromptItem({
   record,
+  searchText,
+  fallbackText,
+  enhancementEnabled,
   matchReason,
   trackUsage,
   feedbackState,
@@ -643,12 +867,16 @@ function PromptItem({
   onReload,
 }: {
   record: PromptRecord;
+  searchText: string;
+  fallbackText?: string | undefined;
+  enhancementEnabled: boolean;
   matchReason: string | undefined;
   trackUsage: boolean;
   feedbackState: FeatureState;
   currentProjectCommit: string | undefined;
   onReload: () => Promise<void>;
 }) {
+  const { push } = useNavigation();
   const directory = dirname(record.filePath);
   const keywords = [
     record.summary,
@@ -687,10 +915,8 @@ function PromptItem({
         );
         return;
       }
-      await launchCommand({
-        name: "enhance-prompt",
-        type: LaunchType.UserInitiated,
-        context: {
+      await pushEnhancePrompt(push, {
+        launchContext: {
           thoughts: buildFeedbackRevisionThoughts(record, candidates),
           revisionOfPromptId: record.id,
         },
@@ -771,6 +997,11 @@ function PromptItem({
               />
             </>
           )}
+          <StudioScreenActions
+            searchText={searchText}
+            fallbackText={fallbackText}
+            enhancementEnabled={enhancementEnabled}
+          />
           <ActionPanel.Submenu
             title="Manage Prompt"
             icon={Icon.Pencil}

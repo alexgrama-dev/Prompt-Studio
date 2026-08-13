@@ -7,6 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import {
   appendFile,
   lstat,
@@ -470,7 +471,7 @@ test("execution guardrails normalize every frozen case without changing its task
     "claude-code": "applicable CLAUDE.md and repository instructions",
   } as const;
 
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.2.2");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.3.0");
   for (const item of raw.cases) {
     const taskPrompt = `${item.roughInput.trim()}\n\nPreserve this case's stricter evidence and authorization thresholds.`;
     const request: EnhancementRequest = {
@@ -2460,11 +2461,6 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
   const commands = manifest.commands ?? [];
   const expected = [
     ["browse-prompts", "Prompt Library", "prompt-library.png"],
-    ["enhance-prompt", "Enhance Prompt", "enhance-prompt.png"],
-    ["idea-studio", "Capture Inbox", "capture-inbox.png"],
-    ["quick-capture", "Quick Capture", "quick-capture.png"],
-    ["menubar-prompts", "Frequent Prompts Menu", "frequent-prompts.png"],
-    ["paste-top-prompt", "Paste Top Prompt", "paste-top-prompt.png"],
   ];
 
   assert.equal(manifest.title, "Prompt Studio");
@@ -2496,7 +2492,10 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
   };
   assert.deepEqual(
     storeManifest.commands?.map(({ name, title, icon }) => [name, title, icon]),
-    [expected[0], expected[4]],
+    [
+      ["browse-prompts", "Prompt Library", "prompt-library.png"],
+      ["menubar-prompts", "Frequent Prompts Menu", "frequent-prompts.png"],
+    ],
   );
 });
 
@@ -3822,19 +3821,47 @@ test("capture labels and titles stay bounded and valid", () => {
   }
 });
 
-test("Quick Capture runs immediately without an argument form", async () => {
+test("personal launcher exposes Prompt Library as the only root command", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     commands?: Array<{
       name?: string;
       mode?: string;
-      arguments?: unknown[];
+      keywords?: string[];
     }>;
   };
-  const quickCapture = manifest.commands?.find(
-    (command) => command.name === "quick-capture",
+  const commands = manifest.commands ?? [];
+  assert.deepEqual(
+    commands.map((command) => command.name),
+    ["browse-prompts"],
   );
-  assert.equal(quickCapture?.mode, "no-view");
-  assert.equal(quickCapture?.arguments, undefined);
+  assert.ok(commands.every((command) => command.mode === "view"));
+  assert.deepEqual(commands[0]?.keywords, [
+    "prompt studio",
+    "browse prompts",
+    "saved prompts",
+    "enhance prompt",
+    "capture inbox",
+    "idea studio",
+  ]);
+  const browseSource = await readFile("src/browse-prompts.tsx", "utf8");
+  assert.match(browseSource, /title="Enhance Prompt"/);
+  assert.match(browseSource, /function EnhancePromptListItem\(/);
+  assert.match(browseSource, /function CaptureInboxListItem\(/);
+  assert.match(browseSource, /id=\{ENHANCE_PROMPT_ITEM_ID\}/);
+  assert.match(browseSource, /id=\{CAPTURE_INBOX_ITEM_ID\}/);
+  assert.match(browseSource, /title="Open Capture Inbox"/);
+  assert.doesNotMatch(browseSource, /name: "enhance-prompt"/);
+  assert.doesNotMatch(browseSource, /name: "idea-studio"/);
+  const ideaSource = await readFile("src/idea-studio.tsx", "utf8");
+  assert.doesNotMatch(ideaSource, /name: "enhance-prompt"/);
+  const enhanceSource = await readFile("src/enhance-prompt.tsx", "utf8");
+  assert.doesNotMatch(enhanceSource, /name: "idea-studio"/);
+  await readFile("src/open-studio-views.ts", "utf8");
+  await readFile("src/enhance-prompt.tsx", "utf8");
+  await readFile("src/idea-studio.tsx", "utf8");
+  await readFile("src/quick-capture.ts", "utf8");
+  await readFile("src/menubar-prompts.tsx", "utf8");
+  await readFile("src/paste-top-prompt.ts", "utf8");
 });
 
 test("capture completion moves one item to Completed and restores its original queue", async () => {
@@ -5094,9 +5121,10 @@ test("project discovery and context collection stay inside configured roots and 
       root,
       label: "Mac Mini",
     });
+    const loginShell = existsSync("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
     const localSshRunner = async (_host: string, command: string) =>
       (
-        await runExternal("/bin/zsh", ["-lc", command], {
+        await runExternal(loginShell, ["-lc", command], {
           encoding: "utf8",
           maxBuffer: 5 * 1024 * 1024,
         })
@@ -8527,7 +8555,7 @@ function untrustedRequest(): EnhancementRequest {
   };
 }
 
-test("compiler 1.2.2 pins threshold preservation, untrusted paraphrase, and skip-test bounds", () => {
+test("compiler 1.3.0 pins threshold preservation, untrusted paraphrase, and skip-test bounds", () => {
   const base = enhancementCompilerInstructions({ target: "generic" });
   assert.match(base, /exact lower bounds/);
   assert.match(base, /never soften them/);
@@ -8537,6 +8565,7 @@ test("compiler 1.2.2 pins threshold preservation, untrusted paraphrase, and skip
   assert.match(base, /untrusted data/);
   assert.match(base, /instruction-shaped sentences/);
   assert.match(base, /skipping, disabling, or quarantining tests/);
+  assert.match(base, /Rendering profile: generic-fallback-v1/);
   assert.equal(base.includes(UNTRUSTED_PAYLOAD), false);
   assert.match(COMPILER_WORKED_EXAMPLES, /never quoted/);
   assert.match(

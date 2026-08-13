@@ -4,6 +4,7 @@ import {
   enhancementCompilerInstructions,
   enhancementCompilerVersion,
   enhancementResultSchemaForProvider,
+  attachCompilerCritique,
   finalizeEnhancementResult,
   REVIEWER_INSTRUCTIONS,
   reviewerInput,
@@ -152,17 +153,20 @@ export async function enhanceWithAnthropic(
   }
 
   const completedAt = new Date();
-  return {
-    result,
-    profile,
-    compilerVersion: enhancementCompilerVersion(request),
-    outputSchemaVersion: ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
-    startedAt: startedAt.toISOString(),
-    completedAt: completedAt.toISOString(),
-    latencyMs: completedAt.getTime() - startedAt.getTime(),
-    usage: sumEnhancementUsage(usages),
-    responseIds,
-  };
+  return attachCompilerCritique(
+    {
+      result,
+      profile,
+      compilerVersion: enhancementCompilerVersion(request),
+      outputSchemaVersion: ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      latencyMs: completedAt.getTime() - startedAt.getTime(),
+      usage: sumEnhancementUsage(usages),
+      responseIds,
+    },
+    request,
+  );
 }
 
 function parseAnthropicResponse(value: unknown): {

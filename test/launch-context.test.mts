@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browseEmptyState } from "../src/core/browse-state.ts";
+import {
+  browseEmptyState,
+  CAPTURE_INBOX_ITEM_ID,
+  ENHANCE_PROMPT_ITEM_ID,
+  selectedLibraryItemId,
+} from "../src/core/browse-state.ts";
 import {
   browsePromptsLaunchContext,
+  enhancePromptEntryUntrustedSurface,
   enhancePromptLaunchContext,
+  enhancePromptLibraryLaunchContext,
   enhancePromptThoughtsLaunchContext,
   fallbackPromptDecision,
   ideaStudioInitialIdea,
@@ -54,6 +61,33 @@ test("Idea Studio and Enhance Prompt handoffs preserve exact unsaved text and id
   assert.deepEqual(enhancePromptThoughtsLaunchContext(idea), {
     thoughts: idea,
   });
+  assert.equal(
+    enhancePromptLibraryLaunchContext(idea, idea).untrustedSurface,
+    "selection",
+  );
+  assert.equal(
+    enhancePromptLibraryLaunchContext("typed query", idea).untrustedSurface,
+    undefined,
+  );
+  assert.equal(
+    enhancePromptEntryUntrustedSurface({
+      argumentThoughts: "paste this",
+    }),
+    "argument",
+  );
+  assert.equal(
+    enhancePromptEntryUntrustedSurface({
+      fallbackText: "selected",
+    }),
+    "selection",
+  );
+  assert.equal(
+    enhancePromptEntryUntrustedSurface({
+      launchContext: enhancePromptThoughtsLaunchContext("typed query"),
+      argumentThoughts: "paste this",
+    }),
+    undefined,
+  );
 });
 
 test("browse recovery distinguishes empty, no-match, filtered, and failed states", () => {
@@ -103,6 +137,36 @@ test("browse recovery distinguishes empty, no-match, filtered, and failed states
     }),
     "filtered-empty",
   );
+});
+
+test("Prompt Library keeps paste selected when studio rows sit above prompts", () => {
+  const studioRows = [ENHANCE_PROMPT_ITEM_ID, CAPTURE_INBOX_ITEM_ID];
+  assert.equal(
+    selectedLibraryItemId(null, ["prompt-1", "prompt-2"], studioRows),
+    "prompt-1",
+  );
+  assert.equal(
+    selectedLibraryItemId(ENHANCE_PROMPT_ITEM_ID, ["prompt-1"], studioRows),
+    ENHANCE_PROMPT_ITEM_ID,
+  );
+  assert.equal(
+    selectedLibraryItemId(CAPTURE_INBOX_ITEM_ID, ["prompt-1"], studioRows),
+    CAPTURE_INBOX_ITEM_ID,
+  );
+  assert.equal(
+    selectedLibraryItemId("prompt-2", ["prompt-1", "prompt-2"], studioRows),
+    "prompt-2",
+  );
+  assert.equal(
+    selectedLibraryItemId("hidden", ["prompt-1"], studioRows),
+    "prompt-1",
+  );
+  assert.equal(selectedLibraryItemId(null, [], studioRows), ENHANCE_PROMPT_ITEM_ID);
+  assert.equal(
+    selectedLibraryItemId(null, [], [CAPTURE_INBOX_ITEM_ID]),
+    CAPTURE_INBOX_ITEM_ID,
+  );
+  assert.equal(selectedLibraryItemId(null, [], []), undefined);
 });
 
 test("fallback paste requires one exact active prompt without placeholders", () => {

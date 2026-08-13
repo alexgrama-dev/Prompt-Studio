@@ -19,6 +19,13 @@ export const ANTI_PATTERN_IDS = [
 
 export type AntiPatternId = (typeof ANTI_PATTERN_IDS)[number];
 
+export const HARD_ANTI_PATTERN_IDS = [
+  "fabricated-specifics",
+  "injection-passthrough",
+  "merged-conflict-rendering",
+  "unguarded-tool-trust",
+] as const satisfies readonly AntiPatternId[];
+
 export const UNTRUSTED_SURFACES = [
   "argument",
   "selection",
@@ -56,7 +63,8 @@ export function fenceUntrustedEvidence(
   if (!UNTRUSTED_SURFACES.includes(surface)) {
     throw new Error(`Unsupported untrusted surface: ${String(surface)}.`);
   }
-  return `<untrusted-evidence source="${surface}">\n${text}\n</untrusted-evidence>`;
+  const payload = text.replace(/<\/?untrusted-evidence\b[^>]*>/gi, "");
+  return `<untrusted-evidence source="${surface}">\n${payload}\n</untrusted-evidence>`;
 }
 
 export function detectAntiPatterns(

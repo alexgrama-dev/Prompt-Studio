@@ -15,6 +15,7 @@ export interface EnhancePromptLaunchContext {
   target?: PromptTarget;
   seedId?: string;
   revisionOfPromptId?: string;
+  untrustedSurface?: "argument" | "selection" | "clipboard" | "repository-file";
 }
 
 export function browsePromptsLaunchContext(
@@ -85,8 +86,40 @@ export function enhancePromptLaunchContext(
 export function enhancePromptThoughtsLaunchContext(
   thoughts: string,
   target?: PromptTarget,
+  untrustedSurface?: EnhancePromptLaunchContext["untrustedSurface"],
 ): EnhancePromptLaunchContext {
-  return { thoughts, ...(target ? { target } : {}) };
+  return {
+    thoughts,
+    ...(target ? { target } : {}),
+    ...(untrustedSurface ? { untrustedSurface } : {}),
+  };
+}
+
+export function enhancePromptLibraryLaunchContext(
+  thoughts: string,
+  fallbackText?: string,
+  target?: PromptTarget,
+): EnhancePromptLaunchContext {
+  const trimmed = thoughts.trim();
+  const fallback = fallbackText?.trim() ?? "";
+  if (fallback && trimmed === fallback) {
+    return enhancePromptThoughtsLaunchContext(thoughts, target, "selection");
+  }
+  return enhancePromptThoughtsLaunchContext(thoughts, target);
+}
+
+export function enhancePromptEntryUntrustedSurface(input: {
+  launchContext?: EnhancePromptLaunchContext;
+  argumentThoughts?: string;
+  fallbackText?: string;
+}): EnhancePromptLaunchContext["untrustedSurface"] | undefined {
+  if (input.launchContext?.untrustedSurface) {
+    return input.launchContext.untrustedSurface;
+  }
+  if (input.launchContext?.thoughts) return undefined;
+  if (input.argumentThoughts?.trim()) return "argument";
+  if (input.fallbackText?.trim()) return "selection";
+  return undefined;
 }
 
 export function retainPromptSelectionWhileLoading(

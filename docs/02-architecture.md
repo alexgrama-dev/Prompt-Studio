@@ -8,14 +8,18 @@ as extra model calls.
 ## Current composition (as-is)
 
 Today the compiler is one instruction blob plus two target paragraphs,
-then a provider JSON-schema call, then local Execution Guardrails.
+a vendor×tier rendering addendum, a rules-based task/gap addendum, then
+a provider JSON-schema call, then local Execution Guardrails.
 
 ```
 Rough thoughts + target + optional project
+  → normalizeCapture / classifyTask / analyzeGaps (no extra model call)
+  → resolveRenderingProfile(target)
   → enhancementCompilerInstructions()
   → provider generate (OpenAI / Anthropic / Google)
   → optional reviewer pass
   → validateEnhancementResult
+  → attachCompilerCritique (advisory)
   → appendExecutionGuardrails
   → preview / copy / paste / save
 ```
@@ -58,7 +62,7 @@ Low classifier confidence routes to elicitation, not a wrong template.
 
 | Need | Module |
 | --- | --- |
-| Input launch | `launch-context.ts`, Enhance Prompt arguments, Quick Capture selection/clipboard |
+| Input launch | `launch-context.ts`, Prompt Library search, nested Enhance Prompt and Capture Inbox |
 | Project facts | `project-context.ts` (read-only Git) |
 | Untrusted research | `research-safety.ts` |
 | Generate | `enhancement.ts` / dispatch |

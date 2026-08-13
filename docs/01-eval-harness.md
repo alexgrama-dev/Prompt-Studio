@@ -95,9 +95,10 @@ to clone. The compiler must beat raw user input, not match a template.
 ## Judging
 
 Current production judge: `gpt-5.6-terra` (same family as the Standard
-generator). That is a known bias. v2 judge must be a different family
-than the generator under test (Anthropic for OpenAI generations,
-OpenAI for Anthropic generations).
+generator). That is a known bias. v2 judge is implemented as
+`pnpm eval:judge -- --rubric v2` on Anthropic Sonnet 5. Default
+`eval:judge` remains v1 OpenAI. Live v2 judging has not been run.
+Human calibration is in `evals/calibration-v2.md` and is empty.
 
 Mitigations already in tree or added on this branch:
 
@@ -138,7 +139,8 @@ a single flake.
 Not executed. Design:
 
 1. Fixture repos under `evals/fixtures/` (small, license-clean, one
-   task class each).
+   task class each). The planner loads `*.json` manifests. Absolute
+   paths and `..` are rejected. No fixture repos are in the tree yet.
 2. Feed generated prompt to a real coding agent (Codex CLI / Claude
    Code) with a timeout and a read-only start.
 3. Score: task completed, stayed in scope, verified, needed follow-up
@@ -151,10 +153,9 @@ Paid live agent runs wait until offline checks pass (Honcho
 
 ## Regression gate
 
-No GitHub Actions eval workflow exists. Plan:
+`.github/workflows/mini-gate.yml` runs `pnpm test`, `pnpm typecheck`,
+and `pnpm lint`. It does not run paid evals.
 
-- PR that touches `src/core/enhancement.ts`, judge, profiles, or
-  `evals/` runs `pnpm test`, `pnpm typecheck`, `pnpm lint` on Mini.
 - Live eval is a MacBook manual/gated job with `--confirm-spend`.
 - Per-case majority-vote regression blocks merge. Report only numbers
   from that run.
@@ -170,7 +171,7 @@ from the product would be the larger behavior change.
 
 ## Open
 
-- v2 judge model ID (must differ from the generator family)
+- Live v2 judging and human calibration
 - Whether Cursor/Windsurf become `PromptTarget` values
 - Downstream fixture set and which real agents to call
 - Human calibration slice (who scores, how many cases)

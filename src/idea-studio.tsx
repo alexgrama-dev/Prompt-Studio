@@ -9,8 +9,6 @@ import {
   Form,
   Icon,
   Keyboard,
-  launchCommand,
-  LaunchType,
   List,
   openExtensionPreferences,
   showHUD,
@@ -28,6 +26,7 @@ import {
   ideaStudioInitialIdea,
   type IdeaStudioLaunchContext,
 } from "./core/launch-context";
+import { pushEnhancePrompt } from "./open-studio-views";
 import {
   consolidateExactIdeaDuplicates,
   deletePrompt,
@@ -364,10 +363,8 @@ function IdeaActions({
   const completed = promptCaptureSection(idea) === "completed";
 
   async function enhance() {
-    await launchCommand({
-      name: "enhance-prompt",
-      type: LaunchType.UserInitiated,
-      context: enhancePromptLaunchContext(idea),
+    await pushEnhancePrompt(push, {
+      launchContext: enhancePromptLaunchContext(idea),
     });
   }
 
