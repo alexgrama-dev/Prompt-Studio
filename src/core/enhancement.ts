@@ -542,17 +542,29 @@ export function compilerInstructionsDigest(instructions: string): string {
   return createHash("sha256").update(instructions).digest("hex");
 }
 
+const EXECUTION_GUARDRAILS_MARKER_PATTERN =
+  /<!-- prompt-studio:execution-guardrails\/[^>]+ -->/;
+
+export function splitExecutionGuardrails(prompt: string): {
+  taskPrompt: string;
+  productAppendedGuardrails: string | null;
+} {
+  const index = prompt.search(EXECUTION_GUARDRAILS_MARKER_PATTERN);
+  if (index < 0) {
+    return { taskPrompt: prompt.trim(), productAppendedGuardrails: null };
+  }
+  return {
+    taskPrompt: prompt.slice(0, index).trim(),
+    productAppendedGuardrails: prompt.slice(index).trim(),
+  };
+}
+
 export function appendExecutionGuardrails(
   value: string,
   target: PromptTarget,
 ): string {
   const prompt = boundedString(value, "enhancedPrompt", 1, 30_000);
-  const existingMarker = prompt.search(
-    /<!-- prompt-studio:execution-guardrails\/[^>]+ -->/,
-  );
-  const taskPrompt = (
-    existingMarker >= 0 ? prompt.slice(0, existingMarker) : prompt
-  ).trim();
+  const taskPrompt = splitExecutionGuardrails(prompt).taskPrompt;
   const guardrails = [
     ENHANCEMENT_GUARDRAILS_MARKER,
     "## Execution Guardrails",

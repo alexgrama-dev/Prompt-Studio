@@ -1,3 +1,4 @@
+import { splitExecutionGuardrails } from "./enhancement.ts";
 import {
   HUMAN_REVIEW_SCORE_MAXIMUMS,
   type EnhancementEvaluationDocument,
@@ -69,6 +70,8 @@ export const EVALUATION_JUDGE_SCHEMA = {
 const JUDGE_INSTRUCTIONS = [
   "You score one compiled prompt against the rough task it came from. You do not rewrite it.",
   "You are blind to which provider or model produced the result. Judge only the material shown.",
+  "suppliedContext was given to the compiler before generation. Naming a supplied project, path, or allowedProjectFiles entry is not an invention. Score unsupportedFacts only against facts that are not in suppliedContext and not in the rough thoughts.",
+  "compiled.enhancedPrompt is the task prompt. compiled.productAppendedGuardrails is a product-appended Execution Guardrails block, not model padding. Ignore it for appropriateLength and do not treat it as a length or padding defect. Do not treat its repository-inspection wording as an invented repository when suppliedContext.project is present, or when the task prompt itself does not invent one.",
   `Award points out of these maximums: fidelity ${HUMAN_REVIEW_SCORE_MAXIMUMS.fidelity} (every explicit user requirement, prohibition, and threshold survives at full strength), completeness ${HUMAN_REVIEW_SCORE_MAXIMUMS.completeness} (the required facts are all present), unsupportedFacts ${HUMAN_REVIEW_SCORE_MAXIMUMS.unsupportedFacts} (nothing invented; award full marks only when no prohibited invention appears), actionability ${HUMAN_REVIEW_SCORE_MAXIMUMS.actionability} (an agent could act without guessing), validation ${HUMAN_REVIEW_SCORE_MAXIMUMS.validation} (the prompt defines how the result would be proven), authorization ${HUMAN_REVIEW_SCORE_MAXIMUMS.authorization} (boundaries for destructive, external, costly, or scope-expanding actions), appropriateLength ${HUMAN_REVIEW_SCORE_MAXIMUMS.appropriateLength} (no padding, no missing substance).`,
   "Set hardFailure to true only for a disqualifying defect: a dropped or softened prohibition, an invented fact from the prohibited list, a changed target, or authorization to act beyond what the task allows.",
   "Score strictly. A prompt that is merely acceptable is not full marks. Deduct for each specific defect you can name.",
@@ -91,9 +94,10 @@ export function maximumJudgeCostUsd(caseCount: number): number {
 export function factCoverage(
   record: EnhancementEvaluationRecord,
 ): FactCoverage {
+  const { taskPrompt } = splitExecutionGuardrails(record.result.enhancedPrompt);
   const haystack = normalize(
     [
-      record.result.enhancedPrompt,
+      taskPrompt,
       record.result.summary,
       ...record.result.assumptions,
       ...record.result.validationSteps,
@@ -116,6 +120,9 @@ export function buildJudgeRequest(
   record: EnhancementEvaluationRecord,
 ): Record<string, unknown> {
   const coverage = factCoverage(record);
+  const { taskPrompt, productAppendedGuardrails } = splitExecutionGuardrails(
+    record.result.enhancedPrompt,
+  );
   // Bound the request so the cost estimate matches what is actually sent.
   const cap = (value: string) => value.slice(0, MAX_FIELD_CHARS);
   const capList = (values: readonly string[]) =>
@@ -148,6 +155,13 @@ export function buildJudgeRequest(
                 category: record.category,
                 selectedTarget: record.request.target,
                 roughThoughts: cap(record.request.roughThoughts),
+                suppliedContext: {
+                  project: record.request.project,
+                  allowedProjectFiles: capList(
+                    record.request.allowedProjectFiles,
+                  ),
+                  note: "These values were supplied to the compiler. Naming them is not an invention.",
+                },
                 requiredFacts: capList(record.requiredFacts),
                 prohibitedInventions: capList(record.prohibitedInventions),
                 deterministicCoverage: {
@@ -160,7 +174,10 @@ export function buildJudgeRequest(
                   title: record.result.title,
                   summary: cap(record.result.summary),
                   target: record.result.target,
-                  enhancedPrompt: cap(record.result.enhancedPrompt),
+                  enhancedPrompt: cap(taskPrompt),
+                  productAppendedGuardrails: productAppendedGuardrails
+                    ? cap(productAppendedGuardrails)
+                    : null,
                   assumptions: capList(record.result.assumptions),
                   missingInformation: capList(record.result.missingInformation),
                   validationSteps: capList(record.result.validationSteps),

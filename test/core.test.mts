@@ -77,6 +77,7 @@ import {
   enhancementResultToPromptDraft,
   getEnhancementProfile,
   normalizeProviderResultBounds,
+  splitExecutionGuardrails,
   validateEnhancementRequest,
   validateEnhancementResult,
   type EnhancementRequest,
@@ -144,12 +145,15 @@ import {
   enhanceWithAnthropic,
 } from "../src/core/anthropic-enhancement.ts";
 import {
+  allEvaluationCases,
   blindEvaluationRecords,
+  evaluationCaseFlipRates,
   fullMarksHumanReview,
   getEnhancementEvaluationPlan,
   loadEnhancementEvaluation,
   recordEnhancementEvaluationReview,
   runEnhancementEvaluation,
+  type EnhancementEvaluationRecord,
 } from "../src/core/evaluation.ts";
 import {
   createPrompt,
@@ -3197,6 +3201,20 @@ test("provider evaluations use the same frozen cases and provider-specific priva
   assert.match(google.privacyDisclosure, /Google/);
   assert.ok(anthropic.maximumCostUsd > 0);
   assert.ok(google.maximumCostUsd > 0);
+});
+
+test("the extended evaluation corpus is additive and does not change the frozen default plan", () => {
+  const frozen = getEnhancementEvaluationPlan("openai-standard-v1");
+  const all = getEnhancementEvaluationPlan("openai-standard-v1", {
+    corpus: "all",
+  });
+  assert.equal(frozen.cases.length, 24);
+  assert.ok(all.cases.length >= 60);
+  const ids = all.cases.map((item) => item.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(allEvaluationCases().length, all.cases.length);
+  assert.ok(all.cases.some((item) => item.id === "ext-adv-injection-argument"));
+  assert.ok(all.cases.some((item) => item.id === "protected-untrusted-reference"));
 });
 
 test("the evaluation runner refuses an unapproved budget without making a model call", async () => {
@@ -8839,6 +8857,129 @@ test("the evaluation judge is blind, bounded, and cannot inflate a score", async
   );
 });
 
+test("the evaluation judge treats supplied files as not-an-invention and exempts product guardrails from length", () => {
+  const taskPrompt =
+    "Diagnose the CI-only flake in test/jobs/worker.test.ts with evidence. Keep the change narrow and explain how it removes nondeterminism.";
+  const record = {
+    ...judgeFixtureRecord(),
+    caseId: "dev-test-flake",
+    request: {
+      target: "claude-code" as const,
+      roughThoughts:
+        "This test flakes in CI but never locally. Diagnose it with evidence. Keep changes narrowly scoped and explain why the fix removes the nondeterminism.",
+      project: {
+        name: "Example Service",
+        path: "/prompt-studio-eval/example-service",
+      },
+      allowedProjectFiles: ["test/jobs/worker.test.ts"],
+    },
+    result: {
+      ...enhancementFixture(),
+      target: "claude-code" as const,
+      enhancedPrompt: appendExecutionGuardrails(taskPrompt, "claude-code"),
+    },
+  };
+
+  const body = buildJudgeRequest(record);
+  const payload = JSON.parse(
+    (
+      body as {
+        input: Array<{ content: Array<{ text: string }> }>;
+      }
+    ).input[0]!.content[0]!.text,
+  ) as {
+    suppliedContext: {
+      allowedProjectFiles: string[];
+      note: string;
+    };
+    compiled: {
+      enhancedPrompt: string;
+      productAppendedGuardrails: string | null;
+    };
+  };
+
+  assert.deepEqual(payload.suppliedContext.allowedProjectFiles, [
+    "test/jobs/worker.test.ts",
+  ]);
+  assert.match(payload.suppliedContext.note, /not an invention/i);
+  assert.equal(payload.compiled.enhancedPrompt, taskPrompt);
+  assert.equal(
+    payload.compiled.enhancedPrompt.includes(ENHANCEMENT_GUARDRAILS_MARKER),
+    false,
+  );
+  assert.equal(
+    payload.compiled.productAppendedGuardrails?.includes(
+      ENHANCEMENT_GUARDRAILS_MARKER,
+    ),
+    true,
+  );
+  assert.equal(
+    splitExecutionGuardrails(record.result.enhancedPrompt).taskPrompt,
+    taskPrompt,
+  );
+  const instructions = String(
+    (body as { instructions: string }).instructions,
+  );
+  assert.match(instructions, /Ignore it for appropriateLength/);
+  assert.match(instructions, /suppliedContext/);
+});
+
+test("evaluation flip rates report per-case instability across repeated generations", () => {
+  const reviewed = (
+    caseId: string,
+    passed: boolean,
+  ): EnhancementEvaluationRecord => {
+    const marks = fullMarksHumanReview();
+    const base = judgeFixtureRecord();
+    return {
+      ...base,
+      caseId,
+      humanReview: {
+        status: "reviewed",
+        ...marks,
+        hardFailure: !passed,
+        notes: passed ? "" : "hard failure",
+        reviewedAt: "2026-08-01T10:54:12.780Z",
+      },
+    };
+  };
+
+  const rates = evaluationCaseFlipRates([
+    reviewed("dev-test-flake", true),
+    reviewed("dev-test-flake", false),
+    reviewed("dev-test-flake", true),
+    reviewed("dev-debug-intermittent-api", true),
+    reviewed("dev-debug-intermittent-api", true),
+    reviewed("dev-debug-intermittent-api", true),
+  ]);
+
+  assert.deepEqual(
+    rates.map((item) => ({
+      caseId: item.caseId,
+      generations: item.generations,
+      passCount: item.passCount,
+      failCount: item.failCount,
+      flipRate: item.flipRate,
+    })),
+    [
+      {
+        caseId: "dev-debug-intermittent-api",
+        generations: 3,
+        passCount: 3,
+        failCount: 0,
+        flipRate: 0,
+      },
+      {
+        caseId: "dev-test-flake",
+        generations: 3,
+        passCount: 2,
+        failCount: 1,
+        flipRate: 1 - 2 / 3,
+      },
+    ],
+  );
+});
+
 test("variant selection is blind, hard-failure-aware, and deterministic on ties", () => {
   assert.equal(REVIEW_TOTAL, 100);
   // Only 2-4 variants are meaningful; anything else means one plain enhancement.
@@ -9365,7 +9506,8 @@ test("adversarial: the judge rejects malformed scores instead of passing a run",
   // A missing dimension must fail loudly; silently scoring it zero would let a
   // broken judge quietly fail every run, and treating it as full marks would
   // let a broken judge pass every run.
-  const { fidelity: _dropped, ...missing } = full;
+  const { fidelity: droppedFidelity, ...missing } = full;
+  assert.equal(typeof droppedFidelity, "number");
   await assert.rejects(respond(missing), /no fidelity score/);
   await assert.rejects(
     respond({ ...full, validation: Number.NaN }),

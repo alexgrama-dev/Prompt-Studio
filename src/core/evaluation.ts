@@ -10,6 +10,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import evaluationCases from "../../evals/cases.json" with { type: "json" };
+import extendedEvaluationCases from "../../evals/cases-extended.json" with { type: "json" };
 import { ANTHROPIC_PRIVACY_DISCLOSURE_VERSION } from "./anthropic-enhancement.ts";
 import { dispatchEnhancement } from "./enhancement-dispatch.ts";
 import {
@@ -46,12 +47,16 @@ export interface EnhancementEvaluationCase {
   };
   requiredFacts: string[];
   prohibitedInventions: string[];
+  taskClass?: string;
+  mustContain?: string[];
+  mustNotContain?: string[];
 }
 
 export interface EvaluationSelection {
   split?: EvaluationSplit;
   caseIds?: string[];
   limit?: number;
+  corpus?: "frozen" | "all";
 }
 
 export interface EnhancementEvaluationPlan {
@@ -182,7 +187,13 @@ interface RawEvaluationFile {
   cases: EnhancementEvaluationCase[];
 }
 
-const EVALUATION = evaluationCases as RawEvaluationFile;
+const FROZEN_EVALUATION = evaluationCases as RawEvaluationFile;
+const EXTENDED_EVALUATION = extendedEvaluationCases as RawEvaluationFile;
+const EVALUATION = FROZEN_EVALUATION;
+
+export function allEvaluationCases(): EnhancementEvaluationCase[] {
+  return [...FROZEN_EVALUATION.cases, ...EXTENDED_EVALUATION.cases];
+}
 
 export function defaultEvaluationDirectory(): string {
   return join(
@@ -570,8 +581,10 @@ export function evaluationReviewSummary(
 function selectEvaluationCases(
   selection: EvaluationSelection,
 ): EnhancementEvaluationCase[] {
+  const pool =
+    selection.corpus === "all" ? allEvaluationCases() : EVALUATION.cases;
   const caseIds = new Set(selection.caseIds ?? []);
-  const matches = EVALUATION.cases.filter(
+  const matches = pool.filter(
     (evaluationCase) =>
       (!selection.split || evaluationCase.split === selection.split) &&
       (caseIds.size === 0 || caseIds.has(evaluationCase.id)),
@@ -661,7 +674,7 @@ function validateEvaluationRecord(
   const field = `records[${index}]`;
   const record = requiredObject(value, field);
   const caseId = requiredString(record.caseId, `${field}.caseId`);
-  const frozenCase = EVALUATION.cases.find((item) => item.id === caseId);
+  const frozenCase = allEvaluationCases().find((item) => item.id === caseId);
   if (!frozenCase) throw new Error(`Unknown evaluation case ${caseId}.`);
   if (record.split !== frozenCase.split) {
     throw new Error(`${field}.split does not match the frozen case.`);
@@ -814,6 +827,41 @@ function casePasses(record: EnhancementEvaluationRecord): boolean {
     (!["authorization", "destructive"].includes(record.category) ||
       review.authorization === 5)
   );
+}
+
+export interface EvaluationCaseFlipRate {
+  caseId: string;
+  generations: number;
+  passCount: number;
+  failCount: number;
+  flipRate: number;
+}
+
+export function evaluationCaseFlipRates(
+  records: readonly EnhancementEvaluationRecord[],
+): EvaluationCaseFlipRate[] {
+  const byCase = new Map<string, boolean[]>();
+  for (const record of records) {
+    if (record.humanReview.status !== "reviewed") continue;
+    const list = byCase.get(record.caseId) ?? [];
+    list.push(casePasses(record));
+    byCase.set(record.caseId, list);
+  }
+  return [...byCase.entries()]
+    .map(([caseId, verdicts]) => {
+      const passCount = verdicts.filter(Boolean).length;
+      const failCount = verdicts.length - passCount;
+      const majority = Math.max(passCount, failCount);
+      return {
+        caseId,
+        generations: verdicts.length,
+        passCount,
+        failCount,
+        flipRate:
+          verdicts.length <= 1 ? 0 : 1 - majority / verdicts.length,
+      };
+    })
+    .sort((left, right) => left.caseId.localeCompare(right.caseId));
 }
 
 function reviewTotal(review: EnhancementHumanReview): number {
