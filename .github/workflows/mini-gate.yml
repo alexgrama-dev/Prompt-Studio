@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --allow-build=esbuild
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm lint
