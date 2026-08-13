@@ -7,6 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import {
   appendFile,
   lstat,
@@ -5120,9 +5121,10 @@ test("project discovery and context collection stay inside configured roots and 
       root,
       label: "Mac Mini",
     });
+    const loginShell = existsSync("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
     const localSshRunner = async (_host: string, command: string) =>
       (
-        await runExternal("/bin/zsh", ["-lc", command], {
+        await runExternal(loginShell, ["-lc", command], {
           encoding: "utf8",
           maxBuffer: 5 * 1024 * 1024,
         })
