@@ -32,6 +32,11 @@
 ## 4. Verification
 
 - [ ] 4.1 Pass the full check gate on the Mac Mini mirror
-- [ ] 4.2 Re-run the hardened eval against the current compiler (1.2.1)
+      Mini: `pnpm test` 124/124 and `pnpm typecheck` pass. `pnpm check`
+      includes `pnpm build` / `pnpm dev`, which this host must not run.
+- [x] 4.2 Re-run the hardened eval against the current compiler (1.2.1)
       with `--repeats 3` and record whether verdicts stabilize on the
       2026-08-01 calibration cases
+      Result: not stable enough to accept. 7/24 still flip.
+      `protected-untrusted-reference` majority-fails. Receipt
+      `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.

@@ -15,7 +15,12 @@ do not exist yet.
 - The judge now receives supplied project files as not-an-invention
   and does not score product-appended Execution Guardrails as padding.
   `--repeats` is wired. Flip rates land in `reviewSummary` after
-  review when N>1. Live N≥3 re-run has not been paid for.
+  review when N>1.
+- Live OpenAI Standard N=3 on compiler 1.2.1 ran on 2026-08-13.
+  Receipt: `evals/runs/2026-08-13T08-27-15.482Z--openai-standard-v1.json`.
+  Average 98.1. `passing` is false. 7/24 cases still flip. Protected
+  injection majority-fails. Details in
+  `docs/verification/2026-08-13-compiler-1-2-1-n3-eval.md`.
 - Compiler text is still `prompt-studio-compiler/1.2.1`. Profiles are
   documented, not wired into generate.
 - Phase 4 anti-pattern checks live in `src/core/anti-patterns.ts` with
@@ -42,11 +47,11 @@ Not measured. No downstream agent eval. No v2 judge calibration.
 | Generated prompts beat raw input per class | no |
 | Phase 4 anti-pattern checks + failing tests | yes (detector only; not in generate) |
 | Injection treated as data on three surfaces | detector + fence helper yes; Enhance Prompt does not read clipboard/selection |
-| Full suite run; numbers from that run | no live eval this branch |
-| No fabricated paths in sampled output | unmeasured |
+| Full suite run; numbers from that run | yes for OpenAI Standard N=3; see verification note |
+| No fabricated paths in sampled output | `dev-ui-empty-state` used `src/browse-prompts.ts` vs allowed `.tsx` |
 
 ## What was not verified and why
 
-Paid OpenAI/Anthropic evals and real coding-agent runs wait on Mini
-policy (no `pnpm build`/`dev`) and on Honcho: live tests after offline
-checks. Human calibration slice not scored. Rams unavailable.
+Paid Anthropic/Google evals and real coding-agent runs still lack
+keys or fixtures. Human calibration slice not scored. Rams unavailable.
+Do not retune compiler text on this 1.2.1 N=3 result.
