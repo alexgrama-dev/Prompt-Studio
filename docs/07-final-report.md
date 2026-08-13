@@ -14,9 +14,12 @@ do not exist yet.
   cases live in `evals/cases-extended.json` (`corpus: "all"` ≥ 60).
 - The judge now receives supplied project files as not-an-invention
   and does not score product-appended Execution Guardrails as padding.
-  Flip-rate helper exists. Live N≥3 re-run has not been paid for.
+  `--repeats` is wired. Flip rates land in `reviewSummary` after
+  review when N>1. Live N≥3 re-run has not been paid for.
 - Compiler text is still `prompt-studio-compiler/1.2.1`. Profiles are
   documented, not wired into generate.
+- Phase 4 anti-pattern checks live in `src/core/anti-patterns.ts` with
+  a failing fixture per class. They are not yet in the generate path.
 
 ## Versus raw user input
 
@@ -37,8 +40,8 @@ Not measured. No downstream agent eval. No v2 judge calibration.
 | Judge calibrated vs human, agreement reported | no |
 | Downstream e2e on real repos and agents | no |
 | Generated prompts beat raw input per class | no |
-| Phase 4 anti-pattern checks + failing tests | no |
-| Injection treated as data on three surfaces | cases exist; capture-surface tests not added |
+| Phase 4 anti-pattern checks + failing tests | yes (detector only; not in generate) |
+| Injection treated as data on three surfaces | detector + fence helper yes; Enhance Prompt does not read clipboard/selection |
 | Full suite run; numbers from that run | no live eval this branch |
 | No fabricated paths in sampled output | unmeasured |
 

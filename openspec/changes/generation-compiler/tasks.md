@@ -11,7 +11,8 @@
 ## 1. Eval harness
 
 - [x] 1.1 Finish `eval-hardening` judge context, guardrail policy, and
-      N≥3 repetition (see that change). CLI `--repeats` still unwired.
+      N≥3 repetition (see that change). CLI `--repeats 3` is wired.
+      Default remains 1.
 - [x] 1.2 Add the 0–4 twelve-dimension rubric with written anchors
 - [x] 1.3 Expand the corpus to ≥60 cases without mutating frozen 24
       identifiers or required/prohibited lists
@@ -19,22 +20,24 @@
       than the generator
 - [ ] 1.5 Design downstream fixture-repo eval; do not spend until
       offline checks pass
-- [ ] 1.6 Document the harness in `docs/01-eval-harness.md`
+- [x] 1.6 Document the harness in `docs/01-eval-harness.md`
 
 ## 2. Architecture and profiles
 
-- [ ] 2.1 Write `docs/02-architecture.md` with stage contracts
-- [ ] 2.2 Write `docs/03-rendering-profiles.md` with cited provenance
+- [x] 2.1 Write `docs/02-architecture.md` with stage contracts
+- [x] 2.2 Write `docs/03-rendering-profiles.md` with cited provenance
 - [ ] 2.3 Implement schema-validated profile data, not hardcoded
       model names in generation logic
 
 ## 3. Pipeline and anti-patterns
 
 - [ ] 3.1 Implement stages as pure functions with tests
-- [ ] 3.2 Encode every Phase 4 anti-pattern as a check plus a failing
+- [x] 3.2 Encode every Phase 4 anti-pattern as a check plus a failing
       fixture
 - [ ] 3.3 Confirm injection-shaped input is treated as data on
       argument, selection, and clipboard
+      Detector + fence helper are tested. Enhance Prompt still does not
+      read clipboard/selection; that command path is not wired.
 
 ## 4. Measurement and report
 

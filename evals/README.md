@@ -31,6 +31,10 @@ These commands are dry runs unless `--confirm-spend --max-usd <limit>` is
 present. A live run reads only the selected provider's environment key, writes a
 private mode-0600 report, and never stores the key.
 
+Accept/reject decisions need `--repeats 3`. Default `repeats` is 1 so a
+single-generation debug run keeps the frozen 24-case cost. The plan
+multiplies `maximumModelTokenCostUsd` by `repeats`.
+
 The baseline is append-only after the first accepted live run. Existing cases
 may gain clarification, but their identifiers, split, rough input, required
 facts, and prohibited inventions must not be changed to make a compiler look

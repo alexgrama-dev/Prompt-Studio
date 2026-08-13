@@ -121,9 +121,12 @@ Accept/reject requires N≥3 generations per case and majority-vote
 judging. `evaluationCaseFlipRates` reports per-case minority fraction.
 Single-run scores are for debugging only.
 
-CLI `--repeats` is not wired yet. Until it is, run the existing
-runner three times and pass the three report files' records into
-`evaluationCaseFlipRates`.
+Pass `--repeats 3` on the CLI. Default remains 1 so documented
+`--max-usd 2.30` dry-runs stay valid. Cost in the plan is
+`per-case estimate × repeats`. Each record stores `generationIndex`.
+After review, the summary includes `flipRates` when a case has more
+than one generation. Protected accept/reject uses majority vote, not
+a single flake.
 
 ## Downstream eval (the one that counts)
 
@@ -166,3 +169,5 @@ from the product would be the larger behavior change.
 - Whether Cursor/Windsurf become `PromptTarget` values
 - Downstream fixture set and which real agents to call
 - Human calibration slice (who scores, how many cases)
+- Whether to default CLI `--repeats` to 3 (would triple documented
+  `--max-usd 2.30` commands)
