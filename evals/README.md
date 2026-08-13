@@ -3,17 +3,21 @@
 This directory freezes the quality bar before the enhancement compiler is
 tuned.
 
-`cases.json` contains 24 rough-prompt cases:
+`cases.json` contains 24 frozen rough-prompt cases:
 
 - `development`: visible while compiler instructions are being designed.
 - `validation`: used to compare a candidate after tuning.
 - `protected`: regression cases that cannot fail even when the aggregate score
   improves.
 
+`cases-extended.json` adds 36 cases covering task classes and adversarial
+shapes. The default evaluation plan still uses only the frozen 24. Pass
+`{ corpus: "all" }` to include both (60+).
+
 Every case records facts that must survive and facts the enhancer must not
-invent. `rubric.md` defines the human score and hard failure rules.
-`profiles.json` fixes the candidate model settings and the measurements every
-run must record.
+invent. `rubric.md` is the historical 0–100 score. `rubric-v2.md` is the
+twelve-dimension 0–4 rubric. `profiles.json` fixes the candidate model
+settings and the measurements every run must record.
 
 OpenAI, Anthropic, and Google use the same runner and report format:
 
