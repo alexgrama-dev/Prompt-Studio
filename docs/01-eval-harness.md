@@ -74,9 +74,9 @@ Hard failures (any one fails the case):
 ## Golden corpus expansion
 
 Target: ≥60 cases. 24 frozen + ≥36 new in `evals/cases-extended.json`.
-The loader concatenates both. New cases carry `taskClass`, `scope`,
-`certainty`, `risk`, `verifiability`, `referenceNotes`, `mustContain`,
-and `mustNotContain`.
+The loader concatenates both. New cases may carry `taskClass`,
+`mustContain`, and `mustNotContain`. Scope, certainty, risk,
+verifiability, and referenceNotes are not in the loader yet.
 
 Required coverage:
 

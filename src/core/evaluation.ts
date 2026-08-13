@@ -206,9 +206,35 @@ interface RawEvaluationFile {
 const FROZEN_EVALUATION = evaluationCases as RawEvaluationFile;
 const EXTENDED_EVALUATION = extendedEvaluationCases as RawEvaluationFile;
 const EVALUATION = FROZEN_EVALUATION;
+const ALL_EVALUATION_CASES = uniqueEvaluationCases(
+  FROZEN_EVALUATION.cases,
+  EXTENDED_EVALUATION.cases,
+);
+
+function uniqueEvaluationCases(
+  frozen: readonly EnhancementEvaluationCase[],
+  extended: readonly EnhancementEvaluationCase[],
+): EnhancementEvaluationCase[] {
+  const cases = [...frozen, ...extended];
+  const seen = new Set<string>();
+  for (const item of cases) {
+    if (seen.has(item.id)) {
+      throw new Error(`Duplicate evaluation case identifier ${item.id}.`);
+    }
+    seen.add(item.id);
+  }
+  return cases;
+}
+
+function positiveGenerationIndex(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`${field} must be a positive integer.`);
+  }
+  return value;
+}
 
 export function allEvaluationCases(): EnhancementEvaluationCase[] {
-  return [...FROZEN_EVALUATION.cases, ...EXTENDED_EVALUATION.cases];
+  return ALL_EVALUATION_CASES;
 }
 
 export function defaultEvaluationDirectory(): string {
@@ -562,7 +588,20 @@ export async function recordEnhancementEvaluationReview(
     }
     return item.humanReview.status === "pending";
   });
-  if (!record) throw new Error(`Evaluation case ${caseId} was not found.`);
+  if (!record) {
+    const forCase = document.records.filter((item) => item.caseId === caseId);
+    if (forCase.length === 0) {
+      throw new Error(`Evaluation case ${caseId} was not found.`);
+    }
+    if (generationIndex !== undefined) {
+      throw new Error(
+        `Evaluation case ${caseId} has no generation ${generationIndex}.`,
+      );
+    }
+    throw new Error(
+      `Every generation of evaluation case ${caseId} is already reviewed.`,
+    );
+  }
   const reviewed = validateHumanReviewInput(input);
   record.humanReview = {
     status: "reviewed",
@@ -759,7 +798,10 @@ function validateEvaluationRecord(
   const generationIndex =
     record.generationIndex === undefined
       ? 1
-      : normalizeEvaluationRepeats(record.generationIndex);
+      : positiveGenerationIndex(
+          record.generationIndex,
+          `${field}.generationIndex`,
+        );
   const frozenCase = allEvaluationCases().find((item) => item.id === caseId);
   if (!frozenCase) throw new Error(`Unknown evaluation case ${caseId}.`);
   if (record.split !== frozenCase.split) {
@@ -971,7 +1013,9 @@ export function evaluationCaseFlipRates(
         passCount,
         failCount,
         flipRate:
-          verdicts.length <= 1 ? 0 : 1 - majority / verdicts.length,
+          verdicts.length <= 1
+            ? 0
+            : Math.round((1 - majority / verdicts.length) * 10_000) / 10_000,
       };
     })
     .sort((left, right) => left.caseId.localeCompare(right.caseId));
