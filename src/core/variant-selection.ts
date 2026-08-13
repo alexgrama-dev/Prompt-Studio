@@ -67,6 +67,7 @@ export function variantAsEvaluationRecord(
 ): EnhancementEvaluationRecord {
   return {
     caseId: `variant-${variant.index + 1}`,
+    generationIndex: 1,
     split: "development",
     category: "interactive",
     requiredFacts: [],

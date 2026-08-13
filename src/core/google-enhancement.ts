@@ -4,12 +4,11 @@ import {
   enhancementCompilerInstructions,
   enhancementCompilerVersion,
   enhancementResultSchemaForProvider,
-  normalizeProviderResultBounds,
+  finalizeEnhancementResult,
   REVIEWER_INSTRUCTIONS,
   reviewerInput,
   sumEnhancementUsage,
   validateEnhancementRequest,
-  validateEnhancementResult,
   type EnhancementRequest,
   type EnhancementResult,
   type EnhancementRun,
@@ -270,10 +269,7 @@ function parseValidatedResult(
   provider: string,
 ): EnhancementResult {
   try {
-    return validateEnhancementResult(
-      normalizeProviderResultBounds(JSON.parse(text) as unknown),
-      request,
-    );
+    return finalizeEnhancementResult(JSON.parse(text) as unknown, request);
   } catch (error) {
     throw new Error(
       `${provider} returned an invalid structured result: ${error instanceof Error ? error.message : String(error)} No prompt was saved.`,

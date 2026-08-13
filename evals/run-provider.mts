@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   getEnhancementEvaluationPlan,
+  normalizeEvaluationRepeats,
   runEnhancementEvaluation,
   type EvaluationSplit,
 } from "../src/core/evaluation.ts";
@@ -10,8 +11,9 @@ import type { SelectableEnhancementProfileId } from "../src/core/provider-profil
 interface Arguments {
   profileId: SelectableEnhancementProfileId;
   split?: EvaluationSplit;
-  caseId?: string;
+  caseIds?: string[];
   limit?: number;
+  repeats?: number;
   maxUsd?: number;
   confirmSpend: boolean;
 }
@@ -19,8 +21,9 @@ interface Arguments {
 const args = parseArguments(process.argv.slice(2));
 const selection = {
   ...(args.split ? { split: args.split } : {}),
-  ...(args.caseId ? { caseIds: [args.caseId] } : {}),
+  ...(args.caseIds?.length ? { caseIds: args.caseIds } : {}),
   ...(args.limit ? { limit: args.limit } : {}),
+  ...(args.repeats ? { repeats: args.repeats } : {}),
 };
 const plan = getEnhancementEvaluationPlan(args.profileId, selection);
 
@@ -36,6 +39,8 @@ console.log(
         passes: plan.profile.passes,
       },
       cases: plan.cases.length,
+      repeats: plan.repeats,
+      generations: plan.cases.length * plan.repeats,
       splits: countBy(plan.cases, (item) => item.split),
       maximumModelTokenCostUsd: plan.maximumCostUsd,
       privacyDisclosure: plan.privacyDisclosure,
@@ -49,6 +54,11 @@ if (!args.confirmSpend) {
   console.log(
     "\nDry run only. A live run additionally requires --confirm-spend, --max-usd <limit>, and the selected provider's environment key.",
   );
+  if (plan.repeats < 3) {
+    console.log(
+      "Accept/reject decisions need --repeats 3 so cost and flip rates cover N generations.",
+    );
+  }
 } else {
   if (!Number.isFinite(args.maxUsd) || (args.maxUsd ?? 0) <= 0) {
     throw new Error("A positive --max-usd limit is required for a live run.");
@@ -76,6 +86,8 @@ if (!args.confirmSpend) {
       {
         status: report.status,
         cases: report.caseCount,
+        repeats: report.repeats,
+        generations: report.generationCount,
         completed: report.completedCount,
         failed: report.failedCount,
         actualCostUsd: report.actualCostUsd,
@@ -97,8 +109,9 @@ if (!args.confirmSpend) {
 function parseArguments(values: string[]): Arguments {
   let profileId: SelectableEnhancementProfileId = "openai-standard-v1";
   let split: EvaluationSplit | undefined;
-  let caseId: string | undefined;
+  const caseIds: string[] = [];
   let limit: number | undefined;
+  let repeats: number | undefined;
   let maxUsd: number | undefined;
   let confirmSpend = false;
 
@@ -128,10 +141,13 @@ function parseArguments(values: string[]): Arguments {
       split = next as EvaluationSplit;
       index += 1;
     } else if (value === "--case" && next) {
-      caseId = next;
+      caseIds.push(next);
       index += 1;
     } else if (value === "--limit" && next) {
       limit = positiveInteger(next, "--limit");
+      index += 1;
+    } else if (value === "--repeats" && next) {
+      repeats = normalizeEvaluationRepeats(positiveInteger(next, "--repeats"));
       index += 1;
     } else if (value === "--max-usd" && next) {
       maxUsd = Number(next);
@@ -146,8 +162,9 @@ function parseArguments(values: string[]): Arguments {
   return {
     profileId,
     ...(split ? { split } : {}),
-    ...(caseId ? { caseId } : {}),
+    ...(caseIds.length > 0 ? { caseIds } : {}),
     ...(limit ? { limit } : {}),
+    ...(repeats ? { repeats } : {}),
     ...(maxUsd !== undefined ? { maxUsd } : {}),
     confirmSpend,
   };
