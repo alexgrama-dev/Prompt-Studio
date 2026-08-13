@@ -48,7 +48,6 @@ const PATH_PATTERN =
 const NUMBERED_STEP = /^\s*\d+[.)]\s+\S/gm;
 const SAFETY_ABSOLUTE =
   /\b(?:NEVER (?:delete|force-push|commit secrets|deploy)|MUST NOT (?:deploy|force-push|delete|exfiltrate))\b/;
-const SAFETY_ABSOLUTE_GLOBAL = new RegExp(SAFETY_ABSOLUTE.source, "g");
 
 export function fenceUntrustedEvidence(
   text: string,
@@ -97,7 +96,9 @@ export function detectAntiPatterns(
 
   const absoluteMatches =
     prompt.match(/\b(?:ALWAYS|NEVER|MUST NOT|MUST)\b/g) ?? [];
-  const safetyAbsolutes = prompt.match(SAFETY_ABSOLUTE_GLOBAL) ?? [];
+  const safetyAbsolutes = prompt.match(
+    new RegExp(SAFETY_ABSOLUTE.source, "g"),
+  ) ?? [];
   if (absoluteMatches.length - safetyAbsolutes.length >= 4) {
     add(
       "absolutes-on-judgment",
