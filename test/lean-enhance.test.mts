@@ -126,6 +126,27 @@ test("bugfix without expected versus actual asks before generate", () => {
   assert.equal(plan.label.class, "bugfix");
   assert.ok(plan.elicitation.questions.length > 0);
   assert.ok(plan.elicitation.questions.length <= 3);
+  assert.equal(
+    plan.elicitation.questions.some((question) => /unnamed|success check/i.test(question)),
+    false,
+  );
+  assert.equal(
+    plan.elicitation.questions.includes(
+      "What Test or Command Proves It Is Done?",
+    ),
+    false,
+  );
+  assert.ok(
+    plan.gaps.some(
+      (gap) =>
+        gap.bucket === "inferable" && /propose one named test/i.test(gap.detail),
+    ),
+  );
+  assert.ok(
+    plan.elicitation.questions.includes(
+      "What Happens Now, and What Should Happen?",
+    ),
+  );
   assert.match(plan.gapAddendum, /Elicitation is off/);
   const asked = compilerGapAddendum(
     plan.label,
@@ -165,6 +186,34 @@ test("similar prompts are recalled as clipped compiler examples", () => {
   assert.match(section, /Do not copy their project names/);
 });
 
+test("skipping elicitation still proposes a success check", () => {
+  const plan = planCompilerStages({
+    roughThoughts: "the login bug is broken",
+    target: "codex",
+  });
+  assert.ok(
+    plan.gaps.some(
+      (gap) =>
+        gap.bucket === "inferable" && /propose one named test/i.test(gap.detail),
+    ),
+  );
+  const skipped = compilerGapAddendum(
+    plan.label,
+    plan.gaps,
+    plan.elicitation,
+    { elicitationAsked: true, elicitationSkipped: true },
+  );
+  assert.match(skipped, /Propose one named test/);
+  assert.match(skipped, /Do not invent expected versus actual/);
+  assert.equal(skipped.includes("Do not invent a success check"), false);
+  assert.match(skipped, /missingInformation/);
+  assert.equal(skipped.includes("Elicitation is off"), false);
+  const asked = compilerGapAddendum(plan.label, plan.gaps, plan.elicitation, {
+    elicitationAsked: true,
+  });
+  assert.equal(asked.includes("Do not invent expected versus actual"), false);
+});
+
 test("compiler instructions include similar examples and omit elicitation-off after questions", () => {
   const composed = enhancementCompilerInstructions({
     target: "codex",
@@ -176,16 +225,29 @@ test("compiler instructions include similar examples and omit elicitation-off af
         body: "Find the timeout cause. Do not add retries.",
       },
     ],
+    outcomeLessons: [
+      {
+        verdict: "not-useful",
+        critique: "Agent guessed a retry instead of reading the log.",
+        correction: "Require the timeout cause before any code change.",
+      },
+    ],
   });
   assert.match(composed, /Similar saved prompts/);
   assert.match(composed, /Diagnose flaky API timeouts/);
+  assert.match(composed, /Outcome lessons from later agent runs/);
+  assert.match(composed, /do not copy as project facts/);
+  assert.match(composed, /Agent guessed a retry/);
   assert.equal(composed.includes("Elicitation is off"), false);
   const untouched = enhancementCompilerInstructions({
     target: "codex",
     roughThoughts: "the login bug is broken",
   });
   assert.match(untouched, /Elicitation is off/);
+  assert.match(untouched, /Do not invent expected versus actual/);
+  assert.equal(untouched.includes("Do not invent a success check"), false);
   assert.equal(untouched.includes("Similar saved prompts"), false);
+  assert.equal(untouched.includes("Outcome lessons"), false);
 });
 
 test("hard anti-patterns block library save and copy stays unblocked", () => {

@@ -16,8 +16,9 @@ import {
 import { deriveEnhancementFacts } from "./enhancement-facts.ts";
 import type { EnhancementRequest, EnhancementRun } from "./enhancement.ts";
 
-export const MAX_VARIANTS = 4;
+export const MAX_VARIANTS = 5;
 export const MIN_VARIANTS = 2;
+export const MAX_GENERATION_PASSES = 5;
 
 export const REVIEW_TOTAL = Object.values(HUMAN_REVIEW_SCORE_MAXIMUMS).reduce(
   (total, value) => total + value,
@@ -26,9 +27,18 @@ export const REVIEW_TOTAL = Object.values(HUMAN_REVIEW_SCORE_MAXIMUMS).reduce(
 
 export type VariantReview =
   | EnhancementHumanReviewInput
-  | EvaluationJudgeV2Review;
+  | EvaluationJudgeV2Review
+  | GeminiQualityReview;
 
-export type VariantJudgeRubric = "v1" | "v2";
+export type VariantJudgeRubric = "v1" | "v2" | "gemini-10";
+
+export interface GeminiQualityReview {
+  kind: "gemini-10";
+  score: number;
+  rationale: string;
+  hardFailure: boolean;
+  notes: string;
+}
 
 export interface EnhancementVariant {
   index: number;
@@ -62,6 +72,35 @@ export function variantCount(requested: unknown): number {
   return Math.min(rounded, MAX_VARIANTS);
 }
 
+/** Passes on the Enhance form: 1 generates once; 2-5 generate that many candidates. */
+export function generationPassCount(requested: unknown): number {
+  const parsed =
+    typeof requested === "number" ? requested : Number(requested ?? Number.NaN);
+  if (!Number.isFinite(parsed)) return 1;
+  const rounded = Math.round(parsed);
+  if (rounded < 1) return 1;
+  return Math.min(rounded, MAX_GENERATION_PASSES);
+}
+
+export function isGeminiQualityReview(
+  review: VariantReview,
+): review is GeminiQualityReview {
+  return "kind" in review && review.kind === "gemini-10";
+}
+
+export function geminiQualityReview(
+  score: number,
+  rationale: string,
+): GeminiQualityReview {
+  return {
+    kind: "gemini-10",
+    score,
+    rationale,
+    hardFailure: false,
+    notes: rationale,
+  };
+}
+
 export function isV1VariantReview(
   review: VariantReview,
 ): review is EnhancementHumanReviewInput {
@@ -81,6 +120,9 @@ export function reviewTotal(review: EnhancementHumanReviewInput): number {
 }
 
 export function variantReviewSummary(review: VariantReview): string {
+  if (isGeminiQualityReview(review)) {
+    return `Gemini 3.7 Flash ${review.score}/10 · ${review.rationale}`;
+  }
   if (isV1VariantReview(review)) {
     return [
       `fidelity ${review.fidelity}`,

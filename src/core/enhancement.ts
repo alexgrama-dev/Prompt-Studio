@@ -28,6 +28,10 @@ import {
   type SimilarPromptExample,
 } from "./similar-prompts.ts";
 import {
+  outcomeLessonCompilerSection,
+  type OutcomeLesson,
+} from "./outcome-lessons.ts";
+import {
   compilerRenderingAddendum,
   resolveRenderingProfile,
   type RenderingProfileId,
@@ -175,8 +179,12 @@ export interface EnhancementRequest {
   revision?: RevisionContext;
   /** Similar library prompts used as compiler style examples only. */
   similarPromptExamples?: SimilarPromptExample[];
+  /** Failed or not-useful agent outcomes used as compiler lessons only. */
+  outcomeLessons?: OutcomeLesson[];
   /** True after Enhance asked or skipped blocking questions. */
   elicitationAsked?: boolean;
+  /** True when the user skipped the pre-generate questions. */
+  elicitationSkipped?: boolean;
 }
 
 export interface EnhancementSource {
@@ -548,7 +556,9 @@ export function enhancementCompilerInstructions(
         | "project"
         | "allowedProjectFiles"
         | "similarPromptExamples"
+        | "outcomeLessons"
         | "elicitationAsked"
+        | "elicitationSkipped"
       >
     >,
 ): string {
@@ -560,6 +570,8 @@ export function enhancementCompilerInstructions(
     request.similarPromptExamples ?? [],
   );
   if (similar) sections.push(similar);
+  const lessons = outcomeLessonCompilerSection(request.outcomeLessons ?? []);
+  if (lessons) sections.push(lessons);
   if (request.revision) sections.push(REVISION_INSTRUCTIONS);
   // Only stated when the caller supplied the task, so metadata volume can match
   // task size instead of always demanding the complex-tier minimum.
@@ -586,6 +598,7 @@ export function enhancementCompilerInstructions(
     sections.push(
       compilerGapAddendum(stages.label, stages.gaps, stages.elicitation, {
         elicitationAsked: Boolean(request.elicitationAsked),
+        elicitationSkipped: Boolean(request.elicitationSkipped),
       }),
     );
   }
@@ -1076,10 +1089,24 @@ export function privacyDisclosure(profile: EnhancementProfile): string {
   return `${passText} Requests use store:false, which disables Responses application-state storage. OpenAI says API data is not used for training unless you opt in; default abuse-monitoring logs may still be retained for up to 30 days unless your API project has separately approved retention controls.`;
 }
 
+export interface EnhancementHistoryExtras {
+  quality?: {
+    score: number;
+    rationale: string;
+    model: string;
+    estimatedCostUsd?: number;
+  };
+  generationRole?: "winner" | "candidate";
+  generationPass?: number;
+  generationPassCount?: number;
+  estimatedCostUsd?: number;
+}
+
 export function enhancementResultToPromptDraft(
   run: EnhancementRun,
   request?: Pick<EnhancementRequest, "project" | "sources">,
   seed?: PromptSeedReference,
+  extras?: EnhancementHistoryExtras,
 ): PromptDraft {
   const now = new Date().toISOString();
   const sources: PromptSource[] = run.result.sources.map((source) => {
@@ -1101,6 +1128,30 @@ export function enhancementResultToPromptDraft(
     compilerVersion: run.compilerVersion,
     outputSchemaVersion: run.outputSchemaVersion,
     generatedAt: run.completedAt,
+    ...(extras?.quality
+      ? {
+          quality: {
+            score: extras.quality.score,
+            rationale: extras.quality.rationale,
+            model: extras.quality.model,
+            ...(extras.quality.estimatedCostUsd === undefined
+              ? {}
+              : { estimatedCostUsd: extras.quality.estimatedCostUsd }),
+          },
+        }
+      : {}),
+    ...(extras?.generationRole
+      ? { generationRole: extras.generationRole }
+      : {}),
+    ...(extras?.generationPass === undefined
+      ? {}
+      : { generationPass: extras.generationPass }),
+    ...(extras?.generationPassCount === undefined
+      ? {}
+      : { generationPassCount: extras.generationPassCount }),
+    ...(extras?.estimatedCostUsd === undefined
+      ? {}
+      : { estimatedCostUsd: extras.estimatedCostUsd }),
   };
   return {
     title: run.result.title,

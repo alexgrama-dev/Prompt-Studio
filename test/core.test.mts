@@ -99,6 +99,7 @@ import {
   REVIEW_TOTAL,
   variantAsEvaluationRecord,
   variantCount,
+  generationPassCount,
   type ScoredVariant,
 } from "../src/core/variant-selection.ts";
 import {
@@ -250,6 +251,7 @@ import {
   groupDiscoveredProjects,
   includedProjectFiles,
   parseSshProjectSource,
+  remoteNodeInvocation,
   renderProjectContext,
   type ProjectContextBundle,
 } from "../src/core/project-context.ts";
@@ -2510,30 +2512,20 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
   );
 });
 
-test("daily Raycast panels preserve the distilled action hierarchy", async () => {
+test("daily Raycast panels keep item actions flat", async () => {
   const ideaSource = await readFile("src/idea-studio.tsx", "utf8");
   const ideaActions = ideaSource.slice(
     ideaSource.indexOf("function IdeaActions("),
     ideaSource.indexOf("function CreateIdeaForm("),
   );
-  const submenuStart = ideaActions.indexOf("<ActionPanel.Submenu");
-  const submenuEnd =
-    ideaActions.indexOf("</ActionPanel.Submenu>", submenuStart) +
-    "</ActionPanel.Submenu>".length;
-  assert.ok(submenuStart > 0 && submenuEnd > submenuStart);
-
-  const submenu = ideaActions.slice(submenuStart, submenuEnd);
-  const topLevel = `${ideaActions.slice(0, submenuStart)}${ideaActions.slice(submenuEnd)}`;
-  assert.equal((topLevel.match(/<Action(?=[.\s>])/g) ?? []).length, 4);
-  assert.equal((submenu.match(/<Action(?=[.\s>])/g) ?? []).length, 7);
-  assert.match(submenu, /title="More Actions…"/);
-  assert.doesNotMatch(
-    submenu.slice(submenu.indexOf(">") + 1),
-    /<ActionPanel\.Submenu/,
-  );
+  assert.doesNotMatch(ideaActions, /ActionPanel\.Submenu/);
+  assert.doesNotMatch(ideaActions, /More Actions/);
 
   let priorIndex = -1;
   for (const label of [
+    'title="Paste in Active App"',
+    'title={completed ? "Restore Item" : "Complete Item"}',
+    'title="Edit Item"',
     'title="Copy Item"',
     'title="Enhance Item"',
     "title={idea.ideaTitle",
@@ -2541,19 +2533,16 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
     'title="Capture Item"',
     'title="Capture Clipboard"',
     'title="Review Exact Duplicates"',
+    'title="Delete Item"',
   ]) {
-    const nextIndex = submenu.indexOf(label);
+    const nextIndex = ideaActions.indexOf(label);
     assert.ok(nextIndex > priorIndex, `${label} is missing or out of order`);
     priorIndex = nextIndex;
   }
-  assert.match(
-    topLevel,
-    /title=\{completed \? "Restore Item" : "Complete Item"\}/,
-  );
-  const deleteTitleIndex = topLevel.indexOf('title="Delete Item"');
-  const deleteAction = topLevel.slice(
-    topLevel.lastIndexOf("<Action", deleteTitleIndex),
-    topLevel.indexOf("/>", deleteTitleIndex) + 2,
+  const deleteTitleIndex = ideaActions.indexOf('title="Delete Item"');
+  const deleteAction = ideaActions.slice(
+    ideaActions.lastIndexOf("<Action", deleteTitleIndex),
+    ideaActions.indexOf("/>", deleteTitleIndex) + 2,
   );
   assert.match(deleteAction, /title="Delete Item"/);
   assert.match(deleteAction, /style=\{Action\.Style\.Destructive\}/);
@@ -2581,7 +2570,10 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
   );
   assert.doesNotMatch(ideaItem, /\b(?:subtitle|accessories)=/);
 
+  const browseSource = await readFile("src/browse-prompts.tsx", "utf8");
   const enhancementSource = await readFile("src/enhance-prompt.tsx", "utf8");
+  assert.doesNotMatch(browseSource, /ActionPanel\.Submenu/);
+  assert.doesNotMatch(enhancementSource, /ActionPanel\.Submenu/);
   const preview = enhancementSource.slice(
     enhancementSource.indexOf("function EnhancementPreview("),
     enhancementSource.indexOf("function EnhancementEditor("),
@@ -3980,10 +3972,15 @@ test("personal launcher exposes Prompt Library as the only root command", async 
   assert.match(browseSource, /function EnhancePromptListItem\(/);
   assert.match(browseSource, /function CaptureInboxListItem\(/);
   assert.match(browseSource, /function NewPromptListItem\(/);
+  assert.match(browseSource, /function EnhanceHistoryStudioListItem\(/);
+  assert.match(browseSource, /function EnhanceHistoryScreen\(/);
   assert.match(browseSource, /id=\{ENHANCE_PROMPT_ITEM_ID\}/);
   assert.match(browseSource, /id=\{CAPTURE_INBOX_ITEM_ID\}/);
   assert.match(browseSource, /id=\{NEW_PROMPT_ITEM_ID\}/);
+  assert.match(browseSource, /id=\{ENHANCE_HISTORY_ITEM_ID\}/);
   assert.match(browseSource, /title="New Prompt"/);
+  assert.match(browseSource, /title="Enhance History"/);
+  assert.match(browseSource, /navigationTitle="Enhance History"/);
   assert.match(browseSource, /title="Open Capture Inbox"/);
   assert.doesNotMatch(browseSource, /name: "enhance-prompt"/);
   assert.doesNotMatch(browseSource, /name: "idea-studio"/);
@@ -3991,6 +3988,17 @@ test("personal launcher exposes Prompt Library as the only root command", async 
   assert.doesNotMatch(ideaSource, /name: "enhance-prompt"/);
   const enhanceSource = await readFile("src/enhance-prompt.tsx", "utf8");
   assert.doesNotMatch(enhanceSource, /name: "idea-studio"/);
+  assert.match(enhanceSource, /<Action\s+title="Enhance Prompt"/);
+  assert.doesNotMatch(
+    enhanceSource,
+    /<Action\.SubmitForm\s+title="Enhance Prompt"/,
+  );
+  const elicitationSource = enhanceSource.match(
+    /function ElicitationForm[\s\S]*?\nfunction /,
+  )?.[0];
+  assert.ok(elicitationSource);
+  assert.doesNotMatch(elicitationSource, /Action\.SubmitForm/);
+  assert.match(elicitationSource, /pop\(\)/);
   await readFile("src/open-studio-views.ts", "utf8");
   await readFile("src/enhance-prompt.tsx", "utf8");
   await readFile("src/idea-studio.tsx", "utf8");
@@ -4283,9 +4291,37 @@ test("Raycast enhancement drafts restore only valid saved form values", () => {
     profileId: "openai-standard-v1",
     researchLevel: "auto",
     oneRunInstruction: "Keep it concise",
+    passCount: "3",
+    qualityScore: "gemini-3.7",
     seedId,
   };
   assert.deepEqual(parseEnhancementFormDraft(JSON.stringify(draft)), draft);
+  assert.deepEqual(
+    parseEnhancementFormDraft(
+      JSON.stringify({
+        roughThoughts: "Keep this unfinished task",
+        target: "codex",
+        project: "none",
+        repositoryFolder: [],
+        setupMode: "custom",
+        profileId: "openai-standard-v1",
+        researchLevel: "auto",
+        oneRunInstruction: "Keep it concise",
+      }),
+    ),
+    {
+      roughThoughts: "Keep this unfinished task",
+      target: "codex",
+      project: "none",
+      repositoryFolder: [],
+      setupMode: "custom",
+      profileId: "openai-standard-v1",
+      researchLevel: "auto",
+      oneRunInstruction: "Keep it concise",
+      passCount: "1",
+      qualityScore: "gemini-3.7",
+    },
+  );
   assert.equal(
     parseEnhancementFormDraft(
       JSON.stringify({ ...draft, profileId: "unknown-provider" }),
@@ -5289,6 +5325,10 @@ test("project discovery and context collection stay inside configured roots and 
         join(repository, "src", "leaky.ts"),
         `const api_key = "secret-value-${"x".repeat(24)}";\n`,
       ),
+      writeFile(
+        join(repository, "src", "test-helpers.ts"),
+        "export function runTheExistingTests() {\n  return true;\n}\n",
+      ),
       writeFile(join(repository, ".gitignore"), ".env\nnode_modules/\n"),
       writeFile(join(repository, ".env"), "PASSWORD=do-not-send-this\n"),
       writeFile(
@@ -5332,6 +5372,12 @@ test("project discovery and context collection stay inside configured roots and 
       root,
       label: "Mac Mini",
     });
+    const invocation = remoteNodeInvocation("process.stdout.write('ok')", [
+      "/tmp",
+    ]);
+    assert.match(invocation, /\$HOME\/\.local\/bin/);
+    assert.match(invocation, /command -v node/);
+    assert.match(invocation, /node '-e'/);
     const loginShell = existsSync("/bin/zsh") ? "/bin/zsh" : "/bin/bash";
     const localSshRunner = async (_host: string, command: string) =>
       (
@@ -5424,6 +5470,11 @@ test("project discovery and context collection stay inside configured roots and 
     assert.ok(includedProjectFiles(bundle).includes("package.json"));
     assert.ok(includedProjectFiles(bundle).includes("pnpm-lock.yaml"));
     assert.equal(includedProjectFiles(bundle).includes("src/leaky.ts"), false);
+    assert.equal(
+      includedProjectFiles(bundle).includes("src/test-helpers.ts"),
+      false,
+      "weak token overlap must not pull unrelated files",
+    );
     const rendered = renderProjectContext(bundle);
     assert.equal(rendered.includes(repository), false);
     assert.equal(rendered.includes("secret-value-"), false);
@@ -9648,13 +9699,20 @@ test("injection-shaped text is data on argument, selection, and clipboard surfac
 
 test("variant selection is blind, hard-failure-aware, and deterministic on ties", () => {
   assert.equal(REVIEW_TOTAL, 100);
-  // Only 2-4 variants are meaningful; anything else means one plain enhancement.
+  // 1 pass is a single enhancement; 2-5 generate that many scored candidates.
   assert.equal(variantCount("0"), 0);
   assert.equal(variantCount("1"), 0);
   assert.equal(variantCount("3"), 3);
-  assert.equal(variantCount("9"), 4);
+  assert.equal(variantCount("5"), 5);
+  assert.equal(variantCount("9"), 5);
   assert.equal(variantCount(undefined), 0);
   assert.equal(variantCount("nonsense"), 0);
+  assert.equal(generationPassCount("0"), 1);
+  assert.equal(generationPassCount("1"), 1);
+  assert.equal(generationPassCount("5"), 5);
+  assert.equal(generationPassCount("9"), 5);
+  assert.equal(generationPassCount(undefined), 1);
+  assert.equal(generationPassCount("nonsense"), 1);
 
   const request = enhancementRequest();
   const record = variantAsEvaluationRecord(request, {

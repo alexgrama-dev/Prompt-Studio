@@ -20,15 +20,27 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { dirname } from "node:path";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   createPrompt,
   deletePrompt,
   duplicatePrompt,
+  enhancementHistoryDigest,
+  enhancementHistoryDirectory,
   listPrompts,
+  listPromptsReadOnly,
   listPromptVersions,
+  promptRecordToDraft,
   resolvePromptDirectory,
   restorePromptVersion,
+  saveEnhancementHistoryToLibrary,
   updatePrompt,
   type InvalidPrompt,
   type PromptRecord,
@@ -86,6 +98,7 @@ import {
   recordLastLibraryPaste,
 } from "./core/last-library-paste";
 import {
+  enhancePromptFromHistoryLaunchContext,
   enhancePromptLibraryLaunchContext,
   fallbackPromptDecision,
   ideaStudioLaunchContext,
@@ -95,9 +108,19 @@ import {
 import {
   browseEmptyState,
   CAPTURE_INBOX_ITEM_ID,
+  ENHANCE_HISTORY_ITEM_ID,
   ENHANCE_PROMPT_ITEM_ID,
+  LIBRARY_GROUP_STORAGE_KEY,
+  LIBRARY_SORT_STORAGE_KEY,
+  NEW_PROMPT_ITEM_ID,
+  organizeLibraryPrompts,
+  parseLibraryGroupMode,
+  parseLibrarySortMode,
   selectedLibraryItemId,
   type BrowseEmptyState,
+  type LibraryGroupMode,
+  type LibraryPromptUsage,
+  type LibrarySortMode,
 } from "./core/browse-state";
 import {
   commaSeparated,
@@ -109,6 +132,13 @@ import {
   listPromptUseFeedback,
 } from "./core/feedback-store";
 import {
+  enhancementHistoryMarkdown,
+  enhancementHistoryMatches,
+  enhancementHistoryRowSummary,
+  enhancementHistoryTimestamp,
+  withHistoryQuality,
+} from "./core/enhancement-history";
+import {
   buildFeedbackRevisionThoughts,
   feedbackRevisionCandidates,
 } from "./core/feedback-revision";
@@ -119,6 +149,8 @@ import {
   pushCaptureInbox,
   pushEnhancePrompt,
 } from "./open-studio-views";
+import { ratePromptQuality } from "./core/google-quality-score";
+import { resolveProviderApiKey } from "./core/provider-keys";
 import PromptFeedback from "./prompt-feedback";
 
 type LibraryFilter =
@@ -148,6 +180,11 @@ export default function BrowsePrompts({
   );
   const [invalid, setInvalid] = useState<InvalidPrompt[]>([]);
   const [filter, setFilter] = useState<LibraryFilter>("current");
+  const [groupMode, setGroupMode] = useState<LibraryGroupMode>("purpose");
+  const [sortMode, setSortMode] = useState<LibrarySortMode>("used");
+  const [usage, setUsage] = useState<Map<string, LibraryPromptUsage>>(
+    () => new Map(),
+  );
   const [searchText, setSearchText] = useState(fallbackText ?? "");
   const [sqliteActive, setSqliteActive] = useState(false);
   const [qmdActive, setQmdActive] = useState(false);
@@ -189,6 +226,11 @@ export default function BrowsePrompts({
       );
       setRecords(library.records);
       setInvalid(library.invalid);
+      try {
+        setUsage(loadPromptUsage());
+      } catch {
+        setUsage(new Map());
+      }
       setSqliteActive(indexIsReady);
       setQmdActive(false);
       setLoading(false);
@@ -240,6 +282,7 @@ export default function BrowsePrompts({
       setRecords([]);
       setInvalid([]);
       setIndexedResults([]);
+      setUsage(new Map());
       setError(message);
       await showToast(Toast.Style.Failure, "Could Not Load Prompts", message);
     } finally {
@@ -256,6 +299,28 @@ export default function BrowsePrompts({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void LocalStorage.getItem<string>(LIBRARY_GROUP_STORAGE_KEY).then(
+      (value) => {
+        setGroupMode(parseLibraryGroupMode(value));
+      },
+    );
+    void LocalStorage.getItem<string>(LIBRARY_SORT_STORAGE_KEY).then(
+      (value) => {
+        setSortMode(parseLibrarySortMode(value));
+      },
+    );
+  }, []);
+
+  const persistGroupMode = useCallback((mode: LibraryGroupMode) => {
+    setGroupMode(mode);
+    void LocalStorage.setItem(LIBRARY_GROUP_STORAGE_KEY, mode);
+  }, []);
+  const persistSortMode = useCallback((mode: LibrarySortMode) => {
+    setSortMode(mode);
+    void LocalStorage.setItem(LIBRARY_SORT_STORAGE_KEY, mode);
+  }, []);
 
   useEffect(() => {
     if (handledFallback.current || loading || error || !fallbackText?.trim()) {
@@ -373,6 +438,33 @@ export default function BrowsePrompts({
     }
     return records.filter((record) => recordMatchesFilter(record, filter));
   }, [filter, indexedResults, records]);
+  const sections = useMemo(
+    () =>
+      organizeLibraryPrompts(visible, {
+        groupMode,
+        sortMode,
+        usage,
+        ...(searchText.trim() && sortMode !== "title"
+          ? { preserveSearchOrder: true }
+          : {}),
+      }),
+    [groupMode, searchText, sortMode, usage, visible],
+  );
+  const arrangedIds = useMemo(
+    () =>
+      sections.flatMap((section) =>
+        section.records.map((record) => record.id),
+      ),
+    [sections],
+  );
+  const arrangementActions = (
+    <LibraryArrangementActions
+      groupMode={groupMode}
+      sortMode={sortMode}
+      onGroupModeChange={persistGroupMode}
+      onSortModeChange={persistSortMode}
+    />
+  );
   const matchesById = useMemo(
     () =>
       new Map(
@@ -414,13 +506,20 @@ export default function BrowsePrompts({
     STUDIO_SCREENS_AVAILABLE &&
     emptyState !== "load-failure" &&
     emptyState !== "empty-library";
+  const showNewPromptRow =
+    Boolean(directory) &&
+    emptyState !== "load-failure" &&
+    emptyState !== "empty-library";
+  const showEnhanceHistoryRow = showNewPromptRow;
   const studioRowIds = [
     ...(showEnhanceRow ? [ENHANCE_PROMPT_ITEM_ID] : []),
     ...(showCaptureRow ? [CAPTURE_INBOX_ITEM_ID] : []),
+    ...(showNewPromptRow ? [NEW_PROMPT_ITEM_ID] : []),
+    ...(showEnhanceHistoryRow ? [ENHANCE_HISTORY_ITEM_ID] : []),
   ];
   const selectedItemId = selectedLibraryItemId(
     selectedPromptId,
-    visible.map((record) => record.id),
+    arrangedIds,
     studioRowIds,
   );
 
@@ -445,7 +544,21 @@ export default function BrowsePrompts({
         <List.Dropdown
           tooltip="Filter Prompts"
           value={filter}
-          onChange={(value) => setFilter(value as LibraryFilter)}
+          onChange={(value) => {
+            if (value.startsWith("group:")) {
+              persistGroupMode(
+                parseLibraryGroupMode(value.slice("group:".length)),
+              );
+              return;
+            }
+            if (value.startsWith("sort:")) {
+              persistSortMode(
+                parseLibrarySortMode(value.slice("sort:".length)),
+              );
+              return;
+            }
+            setFilter(value as LibraryFilter);
+          }}
         >
           <List.Dropdown.Item title="Active Prompts" value="current" />
           <List.Dropdown.Item title="Favorites" value="favorites" />
@@ -480,6 +593,16 @@ export default function BrowsePrompts({
               ))}
             </List.Dropdown.Section>
           ) : null}
+          <List.Dropdown.Section title="Group">
+            <List.Dropdown.Item title="Purpose" value="group:purpose" />
+            <List.Dropdown.Item title="Content" value="group:content" />
+            <List.Dropdown.Item title="No Groups" value="group:none" />
+          </List.Dropdown.Section>
+          <List.Dropdown.Section title="Sort">
+            <List.Dropdown.Item title="Most Used" value="sort:used" />
+            <List.Dropdown.Item title="Recently Updated" value="sort:updated" />
+            <List.Dropdown.Item title="Title" value="sort:title" />
+          </List.Dropdown.Section>
         </List.Dropdown>
       }
     >
@@ -522,31 +645,13 @@ export default function BrowsePrompts({
                 </>
               ) : emptyState === "empty-library" ? (
                 <>
-                  <Action.Push
-                    title={
-                      directory
-                        ? "Save Existing Prompt"
-                        : "Review Prompt Directory"
-                    }
-                    icon={directory ? Icon.Plus : Icon.ExclamationMark}
-                    target={
-                      directory ? (
-                        <CreateFromLibrary
-                          directory={directory}
-                          onCreate={load}
-                        />
-                      ) : (
-                        <Detail
-                          navigationTitle="Prompt Directory"
-                          markdown="# Prompt Directory Is Invalid\n\nUse an absolute path or a path beginning with ~/ in Prompt Studio preferences."
-                        />
-                      )
-                    }
-                  />
+                  <NewPromptAction directory={directory} onCreate={load} />
                   <StudioScreenActions
                     searchText={searchText}
                     fallbackText={fallbackText}
                     enhancementEnabled={enhancementEnabled}
+                    directory={directory}
+                    onCreate={load}
                   />
                 </>
               ) : emptyState === "no-results" ? (
@@ -555,6 +660,8 @@ export default function BrowsePrompts({
                     searchText={searchText}
                     fallbackText={fallbackText}
                     enhancementEnabled={enhancementEnabled}
+                    directory={directory}
+                    onCreate={load}
                   />
                   <Action
                     title="Clear Search"
@@ -574,6 +681,8 @@ export default function BrowsePrompts({
                     searchText={searchText}
                     fallbackText={fallbackText}
                     enhancementEnabled={enhancementEnabled}
+                    directory={directory}
+                    onCreate={load}
                   />
                 </>
               )}
@@ -594,42 +703,76 @@ export default function BrowsePrompts({
               searchText={searchText}
               fallbackText={fallbackText}
               emptyState={emptyState}
+              directory={directory}
+              onCreate={load}
               onClearSearch={() => setSearchText("")}
               onShowAll={() => setFilter("all")}
+              arrangementActions={arrangementActions}
             />
           ) : null}
           {showCaptureRow ? (
             <CaptureInboxListItem
               searchText={searchText}
               emptyState={emptyState}
+              directory={directory}
+              onCreate={load}
               onClearSearch={() => setSearchText("")}
               onShowAll={() => setFilter("all")}
+              arrangementActions={arrangementActions}
+            />
+          ) : null}
+          {showNewPromptRow && directory ? (
+            <NewPromptListItem
+              directory={directory}
+              emptyState={emptyState}
+              onCreate={load}
+              onClearSearch={() => setSearchText("")}
+              onShowAll={() => setFilter("all")}
+              arrangementActions={arrangementActions}
+            />
+          ) : null}
+          {showEnhanceHistoryRow && directory ? (
+            <EnhanceHistoryStudioListItem
+              directory={directory}
+              emptyState={emptyState}
+              enhancementEnabled={enhancementEnabled}
+              onCreate={load}
+              onClearSearch={() => setSearchText("")}
+              onShowAll={() => setFilter("all")}
+              arrangementActions={arrangementActions}
             />
           ) : null}
         </List.Section>
       ) : null}
-      <List.Section title="Prompts" subtitle={`${visible.length}`}>
-        {visible.map((record) => (
-          <PromptItem
-            key={record.id}
-            record={record}
-            searchText={searchText}
-            fallbackText={fallbackText}
-            enhancementEnabled={enhancementEnabled}
-            matchReason={
-              searchText.trim() ? matchesById.get(record.id) : undefined
-            }
-            trackUsage={shouldTrackPromptUsage(sqliteActive)}
-            feedbackState={feedbackState}
-            currentProjectCommit={
-              record.project
-                ? projectCommits.get(record.project.path)
-                : undefined
-            }
-            onReload={load}
-          />
-        ))}
-      </List.Section>
+      {sections.map((section) => (
+        <List.Section
+          key={section.title}
+          title={section.title}
+          subtitle={`${section.records.length}`}
+        >
+          {section.records.map((record) => (
+            <PromptItem
+              key={record.id}
+              record={record}
+              searchText={searchText}
+              fallbackText={fallbackText}
+              enhancementEnabled={enhancementEnabled}
+              matchReason={
+                searchText.trim() ? matchesById.get(record.id) : undefined
+              }
+              trackUsage={shouldTrackPromptUsage(sqliteActive)}
+              feedbackState={feedbackState}
+              currentProjectCommit={
+                record.project
+                  ? projectCommits.get(record.project.path)
+                  : undefined
+              }
+              onReload={load}
+              arrangementActions={arrangementActions}
+            />
+          ))}
+        </List.Section>
+      ))}
       {invalid.length > 0 ? (
         <List.Section title="Needs Repair" subtitle={`${invalid.length}`}>
           {invalid.map((item) => (
@@ -651,18 +794,72 @@ export default function BrowsePrompts({
   );
 }
 
+function LibraryArrangementActions({
+  groupMode,
+  sortMode,
+  onGroupModeChange,
+  onSortModeChange,
+}: {
+  groupMode: LibraryGroupMode;
+  sortMode: LibrarySortMode;
+  onGroupModeChange: (mode: LibraryGroupMode) => void;
+  onSortModeChange: (mode: LibrarySortMode) => void;
+}) {
+  return (
+    <>
+      <Action
+        title="Group by Purpose"
+        icon={groupMode === "purpose" ? Icon.CheckCircle : Icon.Circle}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "g" }}
+        onAction={() => onGroupModeChange("purpose")}
+      />
+      <Action
+        title="Group by Content"
+        icon={groupMode === "content" ? Icon.CheckCircle : Icon.Circle}
+        onAction={() => onGroupModeChange("content")}
+      />
+      <Action
+        title="No Groups"
+        icon={groupMode === "none" ? Icon.CheckCircle : Icon.Circle}
+        onAction={() => onGroupModeChange("none")}
+      />
+      <Action
+        title="Sort by Most Used"
+        icon={sortMode === "used" ? Icon.CheckCircle : Icon.Circle}
+        onAction={() => onSortModeChange("used")}
+      />
+      <Action
+        title="Sort by Recently Updated"
+        icon={sortMode === "updated" ? Icon.CheckCircle : Icon.Circle}
+        onAction={() => onSortModeChange("updated")}
+      />
+      <Action
+        title="Sort by Title"
+        icon={sortMode === "title" ? Icon.CheckCircle : Icon.Circle}
+        onAction={() => onSortModeChange("title")}
+      />
+    </>
+  );
+}
+
 function EnhancePromptListItem({
   searchText,
   fallbackText,
   emptyState,
+  directory,
+  onCreate,
   onClearSearch,
   onShowAll,
+  arrangementActions,
 }: {
   searchText: string;
   fallbackText?: string | undefined;
   emptyState: BrowseEmptyState | undefined;
+  directory: string | undefined;
+  onCreate: () => Promise<void>;
   onClearSearch: () => void;
   onShowAll: () => void;
+  arrangementActions: ReactNode;
 }) {
   const { push } = useNavigation();
   const thoughts = searchText.trim();
@@ -691,6 +888,8 @@ function EnhancePromptListItem({
               )
             }
           />
+          <NewPromptAction directory={directory} onCreate={onCreate} />
+          {arrangementActions}
           <StudioRowExtraActions
             emptyState={emptyState}
             onClearSearch={onClearSearch}
@@ -705,13 +904,19 @@ function EnhancePromptListItem({
 function CaptureInboxListItem({
   searchText,
   emptyState,
+  directory,
+  onCreate,
   onClearSearch,
   onShowAll,
+  arrangementActions,
 }: {
   searchText: string;
   emptyState: BrowseEmptyState | undefined;
+  directory: string | undefined;
+  onCreate: () => Promise<void>;
   onClearSearch: () => void;
   onShowAll: () => void;
+  arrangementActions: ReactNode;
 }) {
   const { push } = useNavigation();
   const thoughts = searchText.trim();
@@ -736,11 +941,328 @@ function CaptureInboxListItem({
               )
             }
           />
+          <NewPromptAction directory={directory} onCreate={onCreate} />
+          {arrangementActions}
           <StudioRowExtraActions
             emptyState={emptyState}
             onClearSearch={onClearSearch}
             onShowAll={onShowAll}
           />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function NewPromptListItem({
+  directory,
+  emptyState,
+  onCreate,
+  onClearSearch,
+  onShowAll,
+  arrangementActions,
+}: {
+  directory: string;
+  emptyState: BrowseEmptyState | undefined;
+  onCreate: () => Promise<void>;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+  arrangementActions: ReactNode;
+}) {
+  return (
+    <List.Item
+      id={NEW_PROMPT_ITEM_ID}
+      icon={Icon.Plus}
+      title="New Prompt"
+      detail={<List.Item.Detail markdown="# New Prompt" />}
+      actions={
+        <ActionPanel>
+          <NewPromptAction directory={directory} onCreate={onCreate} />
+          {arrangementActions}
+          <StudioRowExtraActions
+            emptyState={emptyState}
+            onClearSearch={onClearSearch}
+            onShowAll={onShowAll}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function EnhanceHistoryStudioListItem({
+  directory,
+  emptyState,
+  enhancementEnabled,
+  onCreate,
+  onClearSearch,
+  onShowAll,
+  arrangementActions,
+}: {
+  directory: string;
+  emptyState: BrowseEmptyState | undefined;
+  enhancementEnabled: boolean;
+  onCreate: () => Promise<void>;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+  arrangementActions: ReactNode;
+}) {
+  return (
+    <List.Item
+      id={ENHANCE_HISTORY_ITEM_ID}
+      icon={Icon.Clock}
+      title="Enhance History"
+      detail={<List.Item.Detail markdown="# Enhance History" />}
+      actions={
+        <ActionPanel>
+          <Action.Push
+            title="Enhance History"
+            icon={Icon.Clock}
+            target={
+              <EnhanceHistoryScreen
+                directory={directory}
+                enhancementEnabled={enhancementEnabled}
+                onLibraryChange={onCreate}
+              />
+            }
+          />
+          <NewPromptAction directory={directory} onCreate={onCreate} />
+          {arrangementActions}
+          <StudioRowExtraActions
+            emptyState={emptyState}
+            onClearSearch={onClearSearch}
+            onShowAll={onShowAll}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function EnhanceHistoryListItem({
+  record,
+  directory,
+  savedToLibrary,
+  linkedPromptId,
+  usage,
+  enhancementEnabled,
+  onReload,
+}: {
+  record: PromptRecord;
+  directory: string;
+  savedToLibrary: boolean;
+  linkedPromptId?: string;
+  usage: LibraryPromptUsage | undefined;
+  enhancementEnabled: boolean;
+  onReload: () => Promise<void>;
+}) {
+  const { push } = useNavigation();
+  const quality = record.enhancement?.quality;
+  const used = Boolean(usage);
+  const rowOptions = {
+    savedToLibrary,
+    used,
+    ...(usage ? { useCount: usage.useCount } : {}),
+  };
+  const accessories: List.Item.Accessory[] = [];
+  if (quality) {
+    accessories.push({
+      tag: {
+        value: `${quality.score}/10`,
+        color: quality.score < 7 ? Color.Orange : Color.Green,
+      },
+      tooltip: quality.rationale,
+    });
+  }
+  accessories.push({ date: enhancementHistoryTimestamp(record) });
+
+  async function enhanceAgain() {
+    try {
+      await pushEnhancePrompt(push, {
+        launchContext: enhancePromptFromHistoryLaunchContext(
+          record,
+          linkedPromptId,
+        ),
+      });
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Open Enhance",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async function scoreThisPrompt() {
+    const statuses = await loadFeatureStatuses();
+    if (
+      getFeatureStatus(statuses, "google-provider").effectiveState ===
+      "disabled"
+    ) {
+      await showToast(
+        Toast.Style.Failure,
+        "Google Provider Is Disabled",
+        "Enable Google in Feature Status before scoring.",
+      );
+      return;
+    }
+    const apiKey = resolveProviderApiKey(
+      getPromptStudioPreferences(),
+      "googleApiKey",
+    );
+    if (!apiKey) {
+      await showToast(
+        Toast.Style.Failure,
+        "Google API Key Required",
+        "Add a Google API key in Prompt Studio preferences.",
+      );
+      await openExtensionPreferences();
+      return;
+    }
+    const thoughts = record.seed?.thoughts?.trim() || record.body;
+    const toast = await showToast(
+      Toast.Style.Animated,
+      "Scoring Prompt",
+      "Gemini 3.7 Flash 1-10",
+    );
+    try {
+      const rated = await ratePromptQuality(
+        {
+          roughThoughts: thoughts,
+          enhancedPrompt: record.body,
+          target: record.target,
+        },
+        { apiKey },
+      );
+      await updatePrompt(
+        enhancementHistoryDirectory(directory),
+        record.id,
+        {
+          ...promptRecordToDraft(record),
+          enhancement: withHistoryQuality(record.enhancement, rated),
+        },
+        { syncSearchIndex: false },
+      );
+      toast.style = Toast.Style.Success;
+      toast.title = `Quality ${rated.score}/10`;
+      toast.message = rated.rationale;
+      await onReload();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Could Not Score Prompt";
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async function saveToLibrary() {
+    try {
+      await saveEnhancementHistoryToLibrary(
+        directory,
+        record.id,
+        enhancementHistoryDigest(record),
+      );
+      await showToast(Toast.Style.Success, "Saved to Prompt Library");
+      await onReload();
+    } catch (error) {
+      await showToast(
+        Toast.Style.Failure,
+        "Could Not Save Prompt",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async function pasteHistory() {
+    await closeMainWindow();
+    await Clipboard.paste(record.body);
+    await showHUD("Enhanced Prompt Pasted");
+  }
+
+  return (
+    <List.Item
+      id={record.id}
+      icon={Icon.Clock}
+      title={record.title}
+      subtitle={enhancementHistoryRowSummary(record, rowOptions)}
+      accessories={accessories}
+      detail={
+        <List.Item.Detail
+          markdown={enhancementHistoryMarkdown(record, rowOptions)}
+          metadata={
+            <List.Item.Detail.Metadata>
+              <List.Item.Detail.Metadata.Label
+                title="Saved"
+                text={savedToLibrary ? "Yes" : "No"}
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Used"
+                text={
+                  used
+                    ? usage
+                      ? `Yes (${usage.useCount})`
+                      : "Yes"
+                    : "No"
+                }
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Score"
+                text={quality ? `${quality.score}/10` : "None"}
+              />
+              {quality?.rationale ? (
+                <List.Item.Detail.Metadata.Label
+                  title="Quality reason"
+                  text={quality.rationale}
+                />
+              ) : null}
+              <List.Item.Detail.Metadata.Label
+                title="Model"
+                text={record.enhancement?.model ?? "Unknown"}
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Cost"
+                text={
+                  record.enhancement?.estimatedCostUsd === undefined
+                    ? "Unknown"
+                    : `$${record.enhancement.estimatedCostUsd.toFixed(4)}`
+                }
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Generated"
+                text={enhancementHistoryTimestamp(record).toLocaleString()}
+              />
+            </List.Item.Detail.Metadata>
+          }
+        />
+      }
+      actions={
+        <ActionPanel>
+          {enhancementEnabled ? (
+            <Action
+              title="Enhance Again"
+              icon={Icon.Wand}
+              shortcut={Keyboard.Shortcut.Common.Edit}
+              onAction={() => void enhanceAgain()}
+            />
+          ) : null}
+          <Action
+            title={quality ? "Re-Score This Prompt" : "Score This Prompt"}
+            icon={Icon.Star}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+            onAction={() => void scoreThisPrompt()}
+          />
+          <Action
+            title="Paste in Active App"
+            icon={Icon.ArrowRightCircle}
+            onAction={() => void pasteHistory()}
+          />
+          <Action.CopyToClipboard title="Copy Prompt" content={record.body} />
+          {savedToLibrary ? null : (
+            <Action
+              title="Save to Prompt Library"
+              icon={Icon.CheckCircle}
+              onAction={() => void saveToLibrary()}
+            />
+          )}
         </ActionPanel>
       }
     />
@@ -777,6 +1299,37 @@ function StudioRowExtraActions({
   );
 }
 
+function NewPromptAction({
+  directory,
+  onCreate,
+}: {
+  directory: string | undefined;
+  onCreate: () => Promise<void>;
+}) {
+  if (!directory) {
+    return (
+      <Action.Push
+        title="Review Prompt Directory"
+        icon={Icon.ExclamationMark}
+        target={
+          <Detail
+            navigationTitle="Prompt Directory"
+            markdown="# Prompt Directory Is Invalid\n\nUse an absolute path or a path beginning with ~/ in Prompt Studio preferences."
+          />
+        }
+      />
+    );
+  }
+  return (
+    <Action.Push
+      title="New Prompt"
+      icon={Icon.Plus}
+      shortcut={Keyboard.Shortcut.Common.New}
+      target={<CreateFromLibrary directory={directory} onCreate={onCreate} />}
+    />
+  );
+}
+
 function CreateFromLibrary({
   directory,
   onCreate,
@@ -787,7 +1340,7 @@ function CreateFromLibrary({
   const { pop } = useNavigation();
   return (
     <PromptForm
-      navigationTitle="Save Existing Prompt"
+      navigationTitle="New Prompt"
       submitTitle="Save Unchanged"
       onSubmit={async (values) => {
         await createPrompt(directory, {
@@ -807,21 +1360,133 @@ function CreateFromLibrary({
   );
 }
 
+function EnhanceHistoryScreen({
+  directory,
+  enhancementEnabled,
+  onLibraryChange,
+}: {
+  directory: string;
+  enhancementEnabled: boolean;
+  onLibraryChange: () => Promise<void>;
+}) {
+  const [history, setHistory] = useState<PromptRecord[]>([]);
+  const [library, setLibrary] = useState<PromptRecord[]>([]);
+  const [usage, setUsage] = useState<Map<string, LibraryPromptUsage>>(
+    () => new Map(),
+  );
+  const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    let listedRecords: PromptRecord[] = [];
+    try {
+      listedRecords = (await listPromptsReadOnly(directory)).records;
+    } catch {
+      listedRecords = [];
+    }
+    let historyRecords: PromptRecord[] = [];
+    try {
+      historyRecords = (
+        await listPromptsReadOnly(enhancementHistoryDirectory(directory))
+      ).records;
+    } catch {
+      historyRecords = [];
+    }
+    setLibrary(listedRecords);
+    setHistory(historyRecords);
+    try {
+      setUsage(loadPromptUsage());
+    } catch {
+      setUsage(new Map());
+    }
+    setLoading(false);
+  }, [directory]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const libraryByHistoryId = useMemo(() => {
+    const map = new Map<string, PromptRecord>();
+    for (const record of library) {
+      if (record.enhancementHistory) {
+        map.set(record.enhancementHistory.id, record);
+      }
+    }
+    return map;
+  }, [library]);
+  const visibleHistory = useMemo(
+    () =>
+      history.filter((record) =>
+        enhancementHistoryMatches(record, searchText),
+      ),
+    [history, searchText],
+  );
+
+  async function reloadAll() {
+    await load();
+    await onLibraryChange();
+  }
+
+  return (
+    <List
+      isLoading={loading}
+      isShowingDetail={visibleHistory.length > 0}
+      filtering={false}
+      navigationTitle="Enhance History"
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
+      throttle
+      searchBarPlaceholder="Search enhance history…"
+    >
+      {!loading && visibleHistory.length === 0 ? (
+        <List.EmptyView
+          icon={Icon.Clock}
+          title={
+            searchText.trim()
+              ? "No Matching History"
+              : "No Enhance History"
+          }
+        />
+      ) : null}
+      {visibleHistory.map((record) => {
+        const linked = libraryByHistoryId.get(record.id);
+        return (
+          <EnhanceHistoryListItem
+            key={record.id}
+            record={record}
+            directory={directory}
+            savedToLibrary={Boolean(linked)}
+            {...(linked ? { linkedPromptId: linked.id } : {})}
+            usage={linked ? usage.get(linked.id) : undefined}
+            enhancementEnabled={enhancementEnabled}
+            onReload={reloadAll}
+          />
+        );
+      })}
+    </List>
+  );
+}
+
 function StudioScreenActions({
   searchText,
   fallbackText,
   enhancementEnabled,
+  directory,
+  onCreate,
 }: {
   searchText: string;
   fallbackText?: string | undefined;
   enhancementEnabled: boolean;
+  directory: string | undefined;
+  onCreate: () => Promise<void>;
 }) {
   const { push } = useNavigation();
   const thoughts = searchText.trim();
-  if (!STUDIO_SCREENS_AVAILABLE) return null;
   return (
     <>
-      {enhancementEnabled ? (
+      {STUDIO_SCREENS_AVAILABLE && enhancementEnabled ? (
         <Action
           title="Enhance Prompt"
           icon={Icon.Wand}
@@ -840,17 +1505,22 @@ function StudioScreenActions({
           }
         />
       ) : null}
-      <Action
-        title="Open Capture Inbox"
-        icon={Icon.LightBulb}
-        shortcut={{ modifiers: ["cmd"], key: "i" }}
-        onAction={() =>
-          void pushCaptureInbox(
-            push,
-            thoughts ? { launchContext: ideaStudioLaunchContext(thoughts) } : {},
-          )
-        }
-      />
+      {STUDIO_SCREENS_AVAILABLE ? (
+        <Action
+          title="Open Capture Inbox"
+          icon={Icon.LightBulb}
+          shortcut={{ modifiers: ["cmd"], key: "i" }}
+          onAction={() =>
+            void pushCaptureInbox(
+              push,
+              thoughts
+                ? { launchContext: ideaStudioLaunchContext(thoughts) }
+                : {},
+            )
+          }
+        />
+      ) : null}
+      <NewPromptAction directory={directory} onCreate={onCreate} />
     </>
   );
 }
@@ -865,6 +1535,7 @@ function PromptItem({
   feedbackState,
   currentProjectCommit,
   onReload,
+  arrangementActions,
 }: {
   record: PromptRecord;
   searchText: string;
@@ -875,6 +1546,7 @@ function PromptItem({
   feedbackState: FeatureState;
   currentProjectCommit: string | undefined;
   onReload: () => Promise<void>;
+  arrangementActions: ReactNode;
 }) {
   const { push } = useNavigation();
   const directory = dirname(record.filePath);
@@ -1001,129 +1673,106 @@ function PromptItem({
             searchText={searchText}
             fallbackText={fallbackText}
             enhancementEnabled={enhancementEnabled}
+            directory={directory}
+            onCreate={onReload}
           />
-          <ActionPanel.Submenu
-            title="Manage Prompt"
+          {arrangementActions}
+          <Action.Push
+            title="Edit Prompt"
             icon={Icon.Pencil}
-            shortcut={{ modifiers: ["cmd"], key: "m" }}
-          >
-            <Action.Push
-              title="Edit Prompt"
-              icon={Icon.Pencil}
-              shortcut={Keyboard.Shortcut.Common.Edit}
-              target={<EditPrompt record={record} onReload={onReload} />}
-            />
-            <Action.Push
-              title="Save Existing Prompt"
-              icon={Icon.Plus}
-              shortcut={Keyboard.Shortcut.Common.New}
-              target={
-                <CreateFromLibrary directory={directory} onCreate={onReload} />
-              }
-            />
-            <Action
-              title={
-                record.favorite ? "Remove from Favorites" : "Add to Favorites"
-              }
-              icon={Icon.Star}
-              shortcut={Keyboard.Shortcut.Common.Pin}
-              onAction={() => updateFlags({ favorite: !record.favorite })}
-            />
-            <Action
-              title={record.archivedAt ? "Unarchive Prompt" : "Archive Prompt"}
-              icon={Icon.Tray}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
-              onAction={() => updateFlags({ archived: !record.archivedAt })}
-            />
-            <Action
-              title="Duplicate Prompt"
-              icon={Icon.Duplicate}
-              shortcut={Keyboard.Shortcut.Common.Duplicate}
-              onAction={duplicate}
-            />
-            <Action
-              title="Delete Prompt"
-              icon={Icon.Trash}
-              style={Action.Style.Destructive}
-              shortcut={Keyboard.Shortcut.Common.Remove}
-              onAction={remove}
-            />
-          </ActionPanel.Submenu>
-          <ActionPanel.Submenu
-            title="Review & Improve"
-            icon={Icon.Eye}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
-          >
-            <Action.Push
-              title="View Version History"
-              icon={Icon.Clock}
-              shortcut={{ modifiers: ["cmd"], key: "h" }}
-              target={
-                <VersionHistory
-                  directory={directory}
-                  record={record}
-                  onRestore={onReload}
-                />
-              }
-            />
-            {feedbackEnabled ? (
-              <>
-                <Action.Push
-                  title="Record Prompt Feedback"
-                  icon={Icon.Gauge}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "f" }}
-                  target={
-                    <CreateFeedback
-                      directory={directory}
-                      record={record}
-                      currentProjectCommit={currentProjectCommit}
-                    />
-                  }
-                />
-                <Action.Push
-                  title="Review Prompt Feedback"
-                  icon={Icon.Eye}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
-                  target={<PromptFeedback />}
-                />
-                <Action
-                  title="Improve from Feedback"
-                  icon={Icon.Wand}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
-                  onAction={improveFromFeedback}
-                />
-              </>
-            ) : null}
-          </ActionPanel.Submenu>
-          <ActionPanel.Submenu
-            title="Settings & Status"
+            shortcut={Keyboard.Shortcut.Common.Edit}
+            target={<EditPrompt record={record} onReload={onReload} />}
+          />
+          <Action
+            title={
+              record.favorite ? "Remove from Favorites" : "Add to Favorites"
+            }
+            icon={Icon.Star}
+            shortcut={Keyboard.Shortcut.Common.Pin}
+            onAction={() => updateFlags({ favorite: !record.favorite })}
+          />
+          <Action
+            title={record.archivedAt ? "Unarchive Prompt" : "Archive Prompt"}
+            icon={Icon.Tray}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
+            onAction={() => updateFlags({ archived: !record.archivedAt })}
+          />
+          <Action
+            title="Duplicate Prompt"
+            icon={Icon.Duplicate}
+            shortcut={Keyboard.Shortcut.Common.Duplicate}
+            onAction={duplicate}
+          />
+          <Action.Push
+            title="View Version History"
+            icon={Icon.Clock}
+            shortcut={{ modifiers: ["cmd"], key: "h" }}
+            target={
+              <VersionHistory
+                directory={directory}
+                record={record}
+                onRestore={onReload}
+              />
+            }
+          />
+          {feedbackEnabled ? (
+            <>
+              <Action.Push
+                title="Record Prompt Feedback"
+                icon={Icon.Gauge}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "f" }}
+                target={
+                  <CreateFeedback
+                    directory={directory}
+                    record={record}
+                    currentProjectCommit={currentProjectCommit}
+                  />
+                }
+              />
+              <Action.Push
+                title="Review Prompt Feedback"
+                icon={Icon.Eye}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+                target={<PromptFeedback />}
+              />
+              <Action
+                title="Improve from Feedback"
+                icon={Icon.Wand}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
+                onAction={improveFromFeedback}
+              />
+            </>
+          ) : null}
+          <Action.Push
+            title="Prompt Studio Status"
+            icon={Icon.Gauge}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
+            target={<FeatureStatus />}
+          />
+          <Action
+            title="Open Extension Preferences"
             icon={Icon.Gear}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
-          >
-            <Action.Push
-              title="Prompt Studio Status"
-              icon={Icon.Gauge}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
-              target={<FeatureStatus />}
-            />
-            <Action
-              title="Open Extension Preferences"
-              icon={Icon.Gear}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
-              onAction={openExtensionPreferences}
-            />
-            <Action.ShowInFinder
-              title="Show Prompt in Finder"
-              path={record.filePath}
-              shortcut={Keyboard.Shortcut.Common.OpenWith}
-            />
-            <Action
-              title="Reload Prompt Library"
-              icon={Icon.ArrowClockwise}
-              shortcut={Keyboard.Shortcut.Common.Refresh}
-              onAction={onReload}
-            />
-          </ActionPanel.Submenu>
+            shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+            onAction={openExtensionPreferences}
+          />
+          <Action.ShowInFinder
+            title="Show Prompt in Finder"
+            path={record.filePath}
+            shortcut={Keyboard.Shortcut.Common.OpenWith}
+          />
+          <Action
+            title="Reload Prompt Library"
+            icon={Icon.ArrowClockwise}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
+            onAction={onReload}
+          />
+          <Action
+            title="Delete Prompt"
+            icon={Icon.Trash}
+            style={Action.Style.Destructive}
+            shortcut={Keyboard.Shortcut.Common.Remove}
+            onAction={remove}
+          />
         </ActionPanel>
       }
     />

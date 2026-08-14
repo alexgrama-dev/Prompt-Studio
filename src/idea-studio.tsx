@@ -476,61 +476,55 @@ function IdeaActions({
           <EditIdeaForm directory={directory} idea={idea} onSaved={onReload} />
         }
       />
-      <ActionPanel.Submenu
-        title="More Actions…"
-        icon={Icon.Ellipsis}
-        shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
-      >
-        <Action.CopyToClipboard
-          title="Copy Item"
-          content={idea.body}
-          shortcut={Keyboard.Shortcut.Common.Copy}
-        />
-        <Action
-          title="Enhance Item"
-          icon={Icon.Wand}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
-          onAction={enhance}
-        />
-        <Action
-          title={idea.ideaTitle ? "Regenerate AI Title" : "Generate AI Title"}
-          icon={Icon.Stars}
-          shortcut={{ modifiers: ["cmd"], key: "g" }}
-          onAction={generateTitle}
-        />
-        <Action.Push
-          title="Convert to Prompt"
-          icon={Icon.Document}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
-          target={
-            <ConvertToPromptForm
-              directory={directory}
-              item={idea}
-              onSaved={onReload}
-            />
-          }
-        />
-        <Action.Push
-          title="Capture Item"
-          icon={Icon.Plus}
-          shortcut={Keyboard.Shortcut.Common.New}
-          target={<CreateIdeaForm directory={directory} onSaved={onReload} />}
-        />
-        <Action
-          title="Capture Clipboard"
-          icon={Icon.Clipboard}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
-          onAction={captureClipboard}
-        />
-        <Action.Push
-          title="Review Exact Duplicates"
-          icon={Icon.MagnifyingGlass}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
-          target={
-            <DuplicateReview directory={directory} onChanged={onReload} />
-          }
-        />
-      </ActionPanel.Submenu>
+      <Action.CopyToClipboard
+        title="Copy Item"
+        content={idea.body}
+        shortcut={Keyboard.Shortcut.Common.Copy}
+      />
+      <Action
+        title="Enhance Item"
+        icon={Icon.Wand}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+        onAction={enhance}
+      />
+      <Action
+        title={idea.ideaTitle ? "Regenerate AI Title" : "Generate AI Title"}
+        icon={Icon.Stars}
+        shortcut={{ modifiers: ["cmd"], key: "g" }}
+        onAction={generateTitle}
+      />
+      <Action.Push
+        title="Convert to Prompt"
+        icon={Icon.Document}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
+        target={
+          <ConvertToPromptForm
+            directory={directory}
+            item={idea}
+            onSaved={onReload}
+          />
+        }
+      />
+      <Action.Push
+        title="Capture Item"
+        icon={Icon.Plus}
+        shortcut={Keyboard.Shortcut.Common.New}
+        target={<CreateIdeaForm directory={directory} onSaved={onReload} />}
+      />
+      <Action
+        title="Capture Clipboard"
+        icon={Icon.Clipboard}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+        onAction={captureClipboard}
+      />
+      <Action.Push
+        title="Review Exact Duplicates"
+        icon={Icon.MagnifyingGlass}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
+        target={
+          <DuplicateReview directory={directory} onChanged={onReload} />
+        }
+      />
       <Action
         title="Delete Item"
         icon={Icon.Trash}
@@ -1086,28 +1080,22 @@ function InvalidIdeaItem({
       }
       actions={
         <ActionPanel>
-          <ActionPanel.Submenu
-            title="Repair"
-            icon={Icon.WrenchScrewdriver}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
-          >
-            <Action.Open
-              title="Open Capture File"
-              target={item.filePath}
-              shortcut={Keyboard.Shortcut.Common.Open}
-            />
-            <Action.ShowInFinder
-              title="Show Capture in Finder"
-              path={item.filePath}
-              shortcut={Keyboard.Shortcut.Common.OpenWith}
-            />
-            <Action
-              title="Reload Capture Inbox"
-              icon={Icon.ArrowClockwise}
-              shortcut={Keyboard.Shortcut.Common.Refresh}
-              onAction={onReload}
-            />
-          </ActionPanel.Submenu>
+          <Action.Open
+            title="Open Capture File"
+            target={item.filePath}
+            shortcut={Keyboard.Shortcut.Common.Open}
+          />
+          <Action.ShowInFinder
+            title="Show Capture in Finder"
+            path={item.filePath}
+            shortcut={Keyboard.Shortcut.Common.OpenWith}
+          />
+          <Action
+            title="Reload Capture Inbox"
+            icon={Icon.ArrowClockwise}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
+            onAction={onReload}
+          />
         </ActionPanel>
       }
     />

@@ -23,7 +23,7 @@ type ExtensionPreferences = {
   /** Quality - Runs a second model pass that reviews the compiled prompt against your original thoughts. Roughly doubles the enhancement cost. */
   "selfReviewPass": boolean,
   /**  - Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each. */
-  "variantCount": "0" | "2" | "3" | "4",
+  "variantCount": "1" | "2" | "3" | "4" | "5",
   /** Anthropic API Key - Read only after you start an Anthropic enhancement; leave blank to type a one-run key each time */
   "anthropicApiKey"?: string,
   /** Google API Key - Read only after you start a Google enhancement; leave blank to type a one-run key each time */

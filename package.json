@@ -101,25 +101,29 @@
       "name": "variantCount",
       "type": "dropdown",
       "required": false,
-      "title": "",
-      "description": "Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each.",
-      "default": "3",
+      "title": "Default Passes",
+      "description": "How many Enhance candidates to generate when the form opens. You can change Passes on the form for one run.",
+      "default": "1",
       "data": [
         {
-          "title": "Off — one enhancement",
-          "value": "0"
+          "title": "1 pass",
+          "value": "1"
         },
         {
-          "title": "2 variants, judged",
+          "title": "2 passes",
           "value": "2"
         },
         {
-          "title": "3 variants, judged",
+          "title": "3 passes",
           "value": "3"
         },
         {
-          "title": "4 variants, judged",
+          "title": "4 passes",
           "value": "4"
+        },
+        {
+          "title": "5 passes",
+          "value": "5"
         }
       ]
     },

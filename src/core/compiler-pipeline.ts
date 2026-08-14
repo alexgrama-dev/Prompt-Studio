@@ -63,6 +63,7 @@ export interface TaskLabel {
 export interface Gap {
   bucket: GapBucket;
   detail: string;
+  question?: string;
 }
 
 export interface ElicitationPlan {
@@ -200,12 +201,25 @@ export function analyzeGaps(
     gaps.push({
       bucket: "blocking",
       detail: "Expected versus actual behavior is unnamed.",
+      question: "What Happens Now, and What Should Happen?",
+    });
+  }
+  if (
+    label.verifiability === "human-only" &&
+    label.class !== "documentation" &&
+    label.class !== "investigation"
+  ) {
+    gaps.push({
+      bucket: "inferable",
+      detail:
+        "Propose one named test, command, or visible check that proves the work is done. Mark it proposed if the user did not name it.",
     });
   }
   if (label.class === "design-ui" && /\b(ugly|mess|less ugly)\b/i.test(text)) {
     gaps.push({
       bucket: "blocking",
       detail: "Acceptance look is unnamed. Do not invent a design system.",
+      question: "What Should the Result Look Like?",
     });
   }
   if (label.certainty === "discovery-first") {
@@ -228,12 +242,12 @@ export function elicitationPolicy(gaps: readonly Gap[], confidence: number): Eli
   if (blocking.length === 0 && confidence >= 0.6) {
     return { questions: [], skipAssumptions: [] };
   }
-  const questions = blocking.map((gap) => gap.detail);
+  const questions = blocking.map((gap) => gap.question ?? gap.detail);
   const skipAssumptions = blocking.map(
     (gap) => `If unanswered, list this as missingInformation: ${gap.detail}`,
   );
   if (confidence < 0.6 && questions.length === 0) {
-    questions.push("Confirm the task class before assuming an implementation plan.");
+    questions.push("What Kind of Task Is This?");
     skipAssumptions.push(
       "If unanswered, keep the prompt diagnostic and list the class as missingInformation.",
     );
@@ -274,7 +288,7 @@ export function compilerGapAddendum(
   label: TaskLabel,
   gaps: readonly Gap[],
   elicitation: ElicitationPlan,
-  options: { elicitationAsked?: boolean } = {},
+  options: { elicitationAsked?: boolean; elicitationSkipped?: boolean } = {},
 ): string {
   const lines = [
     `Task class (rules, confidence ${label.confidence.toFixed(2)}): ${label.class}; scope ${label.scope}; certainty ${label.certainty}; risk ${label.risk}; verifiability ${label.verifiability}.`,
@@ -288,10 +302,21 @@ export function compilerGapAddendum(
       lines.push(`Blocking gap: ${gap.detail} Do not guess. List it in missingInformation.`);
     }
   }
-  if (elicitation.questions.length > 0 && !options.elicitationAsked) {
-    lines.push(
-      `Elicitation is off on this path. ${elicitation.skipAssumptions.join(" ")}`,
-    );
+  const skipped = options.elicitationSkipped === true;
+  const unanswered =
+    elicitation.questions.length > 0 &&
+    (!options.elicitationAsked || skipped);
+  if (unanswered) {
+    if (skipped) {
+      lines.push(
+        "The user skipped the pre-generate questions. Do not invent expected versus actual. List those holes in missingInformation.",
+      );
+      lines.push(...elicitation.skipAssumptions);
+    } else {
+      lines.push(
+        `Elicitation is off on this path. ${elicitation.skipAssumptions.join(" ")} Do not invent expected versus actual.`,
+      );
+    }
   }
   return lines.join("\n");
 }

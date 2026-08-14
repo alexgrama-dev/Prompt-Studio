@@ -15,6 +15,7 @@ const MAX_EXCERPT_BYTES = 10_000;
 const MAX_REMOTE_TRANSFER_BYTES = 3_000_000;
 const EXCERPT_CONTEXT_LINES = 6;
 const MAX_EXCERPT_MATCHES = 8;
+const MAX_RELEVANT_FILES = 8;
 const MAX_DISCOVERY_DEPTH = 3;
 const SKIPPED_DIRECTORIES = new Set([
   ".git",
@@ -400,7 +401,12 @@ export async function collectProjectContext(
     ...(commit ? { commit } : {}),
   };
   const validationCommands = await collectValidationCommands(repository, files);
-  const matchedFiles = await relevantFiles(repository, files, roughThoughts);
+  const matchedFiles = await relevantFiles(
+    repository,
+    files,
+    roughThoughts,
+    changes,
+  );
   const relevantTokens = searchTokens(roughThoughts);
   const relevantUncommittedChanges = selectRelevantChanges(
     changes,
@@ -696,13 +702,14 @@ async function run(
   command: string,
   args: string[],
   cwd?: string,
+  timeoutMs = 15_000,
 ): Promise<string> {
   const result = await runFile(command, args, {
     ...(cwd ? { cwd } : {}),
     encoding: "utf8",
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     maxBuffer: 5 * 1024 * 1024,
-    timeout: 15_000,
+    timeout: timeoutMs,
   });
   return result.stdout;
 }
@@ -893,15 +900,22 @@ async function topLevelStructure(
 }
 
 async function runSsh(host: string, command: string): Promise<string> {
-  return run("/usr/bin/ssh", [
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=5",
-    "--",
-    host,
-    command,
-  ]);
+  return run(
+    "/usr/bin/ssh",
+    [
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "ConnectionAttempts=1",
+      "--",
+      host,
+      command,
+    ],
+    undefined,
+    60_000,
+  );
 }
 
 async function remoteRun(
@@ -918,13 +932,20 @@ async function remoteRun(
   );
 }
 
+export function remoteNodeInvocation(script: string, args: string[]): string {
+  const node =
+    'export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; command -v node >/dev/null 2>&1 || exit 127; node';
+  const invocation = ["-e", script, ...args].map(shellArgument).join(" ");
+  return `${node} ${invocation}`;
+}
+
 async function remoteNode(
   host: string,
   runner: SshRunner,
   script: string,
   args: string[],
 ): Promise<string> {
-  return remoteRun(host, runner, "node", ["-e", script, ...args]);
+  return runner(host, remoteNodeInvocation(script, args));
 }
 
 async function remoteRealpath(
@@ -1002,42 +1023,120 @@ async function relevantFiles(
   repository: RepositoryHandle,
   files: string[],
   roughThoughts: string,
+  changes: string[],
 ): Promise<string[]> {
   const tokens = searchTokens(roughThoughts);
-  if (tokens.length === 0) return [];
-  const pathMatches = files.filter((path) => {
-    const lower = path.toLowerCase();
-    return tokens.some((token) => lower.includes(token));
-  });
+  const named = namedFileCandidates(roughThoughts, files);
+  const dirty = changePaths(changes).filter((path) => files.includes(path));
+  const strongTokens = strongSearchTokens(tokens);
+  const pathMatches = files.filter((path) =>
+    strongPathMatch(path, strongTokens.length > 0 ? strongTokens : tokens),
+  );
   let contentMatches: string[] = [];
-  try {
-    const args = [
-      "--files-with-matches",
-      "--ignore-case",
-      "--fixed-strings",
-      "--no-messages",
-      "--max-count",
-      "1",
-      ...tokens.flatMap((token) => ["-e", token]),
-      ...[...SKIPPED_DIRECTORIES].flatMap((name) => ["--glob", `!${name}/**`]),
-      ".",
-    ];
-    contentMatches = (await repositoryRun(repository, "rg", args))
-      .split(/\r?\n/)
-      .map((path) => normalizeRelativePath(path.replace(/^\.\//, "")))
-      .filter(
-        (path): path is string => path !== undefined && files.includes(path),
-      );
-  } catch {
-    // No match or no rg. Path matches still provide a bounded fallback.
+  if (strongTokens.length > 0) {
+    try {
+      const args = [
+        "--files-with-matches",
+        "--ignore-case",
+        "--fixed-strings",
+        "--no-messages",
+        "--max-count",
+        "1",
+        ...strongTokens.flatMap((token) => ["-e", token]),
+        ...[...SKIPPED_DIRECTORIES].flatMap((name) => ["--glob", `!${name}/**`]),
+        ".",
+      ];
+      contentMatches = (await repositoryRun(repository, "rg", args))
+        .split(/\r?\n/)
+        .map((path) => normalizeRelativePath(path.replace(/^\.\//, "")))
+        .filter(
+          (path): path is string => path !== undefined && files.includes(path),
+        );
+    } catch {
+      // No match or no rg. Named paths and git changes still provide a bounded set.
+    }
   }
-  return [...new Set([...pathMatches, ...contentMatches])]
+  const ranked = [...new Set([...named, ...dirty, ...pathMatches, ...contentMatches])]
     .sort(
       (left, right) =>
-        relevantPathScore(right, tokens) - relevantPathScore(left, tokens) ||
+        relevantFileRank(right, named, dirty, tokens) -
+          relevantFileRank(left, named, dirty, tokens) ||
         left.localeCompare(right),
     )
-    .slice(0, 30);
+    .slice(0, MAX_RELEVANT_FILES);
+  return ranked.filter(
+    (path) =>
+      named.includes(path) ||
+      dirty.includes(path) ||
+      relevantPathScore(path, tokens) > 0,
+  );
+}
+
+function namedFileCandidates(thoughts: string, files: string[]): string[] {
+  const named = new Set<string>();
+  const pathHits =
+    thoughts.match(
+      /(?:[\w.-]+\/)+[\w.-]+\.(?:cjs|go|java|js|json|jsx|kt|md|mjs|py|rb|rs|swift|ts|tsx|yaml|yml)/gi,
+    ) ?? [];
+  for (const hit of pathHits) {
+    const lower = hit.toLowerCase();
+    const match = files.find(
+      (path) =>
+        path.toLowerCase() === lower || path.toLowerCase().endsWith(`/${lower}`),
+    );
+    if (match) named.add(match);
+  }
+  for (const path of files) {
+    const base = basename(path);
+    const stem = base.replace(/\.[^.]+$/, "");
+    if (stem.length < 5) continue;
+    const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|[^\\w.-])${escaped}(?:$|[^\\w.-])`, "i").test(thoughts)) {
+      named.add(path);
+    }
+  }
+  return [...named];
+}
+
+function changePaths(changes: string[]): string[] {
+  const paths: string[] = [];
+  for (const line of changes) {
+    const raw = line.slice(3).split(" -> ").at(-1)?.replace(/^"|"$/g, "") ?? "";
+    const path = normalizeRelativePath(raw);
+    if (path) paths.push(path);
+  }
+  return paths;
+}
+
+function strongSearchTokens(tokens: string[]): string[] {
+  return tokens.filter(
+    (token) => token.length >= 8 || /[_./-]/.test(token) || /\d/.test(token),
+  );
+}
+
+function strongPathMatch(path: string, tokens: string[]): boolean {
+  if (tokens.length === 0) return false;
+  const lower = path.toLowerCase();
+  const base = basename(lower);
+  const stem = base.replace(/\.[^.]+$/, "");
+  return tokens.some((token) => {
+    if (token.includes("/") || token.includes(".")) {
+      return lower.includes(token);
+    }
+    return stem === token || base === token || stem.includes(token);
+  });
+}
+
+function relevantFileRank(
+  path: string,
+  named: string[],
+  dirty: string[],
+  tokens: string[],
+): number {
+  let score = relevantPathScore(path, tokens);
+  if (named.includes(path)) score += 1_000;
+  if (dirty.includes(path)) score += 400;
+  return score;
 }
 
 function searchTokens(value: string): string[] {
@@ -1060,6 +1159,7 @@ function searchTokens(value: string): string[] {
     "implementation",
     "improve",
     "improvement",
+    "inspect",
     "make",
     "modify",
     "preserve",
@@ -1099,7 +1199,7 @@ function relevantPathScore(path: string, tokens: string[]): number {
     /\.(?:c|cc|cpp|cs|go|h|hpp|java|js|jsx|kt|php|py|rb|rs|svelte|swift|ts|tsx|vue)$/.test(
       lower,
     )
-      ? 100
+      ? 20
       : 0;
   const verificationPenalty = lower.startsWith("docs/verification/") ? 80 : 0;
   return directMatchScore + sourceScore - verificationPenalty;

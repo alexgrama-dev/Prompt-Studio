@@ -60,6 +60,15 @@ export interface PromptTaxonomy {
   workflows: string[];
 }
 
+export interface EnhancementQualityProvenance {
+  score: number;
+  rationale: string;
+  model: string;
+  estimatedCostUsd?: number;
+}
+
+export type EnhancementGenerationRole = "winner" | "candidate";
+
 export interface EnhancementProvenance {
   provider: "openai" | "anthropic" | "google" | "deepseek";
   profileId: string;
@@ -68,6 +77,11 @@ export interface EnhancementProvenance {
   compilerVersion: string;
   outputSchemaVersion: number;
   generatedAt: string;
+  quality?: EnhancementQualityProvenance;
+  generationRole?: EnhancementGenerationRole;
+  generationPass?: number;
+  generationPassCount?: number;
+  estimatedCostUsd?: number;
 }
 
 export interface IdeaTitleProvenance {
@@ -1050,7 +1064,7 @@ function enhancementProvenance(value: unknown): EnhancementProvenance {
       "enhancement.outputSchemaVersion must be a positive integer.",
     );
   }
-  return {
+  const provenance: EnhancementProvenance = {
     provider: provider as EnhancementProvenance["provider"],
     profileId: requiredString(value.profileId, "enhancement.profileId"),
     model: requiredString(value.model, "enhancement.model"),
@@ -1065,6 +1079,51 @@ function enhancementProvenance(value: unknown): EnhancementProvenance {
     outputSchemaVersion,
     generatedAt: timestamp(value.generatedAt, "enhancement.generatedAt"),
   };
+  if (value.quality !== undefined) {
+    provenance.quality = enhancementQuality(value.quality);
+  }
+  if (value.generationRole !== undefined) {
+    const role = requiredString(value.generationRole, "enhancement.generationRole");
+    if (role !== "winner" && role !== "candidate") {
+      throw new Error("enhancement.generationRole must be winner or candidate.");
+    }
+    provenance.generationRole = role;
+  }
+  if (value.generationPass !== undefined) {
+    provenance.generationPass = positiveInteger(
+      value.generationPass,
+      "enhancement.generationPass",
+    );
+  }
+  if (value.generationPassCount !== undefined) {
+    provenance.generationPassCount = positiveInteger(
+      value.generationPassCount,
+      "enhancement.generationPassCount",
+    );
+  }
+  if (value.estimatedCostUsd !== undefined) {
+    provenance.estimatedCostUsd = nonNegativeNumber(
+      value.estimatedCostUsd,
+      "enhancement.estimatedCostUsd",
+    );
+  }
+  return provenance;
+}
+
+function enhancementQuality(value: unknown): EnhancementQualityProvenance {
+  if (!isObject(value)) throw new Error("enhancement.quality must be an object.");
+  const quality: EnhancementQualityProvenance = {
+    score: qualityScoreValue(value.score, "enhancement.quality.score"),
+    rationale: requiredString(value.rationale, "enhancement.quality.rationale"),
+    model: requiredString(value.model, "enhancement.quality.model"),
+  };
+  if (value.estimatedCostUsd !== undefined) {
+    quality.estimatedCostUsd = nonNegativeNumber(
+      value.estimatedCostUsd,
+      "enhancement.quality.estimatedCostUsd",
+    );
+  }
+  return quality;
 }
 
 function ideaTitleProvenance(value: unknown): IdeaTitleProvenance {
@@ -1308,6 +1367,35 @@ function timestamp(value: unknown, field: string): string {
   if (Number.isNaN(Date.parse(result)))
     throw new Error(`${field} must be an ISO timestamp.`);
   return result;
+}
+
+function positiveInteger(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`${field} must be a positive integer.`);
+  }
+  return value;
+}
+
+function nonNegativeNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative number.`);
+  }
+  return value;
+}
+
+function qualityScoreValue(value: unknown, field: string): number {
+  const score =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(score)) throw new Error(`${field} must be a number.`);
+  const rounded = Math.round(score);
+  if (rounded < 1 || rounded > 10) {
+    throw new Error(`${field} must be an integer from 1 to 10.`);
+  }
+  return rounded;
 }
 
 function booleanValue(value: unknown, field: string): boolean {

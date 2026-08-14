@@ -35,6 +35,7 @@ import {
   attachCompilerCritique,
   enhancementResultToPromptDraft,
   validateEnhancementResult,
+  type EnhancementHistoryExtras,
   type EnhancementRequest,
   type EnhancementResearchLevel,
   type EnhancementResult,
@@ -52,6 +53,7 @@ import {
 } from "./core/enhancement-completion";
 import {
   restorableEnhancementFormDraft,
+  type EnhanceQualityScoreMode,
   type EnhancementFormDraft,
 } from "./core/enhancement-form-draft";
 import {
@@ -147,6 +149,14 @@ import {
 } from "./core/enhance-last-setup";
 import { recallSimilarPrompts } from "./core/similar-prompts";
 import {
+  recallOutcomeLessons,
+} from "./core/outcome-lessons";
+import {
+  classifyQualityFollowup,
+  rewriteInstructionFromQuality,
+} from "./core/quality-followup";
+import { listPromptUseFeedback } from "./core/feedback-store";
+import {
   antiPatternSaveError,
 } from "./core/anti-patterns";
 import { pushCaptureInbox } from "./open-studio-views";
@@ -170,8 +180,11 @@ import {
   type WebResearchPlan,
   type WebResearchResult,
 } from "./core/web-research";
-import { maximumJudgeCostUsd } from "./core/evaluation-judge";
-import { maximumV2JudgeCostUsd } from "./core/evaluation-judge-v2";
+import {
+  maximumGeminiQualityCostUsd,
+  ratePromptQuality,
+  type GeminiQualityScore,
+} from "./core/google-quality-score";
 import { findDuplicateCandidates } from "./core/overlap";
 import { ProjectContextCache } from "./core/ambient";
 
@@ -182,6 +195,10 @@ import { buildRevisionRequest, diffLines, renderDiff } from "./core/revision";
 import {
   MIN_VARIANTS,
   REVIEW_TOTAL,
+  generationPassCount,
+  geminiQualityReview,
+  isGeminiQualityReview,
+  rankVariants,
   selectBestVariant,
   variantCount,
   variantReviewSummary,
@@ -206,13 +223,15 @@ function providerApiKeyForRequest(
 function RevisionForm({
   request,
   run,
+  initialInstruction = "",
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
+  initialInstruction?: string;
 }) {
   const { push } = useNavigation();
   const preferences = getPreferenceValues<Preferences>();
-  const [instruction, setInstruction] = useState("");
+  const [instruction, setInstruction] = useState(initialInstruction);
   const [isRunning, setIsRunning] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
 
@@ -262,6 +281,15 @@ function RevisionForm({
           ...runShape(revisionRequest, run.profile),
           cost: { model: revised.usage.estimatedCostUsd },
         });
+        void recordEnhancementHistory(
+          revisionDirectory,
+          enhancementResultToPromptDraft(
+            revised,
+            revisionRequest,
+            { thoughts: request.roughThoughts },
+            historyExtrasFromQuality(revised, undefined, "winner"),
+          ),
+        ).catch(() => undefined);
       }
       push(
         <RevisionDiff
@@ -358,7 +386,9 @@ function RevisionDiff({
   );
 }
 
-/** Ranked variants with the blind judge's score and the defects it deducted for. */
+const PROJECT_FOLDER_VALUE = "__choose-folder__";
+const PROJECT_REFRESH_VALUE = "__refresh__";
+
 function VariantComparison({
   selection,
   onChoose,
@@ -367,12 +397,14 @@ function VariantComparison({
   onChoose: (variant: ScoredVariant) => Promise<void>;
 }) {
   const [isChoosing, setIsChoosing] = useState(false);
+  const scoreMaximum =
+    selection.judgeRubric === "gemini-10" ? 10 : REVIEW_TOTAL;
   const markdown = [
     "# Compare Variants",
     `**Nothing is saved yet.** ${selection.ranked.length} candidates were generated from the same request and scored blind — the judge never saw which run produced which.`,
     `**Cost so far:** $${selection.enhancementCostUsd.toFixed(4)} generation · $${selection.judgeCostUsd.toFixed(4)} judging`,
     ...selection.ranked.flatMap((variant, position) => [
-      `## ${position === 0 ? "Winner · " : ""}Variant ${variant.index + 1} — ${variant.score}/${REVIEW_TOTAL}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
+      `## ${position === 0 ? "Winner · " : ""}Variant ${variant.index + 1} — ${variant.score}/${scoreMaximum}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
       variantReviewSummary(variant.review),
       variant.review.notes
         ? `**Judge notes:** ${escapeMarkdown(variant.review.notes)}`
@@ -428,25 +460,76 @@ function safePromptDirectory(): string | undefined {
   }
 }
 
-async function recallSimilarFromLibrary(
+async function recallEnhanceContext(
   request: EnhancementRequest,
 ): Promise<EnhancementRequest> {
-  if (request.similarPromptExamples) return request;
+  if (request.similarPromptExamples && request.outcomeLessons) return request;
   const directory = safePromptDirectory();
-  if (!directory) return { ...request, similarPromptExamples: [] };
-  try {
-    const library = await listPromptsReadOnly(directory);
+  if (!directory) {
     return {
       ...request,
-      similarPromptExamples: recallSimilarPrompts(
-        library.records,
-        request.roughThoughts,
-        { target: request.target },
-      ),
+      similarPromptExamples: request.similarPromptExamples ?? [],
+      outcomeLessons: request.outcomeLessons ?? [],
     };
-  } catch {
-    return { ...request, similarPromptExamples: [] };
   }
+  try {
+    const [library, feedback, statuses] = await Promise.all([
+      request.similarPromptExamples
+        ? Promise.resolve(undefined)
+        : listPromptsReadOnly(directory),
+      request.outcomeLessons
+        ? Promise.resolve(undefined)
+        : listPromptUseFeedback(directory).catch(() => undefined),
+      loadFeatureStatuses(),
+    ]);
+    const similarPromptExamples =
+      request.similarPromptExamples ??
+      recallSimilarPrompts(library?.records ?? [], request.roughThoughts, {
+        target: request.target,
+      });
+    const feedbackEnabled =
+      getFeatureStatus(statuses, "feedback").effectiveState !== "disabled";
+    const outcomeLessons =
+      request.outcomeLessons ??
+      (feedbackEnabled && feedback
+        ? recallOutcomeLessons(feedback.records)
+        : []);
+    return { ...request, similarPromptExamples, outcomeLessons };
+  } catch {
+    return {
+      ...request,
+      similarPromptExamples: request.similarPromptExamples ?? [],
+      outcomeLessons: request.outcomeLessons ?? [],
+    };
+  }
+}
+
+function historyExtrasFromQuality(
+  run: EnhancementRun,
+  quality: GeminiQualityScore | undefined,
+  role: "winner" | "candidate",
+  pass?: { index: number; count: number },
+): EnhancementHistoryExtras {
+  return {
+    generationRole: role,
+    estimatedCostUsd: run.usage.estimatedCostUsd,
+    ...(pass
+      ? {
+          generationPass: pass.index + 1,
+          generationPassCount: pass.count,
+        }
+      : {}),
+    ...(quality
+      ? {
+          quality: {
+            score: quality.score,
+            rationale: quality.rationale,
+            model: quality.model,
+            estimatedCostUsd: quality.estimatedCostUsd,
+          },
+        }
+      : {}),
+  };
 }
 
 function ElicitationForm({
@@ -458,39 +541,49 @@ function ElicitationForm({
   onContinue: (answers: ElicitationAnswer[]) => Promise<void>;
   onSkip: () => Promise<void>;
 }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { pop } = useNavigation();
+  const [answers, setAnswers] = useState<string[]>(() =>
+    questions.map(() => ""),
+  );
 
-  async function submit(values: Record<string, string>) {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      await onContinue(
-        questions.map((question, index) => ({
-          question,
-          answer: String(values[`q${index}`] ?? ""),
-        })),
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+  function continueWithAnswers() {
+    const submitted = questions.map((question, index) => ({
+      question,
+      answer: answers[index] ?? "",
+    }));
+    pop();
+    void onContinue(submitted);
+  }
+
+  function skip() {
+    pop();
+    void onSkip();
   }
 
   return (
     <Form
-      isLoading={isSubmitting}
       navigationTitle="Before Enhance"
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Continue"
-            onSubmit={(values) => void submit(values)}
-          />
-          <Action title="Skip" onAction={() => void onSkip()} />
+          <Action title="Continue" onAction={continueWithAnswers} />
+          <Action title="Skip" onAction={skip} />
         </ActionPanel>
       }
     >
       {questions.map((question, index) => (
-        <Form.TextArea key={question} id={`q${index}`} title={question} />
+        <Form.TextArea
+          key={question}
+          id={`q${index}`}
+          title={question}
+          value={answers[index] ?? ""}
+          onChange={(value) => {
+            setAnswers((current) => {
+              const next = [...current];
+              next[index] = value;
+              return next;
+            });
+          }}
+        />
       ))}
     </Form>
   );
@@ -561,6 +654,8 @@ interface EnhancementFormValues {
   profileId: SelectableEnhancementProfileId;
   researchLevel: EnhancementResearchLevel;
   oneRunInstruction: string;
+  passCount?: string;
+  qualityScore?: string;
 }
 
 interface EditorValues {
@@ -576,6 +671,9 @@ interface PendingEnhancement {
   directory: string;
   seed: PromptSeedReference;
   completion: PendingEnhancementHistory;
+  quality?: GeminiQualityScore;
+  fromComparison?: boolean;
+  passHistory?: PromptRecord[];
 }
 
 const RECENT_PROJECTS_KEY = "prompt-studio.recent-projects.v1";
@@ -730,12 +828,24 @@ function EnhancementWorkspace({
   const [profileId, setProfileId] = useState<
     EnhancementFormValues["profileId"]
   >(() =>
-    resolveDefaultEnhancementProfileId(preferences.defaultEnhancementProfile, {
-      anthropic: anthropicState,
-      google: googleState,
-      deepseek: deepseekState,
-    }),
+    resolveDefaultEnhancementProfileId(
+      googleState !== "disabled"
+        ? "google-gemini-3.7-flash-v1"
+        : preferences.defaultEnhancementProfile,
+      {
+        anthropic: anthropicState,
+        google: googleState,
+        deepseek: deepseekState,
+      },
+    ),
   );
+  const [passCount, setPassCount] = useState(() =>
+    String(generationPassCount(preferences.variantCount)),
+  );
+  const [qualityScore, setQualityScore] = useState<EnhanceQualityScoreMode>(
+    () => (googleState === "disabled" ? "off" : "gemini-3.7"),
+  );
+  const [evidenceChoice, setEvidenceChoice] = useState("none");
   const [researchLevel, setResearchLevel] =
     useState<EnhancementResearchLevel>("none");
   const [roughThoughts, setRoughThoughts] = useState(() =>
@@ -752,10 +862,11 @@ function EnhancementWorkspace({
   const [projects, setProjects] = useState<DiscoveredProject[]>([]);
   const [recentProjectPaths, setRecentProjectPaths] = useState<string[]>([]);
   const [projectDiscoveryLoading, setProjectDiscoveryLoading] = useState(false);
-  const [projectDiscoveryError, setProjectDiscoveryError] = useState<string>();
   const [project, setProject] = useState("none");
   const [repositoryFolder, setRepositoryFolder] = useState<string[]>([]);
-  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(
+    projectContextState !== "disabled",
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluationReport, setEvaluationReport] =
@@ -773,22 +884,31 @@ function EnhancementWorkspace({
   >();
   const [formHydrated, setFormHydrated] = useState(false);
   const effectiveProfileId = profileId;
-  const effectiveResearchLevel = setupMode === "smart" ? "none" : researchLevel;
+  const effectiveResearchLevel = researchLevel;
   const profile = getProviderEnhancementProfile(effectiveProfileId);
-  const profileAvailable = enhancementProfileIsAvailable(profileId, {
-    anthropic: anthropicState,
-    google: googleState,
-    deepseek: deepseekState,
-  });
   const estimatedCost = useMemo(
-    () =>
-      estimatedProviderMaximumCostUsd({
+    () => {
+      const passes = generationPassCount(passCount);
+      const generate = estimatedProviderMaximumCostUsd({
         roughThoughts: roughThoughts || "placeholder",
         target: "generic",
         profileId: effectiveProfileId,
         researchLevel: effectiveResearchLevel,
-      }),
-    [effectiveProfileId, effectiveResearchLevel, roughThoughts],
+      });
+      const quality =
+        qualityScore === "gemini-3.7" && googleState !== "disabled"
+          ? maximumGeminiQualityCostUsd(passes)
+          : 0;
+      return generate * passes + quality;
+    },
+    [
+      effectiveProfileId,
+      effectiveResearchLevel,
+      googleState,
+      passCount,
+      qualityScore,
+      roughThoughts,
+    ],
   );
   const projectGroups = useMemo(
     () => groupDiscoveredProjects(projects, recentProjectPaths),
@@ -817,6 +937,8 @@ function EnhancementWorkspace({
           setProfileId(draft.profileId);
           setResearchLevel(draft.researchLevel);
           setOneRunInstruction(draft.oneRunInstruction);
+          setPassCount(draft.passCount);
+          setQualityScore(draft.qualityScore);
           setActiveSeed(
             draft.seedId
               ? { id: draft.seedId, thoughts: draft.roughThoughts }
@@ -844,6 +966,8 @@ function EnhancementWorkspace({
       profileId,
       researchLevel,
       oneRunInstruction,
+      passCount,
+      qualityScore,
       ...(activeSeed?.id ? { seedId: activeSeed.id } : {}),
     };
     void LocalStorage.setItem(
@@ -853,8 +977,10 @@ function EnhancementWorkspace({
   }, [
     oneRunInstruction,
     activeSeed?.id,
+    passCount,
     profileId,
     project,
+    qualityScore,
     repositoryFolder,
     researchLevel,
     roughThoughts,
@@ -899,14 +1025,30 @@ function EnhancementWorkspace({
               ]
             : []),
           ...(remote.status === "rejected"
-            ? ["Mac Mini is unavailable over SSH. Local projects still work."]
+            ? [
+                `Mac Mini SSH failed. ${
+                  remote.reason instanceof Error
+                    ? remote.reason.message
+                    : String(remote.reason)
+                }`.slice(0, 180),
+              ]
             : []),
         ];
-        setProjectDiscoveryError(failures.join(" "));
+        if (refresh && failures.length > 0) {
+          await showToast(
+            Toast.Style.Failure,
+            "Project Discovery Incomplete",
+            failures.join(" "),
+          );
+        }
       } catch (error) {
-        setProjectDiscoveryError(
-          error instanceof Error ? error.message : String(error),
-        );
+        if (refresh) {
+          await showToast(
+            Toast.Style.Failure,
+            "Project Discovery Incomplete",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       } finally {
         projectDiscoveryLoadingRef.current = false;
         setProjectDiscoveryLoading(false);
@@ -946,14 +1088,69 @@ function EnhancementWorkspace({
       });
   }, []);
 
+  async function insertSelectedEvidence() {
+    try {
+      const text = await getSelectedText();
+      if (!text?.trim()) {
+        await showToast(
+          Toast.Style.Failure,
+          "No Selected Text",
+          "Select text, then insert it as untrusted evidence.",
+        );
+        return;
+      }
+      setRoughThoughts((current) =>
+        appendUntrustedEvidence(
+          applyCaptureFence(current, untrustedSurface),
+          text,
+          "selection",
+        ),
+      );
+      setUntrustedSurface(undefined);
+      setActiveSeed(undefined);
+    } catch {
+      await showToast(
+        Toast.Style.Failure,
+        "No Selected Text",
+        "Select text, then insert it as untrusted evidence.",
+      );
+    }
+  }
+
+  async function insertClipboardEvidence() {
+    const text = await Clipboard.readText();
+    if (!text?.trim()) {
+      await showToast(
+        Toast.Style.Failure,
+        "Clipboard Has No Plain Text",
+        "Copy text, then insert it as untrusted evidence.",
+      );
+      return;
+    }
+    setRoughThoughts((current) =>
+      appendUntrustedEvidence(
+        applyCaptureFence(current, untrustedSurface),
+        text,
+        "clipboard",
+      ),
+    );
+    setUntrustedSurface(undefined);
+    setActiveSeed(undefined);
+  }
+
   async function submit(values: EnhancementFormValues) {
+    if (isLoading || activeController.current) return;
     values = {
       ...values,
       setupMode,
       profileId,
-      researchLevel: setupMode === "smart" ? "none" : researchLevel,
-      oneRunInstruction:
-        setupMode === "smart" ? "" : (values.oneRunInstruction ?? ""),
+      researchLevel,
+      oneRunInstruction: values.oneRunInstruction ?? oneRunInstruction,
+      project:
+        values.project === PROJECT_FOLDER_VALUE ||
+        values.project === PROJECT_REFRESH_VALUE
+          ? project
+          : values.project,
     };
     const explicitlySelectedRepository =
       values.repositoryFolder?.[0]?.trim() || undefined;
@@ -1456,7 +1653,7 @@ function EnhancementWorkspace({
             questions={stages.elicitation.questions}
             onContinue={async (answers) => {
               await runEnhancement(
-                await recallSimilarFromLibrary({
+                await recallEnhanceContext({
                   ...request,
                   roughThoughts: applyElicitationAnswers(
                     request.roughThoughts,
@@ -1468,9 +1665,10 @@ function EnhancementWorkspace({
             }}
             onSkip={async () => {
               await runEnhancement(
-                await recallSimilarFromLibrary({
+                await recallEnhanceContext({
                   ...request,
                   elicitationAsked: true,
+                  elicitationSkipped: true,
                 }),
               );
             }}
@@ -1480,8 +1678,8 @@ function EnhancementWorkspace({
       }
       request = { ...request, elicitationAsked: true };
     }
-    if (!request.similarPromptExamples) {
-      request = await recallSimilarFromLibrary(request);
+    if (!request.similarPromptExamples || !request.outcomeLessons) {
+      request = await recallEnhanceContext(request);
     }
     const selectedProfile = getProviderEnhancementProfile(
       request.profileId as SelectableEnhancementProfileId,
@@ -1527,7 +1725,7 @@ function EnhancementWorkspace({
     const toast = await showToast(
       Toast.Style.Animated,
       "Enhancing Prompt",
-      `${selectedProfile.title} · ${selectedProfile.passes === 2 ? "two passes" : "one pass"}`,
+      `${selectedProfile.title} · ${passCount} ${passCount === "1" ? "pass" : "passes"}`,
     );
     const startedAt = Date.now();
     try {
@@ -1537,47 +1735,43 @@ function EnhancementWorkspace({
       const effectiveRequest = compilerPolicy
         ? { ...request, compilerPolicy }
         : request;
-      const variants = variantCount(preferences.variantCount);
+      const passes = generationPassCount(passCount);
+      const qualityOn =
+        qualityScore === "gemini-3.7" && googleState !== "disabled";
+      const qualityKey = qualityOn
+        ? selectedProfile.provider === "google"
+          ? apiKey
+          : resolveProviderApiKey(preferences, "googleApiKey")
+        : undefined;
+      if (qualityOn && !qualityKey) {
+        throw new Error(
+          "Gemini 3.7 Flash quality scoring needs a Google API key. Add it, or set Quality to Off.",
+        );
+      }
+      const variants = variantCount(passes);
       let run: EnhancementRun;
       let selection: VariantSelection | undefined;
+      let quality: GeminiQualityScore | undefined;
+      const generated: EnhancementVariant[] = [];
       if (variants < MIN_VARIANTS) {
         run = await dispatchEnhancement(effectiveRequest, {
           apiKey,
           signal: controller.signal,
         });
-      } else {
-        const judgeKey =
-          resolveProviderApiKey(preferences, "anthropicApiKey") ||
-          resolveProviderApiKey(preferences, "openaiApiKey");
-        if (!judgeKey) {
-          throw new Error(
-            "Variant selection needs an Anthropic API key or an OpenAI API key for the blind judge. Add one, or set Variants to Off.",
+        if (qualityKey) {
+          toast.message = "Scoring with Gemini 3.7 Flash";
+          quality = await ratePromptQuality(
+            {
+              roughThoughts: effectiveRequest.roughThoughts,
+              enhancedPrompt: run.result.enhancedPrompt,
+              target: effectiveRequest.target,
+            },
+            { apiKey: qualityKey, signal: controller.signal },
           );
         }
-        const judgeRubric = resolveProviderApiKey(preferences, "anthropicApiKey") ? "v2" : "v1";
-        const perRun = estimatedProviderMaximumCostUsd(effectiveRequest);
-        const ceiling =
-          perRun * variants +
-          (judgeRubric === "v2"
-            ? maximumV2JudgeCostUsd(variants)
-            : maximumJudgeCostUsd(variants));
-        const confirmed = await confirmAlert({
-          title: `Generate ${variants} variants?`,
-          message: `Each variant is a separate ${providerDisplayName(effectiveRequest)} request, and each is then scored by a blind judge. Maximum total cost: $${ceiling.toFixed(3)}.`,
-          primaryAction: {
-            title: `Generate Up to $${ceiling.toFixed(3)}`,
-            style: Alert.ActionStyle.Default,
-          },
-        });
-        if (!confirmed) {
-          toast.style = Toast.Style.Failure;
-          toast.title = "Variant Generation Cancelled";
-          toast.message = "No model request was made.";
-          return;
-        }
-        const generated: EnhancementVariant[] = [];
+      } else {
         for (let index = 0; index < variants; index += 1) {
-          toast.message = `Variant ${index + 1} of ${variants}`;
+          toast.message = `Pass ${index + 1} of ${variants}`;
           generated.push({
             index,
             run: await dispatchEnhancement(effectiveRequest, {
@@ -1586,13 +1780,59 @@ function EnhancementWorkspace({
             }),
           });
         }
-        toast.message = `Scoring ${variants} variants`;
-        selection = await selectBestVariant(effectiveRequest, generated, {
-          apiKey: judgeKey,
-          signal: controller.signal,
-          rubric: judgeRubric,
-        });
-        run = selection.winner.run;
+        if (qualityKey) {
+          toast.message = `Scoring ${variants} passes with Gemini 3.7 Flash`;
+          const scored: ScoredVariant[] = [];
+          for (const variant of generated) {
+            const rated = await ratePromptQuality(
+              {
+                roughThoughts: effectiveRequest.roughThoughts,
+                enhancedPrompt: variant.run.result.enhancedPrompt,
+                target: effectiveRequest.target,
+              },
+              { apiKey: qualityKey, signal: controller.signal },
+            );
+            scored.push({
+              ...variant,
+              score: rated.score,
+              judgeCostUsd: rated.estimatedCostUsd,
+              review: geminiQualityReview(rated.score, rated.rationale),
+            });
+          }
+          selection = rankVariants(scored, "gemini-10");
+          run = selection.winner.run;
+          const winnerReview = selection.winner.review;
+          if (isGeminiQualityReview(winnerReview)) {
+            quality = {
+              score: winnerReview.score,
+              rationale: winnerReview.rationale,
+              estimatedCostUsd: selection.judgeCostUsd,
+              model: "gemini-3.7-flash",
+            };
+          }
+        } else {
+          const judgeKey =
+            resolveProviderApiKey(preferences, "anthropicApiKey") ||
+            resolveProviderApiKey(preferences, "openaiApiKey");
+          if (!judgeKey) {
+            throw new Error(
+              "Multiple passes need Gemini quality scoring or an Anthropic/OpenAI judge key.",
+            );
+          }
+          const judgeRubric = resolveProviderApiKey(
+            preferences,
+            "anthropicApiKey",
+          )
+            ? "v2"
+            : "v1";
+          toast.message = `Scoring ${variants} passes`;
+          selection = await selectBestVariant(effectiveRequest, generated, {
+            apiKey: judgeKey,
+            signal: controller.signal,
+            rubric: judgeRubric,
+          });
+          run = selection.winner.run;
+        }
       }
       const directory = resolvePromptDirectory(preferences.libraryDirectory);
       const seed: PromptSeedReference = {
@@ -1602,29 +1842,61 @@ function EnhancementWorkspace({
           ? { id: activeSeed.id }
           : {}),
       };
+      const passHistory: PromptRecord[] = [];
+      if (generated.length > 0) {
+        toast.message = "Saving Enhancement History";
+        const winnerIndex = selection?.winner.index ?? 0;
+        try {
+          for (const variant of generated) {
+            const scored = selection?.ranked.find(
+              (item) => item.index === variant.index,
+            );
+            const variantQuality =
+              scored && isGeminiQualityReview(scored.review)
+                ? {
+                    score: scored.review.score,
+                    rationale: scored.review.rationale,
+                    estimatedCostUsd: scored.judgeCostUsd,
+                    model: "gemini-3.7-flash",
+                  }
+                : variant.index === winnerIndex
+                  ? quality
+                  : undefined;
+            passHistory.push(
+              await recordEnhancementHistory(
+                directory,
+                enhancementResultToPromptDraft(
+                  variant.run,
+                  effectiveRequest,
+                  seed,
+                  historyExtrasFromQuality(
+                    variant.run,
+                    variantQuality,
+                    variant.index === winnerIndex ? "winner" : "candidate",
+                    { index: variant.index, count: generated.length },
+                  ),
+                ),
+              ),
+            );
+          }
+        } catch (historyError) {
+          toast.message =
+            historyError instanceof Error
+              ? historyError.message
+              : String(historyError);
+        }
+      }
+      const winnerHistory = passHistory[selection?.winner.index ?? 0];
       const pending: PendingEnhancement = {
         request: effectiveRequest,
         run,
         directory,
         seed,
-        completion: {},
+        completion: winnerHistory ? { history: winnerHistory } : {},
+        ...(quality ? { quality } : {}),
+        ...(passHistory.length > 0 ? { passHistory } : {}),
       };
       setPendingEnhancement(pending);
-      if (selection) {
-        push(
-          <VariantComparison
-            selection={selection}
-            onChoose={async (chosen) => {
-              const chosenPending: PendingEnhancement = {
-                ...pending,
-                run: chosen.run,
-              };
-              setPendingEnhancement(chosenPending);
-              await completeEnhancement(chosenPending);
-            }}
-          />,
-        );
-      }
       await recordRun(directory, {
         status: "ok",
         stage: "enhancement",
@@ -1641,7 +1913,41 @@ function EnhancementWorkspace({
           outputTokens: run.usage.outputTokens,
         },
       });
-      if (!selection) await completeEnhancement(pending, toast);
+      if (selection) {
+        setIsLoading(false);
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        push(
+          <VariantComparison
+            selection={selection}
+            onChoose={async (chosen) => {
+              const chosenQuality = isGeminiQualityReview(chosen.review)
+                ? {
+                    score: chosen.review.score,
+                    rationale: chosen.review.rationale,
+                    estimatedCostUsd: chosen.judgeCostUsd,
+                    model: "gemini-3.7-flash",
+                  }
+                : pending.quality;
+              const chosenHistory = pending.passHistory?.[chosen.index];
+              const chosenPending: PendingEnhancement = {
+                ...pending,
+                run: chosen.run,
+                fromComparison: true,
+                completion: chosenHistory
+                  ? { history: chosenHistory }
+                  : pending.completion,
+                ...(chosenQuality ? { quality: chosenQuality } : {}),
+              };
+              setPendingEnhancement(chosenPending);
+              await completeEnhancement(chosenPending);
+            }}
+          />,
+        );
+      } else {
+        await completeEnhancement(pending, toast);
+      }
     } catch (error) {
       const cancelled = enhancementRunWasCancelled(error, controller.signal);
       toast.style = Toast.Style.Failure;
@@ -1684,9 +1990,23 @@ function EnhancementWorkspace({
               pending.run,
               pending.request,
               pending.seed,
+              historyExtrasFromQuality(
+                pending.run,
+                pending.quality,
+                "winner",
+              ),
             ),
           ),
-        () => LocalStorage.removeItem(ENHANCEMENT_FORM_DRAFT_KEY),
+        () => {
+          const followup = pending.quality
+            ? classifyQualityFollowup(
+                pending.quality.score,
+                pending.quality.rationale,
+              )
+            : undefined;
+          if (followup?.low) return Promise.resolve();
+          return LocalStorage.removeItem(ENHANCEMENT_FORM_DRAFT_KEY);
+        },
       );
       await LocalStorage.setItem(
         ENHANCE_LAST_SETUP_KEY,
@@ -1699,6 +2019,10 @@ function EnhancementWorkspace({
       toast.style = Toast.Style.Success;
       toast.title = "Enhancement Ready";
       toast.message = "Saved to Enhancement History.";
+      setIsLoading(false);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
       push(
         <EnhancementPreview
           request={pending.request}
@@ -1707,6 +2031,8 @@ function EnhancementWorkspace({
           history={history}
           revisionOfPromptId={revisionOfPromptId}
           seed={pending.seed}
+          fromComparison={pending.fromComparison === true}
+          {...(pending.quality ? { quality: pending.quality } : {})}
         />,
       );
     } catch (error) {
@@ -1883,10 +2209,23 @@ function EnhancementWorkspace({
       navigationTitle={`Enhance Prompt · ${title(state)}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
+          <Action
             title="Enhance Prompt"
             icon={Icon.Wand}
-            onSubmit={submit}
+            onAction={() =>
+              void submit({
+                roughThoughts,
+                target,
+                project,
+                setupMode,
+                profileId,
+                researchLevel,
+                oneRunInstruction,
+                passCount,
+                qualityScore,
+                ...(repositoryFolder.length > 0 ? { repositoryFolder } : {}),
+              })
+            }
           />
           {pendingEnhancement ? (
             <Action
@@ -1906,203 +2245,137 @@ function EnhancementWorkspace({
           <Action
             title="Insert Selected Text as Evidence"
             icon={Icon.TextCursor}
-            onAction={() => {
-              void getSelectedText()
-                .then((text) => {
-                  if (!text?.trim()) {
-                    return showToast(
-                      Toast.Style.Failure,
-                      "No Selected Text",
-                      "Select text, then insert it as untrusted evidence.",
-                    );
-                  }
-                  setRoughThoughts((current) =>
-                    appendUntrustedEvidence(
-                      applyCaptureFence(current, untrustedSurface),
-                      text,
-                      "selection",
-                    ),
-                  );
-                  setUntrustedSurface(undefined);
-                  setActiveSeed(undefined);
-                  return undefined;
-                })
-                .catch(() =>
-                  showToast(
-                    Toast.Style.Failure,
-                    "No Selected Text",
-                    "Select text, then insert it as untrusted evidence.",
-                  ),
-                );
-            }}
+            onAction={() => void insertSelectedEvidence()}
           />
           <Action
             title="Insert Clipboard as Evidence"
             icon={Icon.Clipboard}
-            onAction={() => {
-              void Clipboard.readText().then((text) => {
-                if (!text?.trim()) {
-                  return showToast(
-                    Toast.Style.Failure,
-                    "Clipboard Has No Plain Text",
-                    "Copy text, then insert it as untrusted evidence.",
-                  );
-                }
-                setRoughThoughts((current) =>
-                  appendUntrustedEvidence(
-                    applyCaptureFence(current, untrustedSurface),
-                    text,
-                    "clipboard",
-                  ),
-                );
-                setUntrustedSurface(undefined);
-                setActiveSeed(undefined);
-                return undefined;
-              });
-            }}
+            onAction={() => void insertClipboardEvidence()}
           />
-          <ActionPanel.Submenu
-            title="Setup & Context"
-            icon={Icon.Folder}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
-          >
+          <Action
+            title={
+              setupMode === "smart"
+                ? "Customize Enhancement"
+                : "Use Smart Defaults"
+            }
+            icon={setupMode === "smart" ? Icon.Gear : Icon.Wand}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "u" }}
+            onAction={() =>
+              setSetupMode(setupMode === "smart" ? "custom" : "smart")
+            }
+          />
+          {projectContextState !== "disabled" && !showFolderPicker ? (
             <Action
-              title={
-                setupMode === "smart"
-                  ? "Customize Enhancement"
-                  : "Use Smart Defaults"
-              }
-              icon={setupMode === "smart" ? Icon.Gear : Icon.Wand}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "u" }}
-              onAction={() =>
-                setSetupMode(setupMode === "smart" ? "custom" : "smart")
-              }
+              title="Choose Project Folder"
+              icon={Icon.Folder}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "j" }}
+              onAction={() => setShowFolderPicker(true)}
             />
-            {projectContextState !== "disabled" && !showFolderPicker ? (
-              <Action
-                title="Choose Project Folder"
-                icon={Icon.Folder}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "j" }}
-                onAction={() => setShowFolderPicker(true)}
-              />
-            ) : null}
-            {projectContextState !== "disabled" ? (
-              <Action
-                title="Refresh Projects"
-                icon={Icon.ArrowClockwise}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
-                onAction={() => loadProjects(true)}
-              />
-            ) : null}
-            <Action.Push
-              title="Review Cost and Privacy"
-              icon={Icon.Shield}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
-              target={
-                <Detail
-                  navigationTitle="Enhancement Setup"
-                  markdown={enhancementSetupMarkdown(
-                    profile,
-                    estimatedCost,
-                    effectiveResearchLevel,
-                  )}
-                />
-              }
-            />
-          </ActionPanel.Submenu>
-          <ActionPanel.Submenu
-            title="History & Captures"
-            icon={Icon.Bookmark}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "w" }}
-          >
+          ) : null}
+          {projectContextState !== "disabled" ? (
             <Action
-              title="Open Capture Inbox"
-              icon={Icon.LightBulb}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
-              onAction={() =>
-                void pushCaptureInbox(push, {
-                  launchContext: ideaStudioLaunchContext(
-                    roughThoughts,
-                    target,
-                  ),
-                })
-              }
+              title="Refresh Projects"
+              icon={Icon.ArrowClockwise}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
+              onAction={() => loadProjects(true)}
             />
-            <Action.Push
-              title="Enhancement History"
-              icon={Icon.Clock}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
-              target={
-                <EnhancementHistory
-                  directory={resolvePromptDirectory(
-                    preferences.libraryDirectory,
-                  )}
-                />
-              }
-            />
-          </ActionPanel.Submenu>
-          <ActionPanel.Submenu
-            title="Settings & Quality"
+          ) : null}
+          <Action.Push
+            title="Review Cost and Privacy"
+            icon={Icon.Shield}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
+            target={
+              <Detail
+                navigationTitle="Enhancement Setup"
+                markdown={enhancementSetupMarkdown(
+                  profile,
+                  estimatedCost,
+                  effectiveResearchLevel,
+                )}
+              />
+            }
+          />
+          <Action
+            title="Open Capture Inbox"
+            icon={Icon.LightBulb}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
+            onAction={() =>
+              void pushCaptureInbox(push, {
+                launchContext: ideaStudioLaunchContext(
+                  roughThoughts,
+                  target,
+                ),
+              })
+            }
+          />
+          <Action.Push
+            title="Enhancement History"
+            icon={Icon.Clock}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
+            target={
+              <EnhancementHistory
+                directory={resolvePromptDirectory(
+                  preferences.libraryDirectory,
+                )}
+              />
+            }
+          />
+          <Action.Push
+            title="Advanced Provider"
             icon={Icon.Gear}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "y" }}
-          >
-            <Action.Push
-              title="Advanced Provider"
-              icon={Icon.Gear}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
-              target={
-                <AdvancedProviderSelection
-                  selected={profileId}
-                  anthropicState={anthropicState}
-                  googleState={googleState}
-                  deepseekState={deepseekState}
-                  onSelect={setProfileId}
-                />
-              }
-            />
-            {isEvaluating ? (
-              <Action
-                title="Cancel Quality Evaluation"
-                icon={Icon.XMarkCircle}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
-                onAction={() => evaluationController.current?.abort()}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
+            target={
+              <AdvancedProviderSelection
+                selected={profileId}
+                anthropicState={anthropicState}
+                googleState={googleState}
+                deepseekState={deepseekState}
+                onSelect={setProfileId}
               />
-            ) : (
-              <Action
-                title={`Run ${profile.title} Quality Evaluation`}
-                icon={Icon.Gauge}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
-                onAction={runActivationEvaluation}
-              />
-            )}
-            {evaluationReport ? (
-              <>
-                <Action.Push
-                  title="Review Quality Evaluation"
-                  icon={Icon.Eye}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
-                  target={<EvaluationReview path={evaluationReport.path} />}
-                />
-                <Action.ShowInFinder
-                  title="Show Latest Evaluation Report"
-                  path={evaluationReport.path}
-                  shortcut={Keyboard.Shortcut.Common.OpenWith}
-                />
-              </>
-            ) : null}
-            <Action.Push
-              title="Prompt Studio Status"
-              icon={Icon.Gauge}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
-              target={<FeatureStatus />}
-            />
+            }
+          />
+          {isEvaluating ? (
             <Action
-              title="Open Extension Preferences"
-              icon={Icon.Gear}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
-              onAction={openExtensionPreferences}
+              title="Cancel Quality Evaluation"
+              icon={Icon.XMarkCircle}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
+              onAction={() => evaluationController.current?.abort()}
             />
-          </ActionPanel.Submenu>
+          ) : (
+            <Action
+              title={`Run ${profile.title} Quality Evaluation`}
+              icon={Icon.Gauge}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "q" }}
+              onAction={runActivationEvaluation}
+            />
+          )}
+          {evaluationReport ? (
+            <>
+              <Action.Push
+                title="Review Quality Evaluation"
+                icon={Icon.Eye}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+                target={<EvaluationReview path={evaluationReport.path} />}
+              />
+              <Action.ShowInFinder
+                title="Show Latest Evaluation Report"
+                path={evaluationReport.path}
+                shortcut={Keyboard.Shortcut.Common.OpenWith}
+              />
+            </>
+          ) : null}
+          <Action.Push
+            title="Prompt Studio Status"
+            icon={Icon.Gauge}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
+            target={<FeatureStatus />}
+          />
+          <Action
+            title="Open Extension Preferences"
+            icon={Icon.Gear}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+            onAction={openExtensionPreferences}
+          />
         </ActionPanel>
       }
     >
@@ -2117,6 +2390,23 @@ function EnhancementWorkspace({
           if (activeSeed?.thoughts !== value) setActiveSeed(undefined);
         }}
       />
+      <Form.Dropdown
+        id="evidence"
+        title="Evidence"
+        value={evidenceChoice}
+        onChange={(value) => {
+          setEvidenceChoice("none");
+          if (value === "selection") void insertSelectedEvidence();
+          if (value === "clipboard") void insertClipboardEvidence();
+        }}
+      >
+        <Form.Dropdown.Item title="None" value="none" />
+        <Form.Dropdown.Item
+          title="Insert Selected Text"
+          value="selection"
+        />
+        <Form.Dropdown.Item title="Insert Clipboard" value="clipboard" />
+      </Form.Dropdown>
       <Form.Dropdown
         id="target"
         title="Target"
@@ -2166,46 +2456,98 @@ function EnhancementWorkspace({
         />
       </Form.Dropdown>
       <Form.Dropdown
+        id="passCount"
+        title="Passes"
+        value={passCount}
+        onChange={setPassCount}
+      >
+        <Form.Dropdown.Item title="1 pass" value="1" />
+        <Form.Dropdown.Item title="2 passes" value="2" />
+        <Form.Dropdown.Item title="3 passes" value="3" />
+        <Form.Dropdown.Item title="4 passes" value="4" />
+        <Form.Dropdown.Item title="5 passes" value="5" />
+      </Form.Dropdown>
+      {googleState === "disabled" ? null : (
+        <Form.Dropdown
+          id="qualityScore"
+          title="Quality"
+          value={qualityScore}
+          onChange={(value) =>
+            setQualityScore(value as EnhanceQualityScoreMode)
+          }
+        >
+          <Form.Dropdown.Item title="Off" value="off" />
+          <Form.Dropdown.Item
+            title="Gemini 3.7 Flash · 1–10"
+            value="gemini-3.7"
+          />
+        </Form.Dropdown>
+      )}
+      <Form.Dropdown
         id="project"
         title="Project"
         value={project}
         onChange={(value) => {
+          if (value === PROJECT_FOLDER_VALUE) {
+            setShowFolderPicker(true);
+            return;
+          }
+          if (value === PROJECT_REFRESH_VALUE) {
+            void loadProjects(true);
+            return;
+          }
           setProject(value);
           if (value !== "none") setRepositoryFolder([]);
         }}
       >
         <Form.Dropdown.Section title="Portable">
           <Form.Dropdown.Item title="No Project" value="none" />
+          {projectContextState === "disabled" ? null : (
+            <>
+              <Form.Dropdown.Item
+                title="Choose a local folder"
+                value={PROJECT_FOLDER_VALUE}
+              />
+              <Form.Dropdown.Item
+                title={
+                  projectDiscoveryLoading
+                    ? "Refreshing projects…"
+                    : "Refresh MacBook and Mac Mini"
+                }
+                value={PROJECT_REFRESH_VALUE}
+              />
+            </>
+          )}
         </Form.Dropdown.Section>
         {projectGroups.recent.length > 0 ? (
           <Form.Dropdown.Section title="Recent">
-            {projectGroups.recent.map((project) => (
+            {projectGroups.recent.map((item) => (
               <Form.Dropdown.Item
-                key={`recent-${project.path}`}
-                title={`${project.name} · ${project.source ? "Mac Mini" : "MacBook"}`}
-                value={project.path}
+                key={`recent-${item.path}`}
+                title={`${item.name} · ${item.source ? "Mac Mini" : "MacBook"}`}
+                value={item.path}
               />
             ))}
           </Form.Dropdown.Section>
         ) : null}
         {projectGroups.macBook.length > 0 ? (
           <Form.Dropdown.Section title="MacBook">
-            {projectGroups.macBook.map((project) => (
+            {projectGroups.macBook.map((item) => (
               <Form.Dropdown.Item
-                key={`macbook-${project.path}`}
-                title={project.name}
-                value={project.path}
+                key={`macbook-${item.path}`}
+                title={item.name}
+                value={item.path}
               />
             ))}
           </Form.Dropdown.Section>
         ) : null}
         {projectGroups.macMini.length > 0 ? (
           <Form.Dropdown.Section title="Mac Mini">
-            {projectGroups.macMini.map((project) => (
+            {projectGroups.macMini.map((item) => (
               <Form.Dropdown.Item
-                key={`mini-${project.path}`}
-                title={project.name}
-                value={project.path}
+                key={`mini-${item.path}`}
+                title={item.name}
+                value={item.path}
               />
             ))}
           </Form.Dropdown.Section>
@@ -2214,7 +2556,7 @@ function EnhancementWorkspace({
       {projectContextState !== "disabled" && showFolderPicker ? (
         <Form.FilePicker
           id="repositoryFolder"
-          title="Or Choose a Folder"
+          title="Local Folder"
           value={repositoryFolder}
           onChange={(paths) => {
             setRepositoryFolder(paths);
@@ -2225,67 +2567,27 @@ function EnhancementWorkspace({
           canChooseFiles={false}
         />
       ) : null}
-      <Form.Description
-        text={
-          projectContextState === "disabled"
-            ? "Repository analysis is Disabled. No local files are read or sent."
-            : projectDiscoveryLoading
-              ? "Finding projects on this MacBook and Mac Mini…"
-              : projectDiscoveryError
-                ? `${projectDiscoveryError} You can still choose a MacBook folder.`
-                : projectDiscoveryStarted.current
-                  ? "MacBook and Mac Mini projects are available read-only and refresh automatically when Enhance Prompt opens."
-                  : "Project access is starting automatically. You can still select an exact folder."
+      <Form.Dropdown
+        id="researchLevel"
+        title="Research"
+        value={researchLevel}
+        onChange={(value) =>
+          setResearchLevel(value as EnhancementResearchLevel)
         }
-      />
+      >
+        <Form.Dropdown.Item title="None" value="none" />
+        <Form.Dropdown.Item title="Automatic" value="auto" />
+        <Form.Dropdown.Item title="Deep" value="deep" />
+      </Form.Dropdown>
       {setupMode === "custom" ? (
-        <>
-          <Form.Separator />
-          <Form.Description
-            title="Custom Setup"
-            text="Choose research depth and add instructions for this run."
-          />
-          <Form.Dropdown
-            id="researchLevel"
-            title="External Research"
-            value={researchLevel}
-            onChange={(value) =>
-              setResearchLevel(value as EnhancementResearchLevel)
-            }
-          >
-            <Form.Dropdown.Item title="None · No External Data" value="none" />
-            <Form.Dropdown.Item
-              title="Automatic · Need-Based Sources"
-              value="auto"
-            />
-            <Form.Dropdown.Item
-              title="Deep · Broader Sources + Review"
-              value="deep"
-            />
-          </Form.Dropdown>
-          <Form.Description
-            text={`Libraries and versions are detected from your task and selected project. Context7 is ${title(context7State)}, web is ${title(webState)}, and Exa is ${title(exaState)}. Every external request is reviewed first.`}
-          />
-          <Form.TextField
-            id="oneRunInstruction"
-            title="Special Instructions"
-            placeholder="Optional: emphasize accessibility, keep it short, use Romanian…"
-            value={oneRunInstruction}
-            onChange={setOneRunInstruction}
-          />
-        </>
+        <Form.TextField
+          id="oneRunInstruction"
+          title="Special Instructions"
+          placeholder="Optional: emphasize accessibility, keep it short, use Romanian…"
+          value={oneRunInstruction}
+          onChange={setOneRunInstruction}
+        />
       ) : null}
-      <Form.Separator />
-      <Form.Description
-        title="Ready to Enhance"
-        text={
-          !profileAvailable
-            ? `${profile.title} is Disabled. Your task is preserved; choose an enabled provider before enhancing.`
-            : setupMode === "smart"
-              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
-              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
-        }
-      />
     </Form>
   );
 }
@@ -4273,6 +4575,8 @@ function EnhancementPreview({
   history,
   revisionOfPromptId,
   seed,
+  quality,
+  fromComparison = false,
 }: {
   request: EnhancementRequest;
   run: EnhancementRun;
@@ -4280,9 +4584,20 @@ function EnhancementPreview({
   history: PromptRecord;
   revisionOfPromptId?: string | undefined;
   seed: PromptSeedReference;
+  quality?: GeminiQualityScore;
+  fromComparison?: boolean;
 }) {
+  const { pop } = useNavigation();
   const result = run.result;
   const [isSaving, setIsSaving] = useState(false);
+  const followup = quality
+    ? classifyQualityFollowup(quality.score, quality.rationale)
+    : undefined;
+
+  function returnToEnhanceForm() {
+    pop();
+    if (fromComparison) pop();
+  }
   const contextSummary =
     [
       result.projectFiles.length
@@ -4381,6 +4696,18 @@ function EnhancementPreview({
             title="Cost"
             text={`$${run.usage.estimatedCostUsd.toFixed(4)}`}
           />
+          {quality ? (
+            <>
+              <Detail.Metadata.Label
+                title="Quality"
+                text={`${quality.score}/10`}
+              />
+              <Detail.Metadata.Label
+                title="Quality reason"
+                text={quality.rationale}
+              />
+            </>
+          ) : null}
           {findings.map((finding) => (
             <Detail.Metadata.Label
               key={finding.id}
@@ -4400,6 +4727,49 @@ function EnhancementPreview({
       }
       actions={
         <ActionPanel>
+          {followup?.rewrite ? (
+            <Action.Push
+              title="Rewrite with This Reason"
+              icon={Icon.Repeat}
+              target={
+                <RevisionForm
+                  request={request}
+                  run={run}
+                  initialInstruction={rewriteInstructionFromQuality(
+                    quality?.rationale ?? "",
+                  )}
+                />
+              }
+            />
+          ) : null}
+          {followup?.needEvidence ? (
+            <Action
+              title="Add Evidence, Then Enhance Again"
+              icon={Icon.Paperclip}
+              onAction={() => {
+                void showToast(
+                  Toast.Style.Success,
+                  "Add Evidence",
+                  "Paste the log or screenshot into Evidence, then Enhance again. Do not rewrite until that input is present.",
+                );
+                returnToEnhanceForm();
+              }}
+            />
+          ) : null}
+          {followup?.needProject ? (
+            <Action
+              title="Choose Project, Then Enhance Again"
+              icon={Icon.Folder}
+              onAction={() => {
+                void showToast(
+                  Toast.Style.Success,
+                  "Choose a Project",
+                  "Select the repository on the Enhance form, then Enhance again. Do not rewrite until that input is present.",
+                );
+                returnToEnhanceForm();
+              }}
+            />
+          ) : null}
           <Action.CopyToClipboard
             title="Copy Prompt"
             content={result.enhancedPrompt}

@@ -5,6 +5,8 @@ import {
 } from "./provider-profiles.ts";
 import type { PromptTarget } from "./prompt-store.ts";
 
+export type EnhanceQualityScoreMode = "off" | "gemini-3.7";
+
 export interface EnhancementFormDraft {
   roughThoughts: string;
   target: PromptTarget;
@@ -14,6 +16,8 @@ export interface EnhancementFormDraft {
   profileId: SelectableEnhancementProfileId;
   researchLevel: EnhancementResearchLevel;
   oneRunInstruction: string;
+  passCount: string;
+  qualityScore: EnhanceQualityScoreMode;
   seedId?: string;
 }
 
@@ -40,6 +44,19 @@ export function parseEnhancementFormDraft(
     ) {
       return;
     }
+    const passCount =
+      draft.passCount === undefined
+        ? "1"
+        : ["1", "2", "3", "4", "5"].includes(String(draft.passCount))
+          ? String(draft.passCount)
+          : undefined;
+    const qualityScore =
+      draft.qualityScore === undefined
+        ? "gemini-3.7"
+        : draft.qualityScore === "off" || draft.qualityScore === "gemini-3.7"
+          ? draft.qualityScore
+          : undefined;
+    if (!passCount || !qualityScore) return;
     if (
       draft.seedId !== undefined &&
       (typeof draft.seedId !== "string" ||
@@ -49,7 +66,12 @@ export function parseEnhancementFormDraft(
     ) {
       return;
     }
-    return { ...draft, profileId } as unknown as EnhancementFormDraft;
+    return {
+      ...draft,
+      profileId,
+      passCount,
+      qualityScore,
+    } as unknown as EnhancementFormDraft;
   } catch {
     return;
   }

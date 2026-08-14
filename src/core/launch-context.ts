@@ -108,6 +108,18 @@ export function enhancePromptLibraryLaunchContext(
   return enhancePromptThoughtsLaunchContext(thoughts, target);
 }
 
+export function enhancePromptFromHistoryLaunchContext(
+  record: Pick<PromptRecord, "body" | "target" | "seed">,
+  linkedPromptId?: string,
+): EnhancePromptLaunchContext {
+  return {
+    thoughts: record.seed?.thoughts?.trim() || record.body,
+    target: record.target,
+    ...(record.seed?.id ? { seedId: record.seed.id } : {}),
+    ...(linkedPromptId ? { revisionOfPromptId: linkedPromptId } : {}),
+  };
+}
+
 export function enhancePromptEntryUntrustedSurface(input: {
   launchContext?: EnhancePromptLaunchContext;
   argumentThoughts?: string;
