@@ -301,11 +301,22 @@ import {
   GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT,
 } from "../src/core/google-enhancement.ts";
 import {
+  buildDeepSeekChatCompletionRequest,
+  DEEPSEEK_CHAT_COMPLETIONS_ENDPOINT,
+  enhanceWithDeepSeek,
+} from "../src/core/deepseek-enhancement.ts";
+import {
   enhancementProfileIsAvailable,
   getProviderEnhancementProfile,
+  normalizeSelectableEnhancementProfileId,
   providerPrivacyDisclosure,
   resolveDefaultEnhancementProfileId,
 } from "../src/core/provider-profiles.ts";
+import {
+  loadLocalProviderKeys,
+  resolveProviderApiKey,
+  resolveProviderApiKeyForProvider,
+} from "../src/core/provider-keys.ts";
 import {
   mergeReviewedSources,
   safeResearchSourceUrl,
@@ -2233,7 +2244,7 @@ test("the OpenAI request is stateless, model-explicit, and strict-schema constra
   );
   assert.equal(body.model, "gpt-5.6-terra");
   assert.equal(body.store, false);
-  assert.deepEqual(body.reasoning, { effort: "medium" });
+  assert.deepEqual(body.reasoning, { effort: "max" });
   assert.equal(
     (
       body.text as {
@@ -2690,7 +2701,7 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
         format: { type: string; schema: unknown };
       }
     ).effort,
-    "medium",
+    "xhigh",
   );
   assert.equal(
     (
@@ -2712,10 +2723,10 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
 
   const googleRequest: EnhancementRequest = {
     ...enhancementRequest(),
-    profileId: "google-gemini-3.5-flash-v1",
+    profileId: "google-gemini-3.7-flash-v1",
   };
   const googleProfile = getProviderEnhancementProfile(
-    "google-gemini-3.5-flash-v1",
+    "google-gemini-3.7-flash-v1",
   );
   const googleBody = buildGoogleGenerateContentRequest(
     googleRequest,
@@ -2723,16 +2734,26 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
   );
   const generationConfig = googleBody.generationConfig as {
     thinkingConfig: { thinkingLevel: string };
-    responseFormat: {
-      text: { mimeType: string; schema: unknown };
-    };
+    responseMimeType: string;
+    responseJsonSchema: unknown;
   };
-  assert.equal(googleProfile.model, "gemini-3.5-flash");
-  assert.equal(generationConfig.thinkingConfig.thinkingLevel, "medium");
-  assert.equal(
-    generationConfig.responseFormat.text.mimeType,
-    "application/json",
+  assert.equal(googleProfile.model, "gemini-3.7-flash");
+  assert.equal(googleProfile.reasoningEffort, "max");
+  assert.equal(generationConfig.thinkingConfig.thinkingLevel, "extra_high");
+  const googleIntro = getProviderEnhancementProfile(
+    "google-gemini-3.7-flash-v1",
+    new Date("2026-08-14T00:00:00.000Z"),
   );
+  const googleStandard = getProviderEnhancementProfile(
+    "google-gemini-3.7-flash-v1",
+    new Date("2027-01-01T00:00:00.000Z"),
+  );
+  assert.equal(googleIntro.pricing.input, 0.75);
+  assert.equal(googleIntro.pricing.output, 3.75);
+  assert.equal(googleStandard.pricing.input, 1.5);
+  assert.equal(googleStandard.pricing.output, 7.5);
+  assert.equal(generationConfig.responseMimeType, "application/json");
+  assert.equal(generationConfig.responseJsonSchema !== undefined, true);
   assert.equal(JSON.stringify(googleBody).includes("tools"), false);
   assert.equal(JSON.stringify(googleBody).includes("maxLength"), false);
   assert.match(
@@ -2740,6 +2761,36 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     /zero-data-retention/,
   );
   assert.match(providerPrivacyDisclosure(googleProfile), /free-tier/);
+
+  const deepseekRequest: EnhancementRequest = {
+    ...enhancementRequest(),
+    profileId: "deepseek-v4-pro-v1",
+  };
+  const deepseekProfile = getProviderEnhancementProfile("deepseek-v4-pro-v1");
+  const deepseekBody = buildDeepSeekChatCompletionRequest(
+    deepseekRequest,
+    deepseekProfile,
+  );
+  assert.equal(deepseekProfile.model, "deepseek-v4-pro");
+  assert.equal(deepseekProfile.reasoningEffort, "max");
+  assert.equal(deepseekBody.reasoning_effort, "max");
+  assert.deepEqual(deepseekBody.thinking, { type: "enabled" });
+  assert.deepEqual(deepseekBody.response_format, { type: "json_object" });
+  assert.equal(JSON.stringify(deepseekBody).includes("tools"), false);
+  assert.match(JSON.stringify(deepseekBody.messages), /JSON object/);
+  const deepseekCurrent = getProviderEnhancementProfile(
+    "deepseek-v4-pro-v1",
+    new Date("2026-08-14T00:00:00.000Z"),
+  );
+  const deepseekPeak = getProviderEnhancementProfile(
+    "deepseek-v4-pro-v1",
+    new Date("2026-08-16T16:00:00.000Z"),
+  );
+  assert.equal(deepseekCurrent.pricing.input, 0.435);
+  assert.equal(deepseekCurrent.pricing.output, 0.87);
+  assert.equal(deepseekPeak.pricing.input, 1.32);
+  assert.equal(deepseekPeak.pricing.output, 3.96);
+  assert.match(providerPrivacyDisclosure(deepseekProfile), /stateless/);
 });
 
 test("provider schemas state string bounds and over-long labels are trimmed instead of discarding the run", async () => {
@@ -2871,7 +2922,7 @@ test("native Anthropic and Google adapters keep keys in headers, validate output
 
   const googleRequest: EnhancementRequest = {
     ...enhancementRequest(),
-    profileId: "google-gemini-3.5-flash-v1",
+    profileId: "google-gemini-3.7-flash-v1",
   };
   let googleEndpoint = "";
   let googleHeaders = new Headers();
@@ -2885,7 +2936,7 @@ test("native Anthropic and Google adapters keep keys in headers, validate output
       googleBody = String(init?.body);
       return Response.json({
         responseId: "gemini_test",
-        modelVersion: "gemini-3.5-flash",
+        modelVersion: "gemini-3.7-flash",
         candidates: [
           {
             content: {
@@ -2908,7 +2959,7 @@ test("native Anthropic and Google adapters keep keys in headers, validate output
   });
   assert.equal(
     googleEndpoint,
-    `${GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT}/gemini-3.5-flash:generateContent`,
+    `${GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT}/gemini-3.7-flash:generateContent`,
   );
   assert.equal(googleHeaders.get("x-goog-api-key"), "google-test-key");
   assert.equal(googleBody.includes("google-test-key"), false);
@@ -2919,6 +2970,56 @@ test("native Anthropic and Google adapters keep keys in headers, validate output
   assert.equal(googleRun.usage.outputTokens, 620);
   assert.equal(googleRun.usage.reasoningTokens, 120);
   assert.ok(googleRun.usage.estimatedCostUsd > 0);
+
+  const deepseekRequest: EnhancementRequest = {
+    ...enhancementRequest(),
+    profileId: "deepseek-v4-pro-v1",
+  };
+  let deepseekEndpoint = "";
+  let deepseekHeaders = new Headers();
+  let deepseekBody = "";
+  const deepseekRun = await enhanceWithDeepSeek(deepseekRequest, {
+    apiKey: "deepseek-test-key",
+    retryLimit: 0,
+    fetcher: (async (input: string | URL | Request, init?: RequestInit) => {
+      deepseekEndpoint = String(input);
+      deepseekHeaders = new Headers(init?.headers);
+      deepseekBody = String(init?.body);
+      return Response.json({
+        id: "ds_test",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify(enhancementFixture()),
+              reasoning_content: "private thoughts",
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 1_000,
+          completion_tokens: 620,
+          prompt_cache_hit_tokens: 100,
+          prompt_cache_miss_tokens: 900,
+          completion_tokens_details: { reasoning_tokens: 120 },
+        },
+      });
+    }) as typeof fetch,
+  });
+  assert.equal(deepseekEndpoint, DEEPSEEK_CHAT_COMPLETIONS_ENDPOINT);
+  assert.equal(
+    deepseekHeaders.get("Authorization"),
+    "Bearer deepseek-test-key",
+  );
+  assert.equal(deepseekBody.includes("deepseek-test-key"), false);
+  assert.equal(deepseekRun.profile.provider, "deepseek");
+  assert.equal(deepseekRun.responseIds[0], "ds_test");
+  assert.equal(deepseekRun.usage.inputTokens, 1_000);
+  assert.equal(deepseekRun.usage.cachedInputTokens, 100);
+  assert.equal(deepseekRun.usage.outputTokens, 620);
+  assert.equal(deepseekRun.usage.reasoningTokens, 120);
+  assert.ok(deepseekRun.usage.estimatedCostUsd > 0);
 });
 
 test("provider failures, retries, cancellation, and profile mismatches stop without fallback", async () => {
@@ -2927,7 +3028,7 @@ test("provider failures, retries, cancellation, and profile mismatches stop with
     enhanceWithAnthropic(
       {
         ...enhancementRequest(),
-        profileId: "google-gemini-3.5-flash-v1",
+        profileId: "google-gemini-3.7-flash-v1",
       },
       {
         apiKey: "test-key",
@@ -2942,10 +3043,28 @@ test("provider failures, retries, cancellation, and profile mismatches stop with
   assert.equal(calls, 0);
 
   await assert.rejects(
+    enhanceWithDeepSeek(
+      {
+        ...enhancementRequest(),
+        profileId: "google-gemini-3.7-flash-v1",
+      },
+      {
+        apiKey: "test-key",
+        fetcher: (async () => {
+          calls += 1;
+          return Response.json({});
+        }) as typeof fetch,
+      },
+    ),
+    /cannot be sent to DeepSeek.*No provider fallback/,
+  );
+  assert.equal(calls, 0);
+
+  await assert.rejects(
     enhanceWithGoogle(
       {
         ...enhancementRequest(),
-        profileId: "google-gemini-3.5-flash-v1",
+        profileId: "google-gemini-3.7-flash-v1",
       },
       {
         apiKey: "",
@@ -3018,7 +3137,7 @@ test("provider failures, retries, cancellation, and profile mismatches stop with
   const recoveredGoogle = await enhanceWithGoogle(
     {
       ...enhancementRequest(),
-      profileId: "google-gemini-3.5-flash-v1",
+      profileId: "google-gemini-3.7-flash-v1",
     },
     {
       apiKey: "test-key",
@@ -3057,7 +3176,7 @@ test("provider failures, retries, cancellation, and profile mismatches stop with
     enhanceWithGoogle(
       {
         ...enhancementRequest(),
-        profileId: "google-gemini-3.5-flash-v1",
+        profileId: "google-gemini-3.7-flash-v1",
       },
       {
         apiKey: "test-key",
@@ -3079,7 +3198,7 @@ test("provider failures, retries, cancellation, and profile mismatches stop with
     enhanceWithGoogle(
       {
         ...enhancementRequest(),
-        profileId: "google-gemini-3.5-flash-v1",
+        profileId: "google-gemini-3.7-flash-v1",
       },
       {
         apiKey: "test-key",
@@ -3140,7 +3259,7 @@ test("Anthropic and Google never preview refused, truncated, unsafe, or malforme
 
   const googleRequest: EnhancementRequest = {
     ...enhancementRequest(),
-    profileId: "google-gemini-3.5-flash-v1",
+    profileId: "google-gemini-3.7-flash-v1",
   };
   for (const [finishReason, expected] of [
     ["SAFETY", /Google returned SAFETY/],
@@ -3201,7 +3320,9 @@ test("the Standard evaluation plan is frozen, complete, and bounded before a mod
   const plan = getEnhancementEvaluationPlan("openai-standard-v1");
   assert.equal(plan.cases.length, 24);
   assert.equal(plan.repeats, 1);
-  assert.equal(plan.maximumCostUsd, 2.294055);
+  assert.equal(plan.profile.reasoningEffort, "max");
+  assert.equal(plan.profile.maxOutputTokens, 16_000);
+  assert.equal(plan.maximumCostUsd, 5.894055);
   assert.equal(plan.profile.model, "gpt-5.6-terra");
   assert.match(plan.privacyDisclosure, /store:false/);
   assert.equal(normalizeEvaluationRepeats(undefined), 1);
@@ -3213,15 +3334,23 @@ test("the Standard evaluation plan is frozen, complete, and bounded before a mod
 
 test("provider evaluations use the same frozen cases and provider-specific privacy boundary", () => {
   const anthropic = getEnhancementEvaluationPlan("anthropic-sonnet-5-v1");
-  const google = getEnhancementEvaluationPlan("google-gemini-3.5-flash-v1");
+  const google = getEnhancementEvaluationPlan("google-gemini-3.7-flash-v1");
+  const deepseek = getEnhancementEvaluationPlan("deepseek-v4-pro-v1");
   assert.equal(anthropic.cases.length, 24);
   assert.equal(google.cases.length, 24);
+  assert.equal(deepseek.cases.length, 24);
   assert.equal(anthropic.profile.model, "claude-sonnet-5");
-  assert.equal(google.profile.model, "gemini-3.5-flash");
+  assert.equal(anthropic.profile.reasoningEffort, "xhigh");
+  assert.equal(google.profile.model, "gemini-3.7-flash");
+  assert.equal(google.profile.reasoningEffort, "max");
+  assert.equal(deepseek.profile.model, "deepseek-v4-pro");
+  assert.equal(deepseek.profile.reasoningEffort, "max");
   assert.match(anthropic.privacyDisclosure, /Anthropic/);
   assert.match(google.privacyDisclosure, /Google/);
+  assert.match(deepseek.privacyDisclosure, /DeepSeek/);
   assert.ok(anthropic.maximumCostUsd > 0);
   assert.ok(google.maximumCostUsd > 0);
+  assert.ok(deepseek.maximumCostUsd > 0);
 });
 
 test("the extended evaluation corpus is additive and does not change the frozen default plan", () => {
@@ -3249,7 +3378,10 @@ test("repeated case selection can pin two frozen cases", () => {
     "protected-untrusted-reference",
     "dev-test-flake",
   ]));
-  assert.ok(plan.maximumCostUsd < 2.294055);
+  assert.ok(
+    plan.maximumCostUsd <
+      getEnhancementEvaluationPlan("openai-standard-v1").maximumCostUsd,
+  );
 });
 
 test("the evaluation runner refuses an unapproved budget without making a model call", async () => {
@@ -3847,8 +3979,11 @@ test("personal launcher exposes Prompt Library as the only root command", async 
   assert.match(browseSource, /title="Enhance Prompt"/);
   assert.match(browseSource, /function EnhancePromptListItem\(/);
   assert.match(browseSource, /function CaptureInboxListItem\(/);
+  assert.match(browseSource, /function NewPromptListItem\(/);
   assert.match(browseSource, /id=\{ENHANCE_PROMPT_ITEM_ID\}/);
   assert.match(browseSource, /id=\{CAPTURE_INBOX_ITEM_ID\}/);
+  assert.match(browseSource, /id=\{NEW_PROMPT_ITEM_ID\}/);
+  assert.match(browseSource, /title="New Prompt"/);
   assert.match(browseSource, /title="Open Capture Inbox"/);
   assert.doesNotMatch(browseSource, /name: "enhance-prompt"/);
   assert.doesNotMatch(browseSource, /name: "idea-studio"/);
@@ -4170,6 +4305,15 @@ test("Raycast enhancement drafts restore only valid saved form values", () => {
     restorableEnhancementFormDraft(JSON.stringify(draft), ""),
     draft,
   );
+  assert.equal(
+    parseEnhancementFormDraft(
+      JSON.stringify({
+        ...draft,
+        profileId: "google-gemini-3.5-flash-v1",
+      }),
+    )?.profileId,
+    "google-gemini-3.7-flash-v1",
+  );
 });
 
 test("enhancement completion clears drafts only after durable history and retries without a model call", async () => {
@@ -4283,7 +4427,11 @@ test("invalid idea and enhancement files stay visible beside valid records", asy
 });
 
 test("optional enhancement capabilities stay inert until explicitly available", () => {
-  const states = { anthropic: "disabled", google: "preview" } as const;
+  const states = {
+    anthropic: "disabled",
+    google: "preview",
+    deepseek: "disabled",
+  } as const;
   assert.equal(
     enhancementProfileIsAvailable("openai-standard-v1", states),
     true,
@@ -4293,14 +4441,38 @@ test("optional enhancement capabilities stay inert until explicitly available", 
     false,
   );
   assert.equal(
-    enhancementProfileIsAvailable("google-gemini-3.5-flash-v1", states),
+    enhancementProfileIsAvailable("google-gemini-3.7-flash-v1", states),
     true,
   );
+  assert.equal(
+    enhancementProfileIsAvailable("deepseek-v4-pro-v1", states),
+    false,
+  );
 
-  const ready = { anthropic: "preview", google: "preview" } as const;
+  const ready = {
+    anthropic: "preview",
+    google: "preview",
+    deepseek: "preview",
+  } as const;
   assert.equal(
     resolveDefaultEnhancementProfileId("anthropic-sonnet-5-v1", ready),
     "anthropic-sonnet-5-v1",
+  );
+  assert.equal(
+    normalizeSelectableEnhancementProfileId("google-gemini-3.5-flash-v1"),
+    "google-gemini-3.7-flash-v1",
+  );
+  assert.equal(
+    resolveDefaultEnhancementProfileId("google-gemini-3.5-flash-v1", ready),
+    "google-gemini-3.7-flash-v1",
+  );
+  assert.equal(
+    resolveDefaultEnhancementProfileId("deepseek-v4-pro-v1", ready),
+    "deepseek-v4-pro-v1",
+  );
+  assert.equal(
+    resolveDefaultEnhancementProfileId("deepseek-v4-pro-v1", states),
+    "openai-standard-v1",
   );
   // A Disabled provider must not become the starting profile.
   assert.equal(
@@ -4340,6 +4512,45 @@ test("optional enhancement capabilities stay inert until explicitly available", 
   assert.equal(projectDiscovery.current, false);
   assert.equal(claimProjectDiscovery(projectDiscovery), true);
   assert.equal(claimProjectDiscovery(projectDiscovery), false);
+});
+
+test("local provider keys fill Raycast and environment gaps without becoming git config", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-keys-"));
+  const path = join(directory, "provider-keys.json");
+  try {
+    assert.deepEqual(loadLocalProviderKeys(path), {});
+    await writeFile(
+      path,
+      JSON.stringify({
+        openaiApiKey: " sk-test-openai ",
+        googleApiKey: "gemini-local",
+        ignored: "no",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const local = loadLocalProviderKeys(path);
+    assert.equal(local.openaiApiKey, "sk-test-openai");
+    assert.equal(local.googleApiKey, "gemini-local");
+    assert.equal(local.anthropicApiKey, undefined);
+    assert.equal(
+      resolveProviderApiKey(
+        { openaiApiKey: "from-prefs" },
+        "openaiApiKey",
+        local,
+      ),
+      "from-prefs",
+    );
+    assert.equal(
+      resolveProviderApiKey({}, "openaiApiKey", local),
+      "sk-test-openai",
+    );
+    assert.equal(
+      resolveProviderApiKeyForProvider({}, "google", local),
+      "gemini-local",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("updates preserve restorable history and confirmed deletion can remove the record", async () => {
@@ -7534,7 +7745,7 @@ function cliPreviewStatuses() {
     }
   > = {};
   for (const feature of FEATURES) {
-    if (feature.activationOrder > 0 && feature.activationOrder < 11) {
+    if (feature.activationOrder > 0 && feature.activationOrder < 12) {
       overrides[feature.id] = { state: "active", verification };
     }
   }
@@ -7558,7 +7769,7 @@ function mcpPreviewStatuses() {
     }
   > = {};
   for (const feature of FEATURES) {
-    if (feature.activationOrder > 0 && feature.activationOrder < 12) {
+    if (feature.activationOrder > 0 && feature.activationOrder < 13) {
       overrides[feature.id] = { state: "active", verification };
     }
   }
@@ -7582,7 +7793,7 @@ function mcpWritePreviewStatuses() {
     }
   > = {};
   for (const feature of FEATURES) {
-    if (feature.activationOrder > 0 && feature.activationOrder < 13) {
+    if (feature.activationOrder > 0 && feature.activationOrder < 14) {
       overrides[feature.id] = { state: "active", verification };
     }
   }
@@ -7606,7 +7817,7 @@ function feedbackPreviewStatuses() {
     }
   > = {};
   for (const feature of FEATURES) {
-    if (feature.activationOrder > 0 && feature.activationOrder < 14) {
+    if (feature.activationOrder > 0 && feature.activationOrder < 15) {
       overrides[feature.id] = { state: "active", verification };
     }
   }
@@ -7630,7 +7841,7 @@ function optimizationPreviewStatuses() {
     }
   > = {};
   for (const feature of FEATURES) {
-    if (feature.activationOrder > 0 && feature.activationOrder < 15) {
+    if (feature.activationOrder > 0 && feature.activationOrder < 16) {
       overrides[feature.id] = { state: "active", verification };
     }
   }

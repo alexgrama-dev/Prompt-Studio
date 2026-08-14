@@ -52,7 +52,7 @@ try {
   const checkedAt = "2026-07-19T00:00:00.000Z";
   const overrides = Object.fromEntries(
     FEATURES.filter(
-      (feature) => feature.activationOrder > 0 && feature.activationOrder <= 15,
+      (feature) => feature.activationOrder > 0 && feature.activationOrder <= 16,
     ).map((feature) => [
       feature.id,
       feature.id === "optimization"

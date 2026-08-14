@@ -52,7 +52,7 @@ try {
   const checkedAt = new Date("2026-07-19T00:00:00.000Z").toISOString();
   const overrides = Object.fromEntries(
     FEATURES.filter(
-      (feature) => feature.activationOrder > 0 && feature.activationOrder <= 14,
+      (feature) => feature.activationOrder > 0 && feature.activationOrder <= 15,
     ).map((feature) => [
       feature.id,
       feature.id === "feedback"

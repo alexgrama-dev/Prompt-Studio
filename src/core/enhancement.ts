@@ -22,7 +22,11 @@ import {
   EXECUTION_GUARDRAILS_MARKER_PATTERN,
   type AntiPatternFinding,
 } from "./anti-patterns.ts";
-import { planCompilerStages } from "./compiler-pipeline.ts";
+import { compilerGapAddendum, planCompilerStages } from "./compiler-pipeline.ts";
+import {
+  similarPromptCompilerSection,
+  type SimilarPromptExample,
+} from "./similar-prompts.ts";
 import {
   compilerRenderingAddendum,
   resolveRenderingProfile,
@@ -50,11 +54,12 @@ export const ENHANCEMENT_PROFILE_IDS = [
   "openai-bulk-metadata-v1",
 ] as const;
 export type EnhancementProfileId = (typeof ENHANCEMENT_PROFILE_IDS)[number];
-export type EnhancementProvider = "openai" | "anthropic" | "google";
+export type EnhancementProvider = "openai" | "anthropic" | "google" | "deepseek";
 export type EnhancementProviderProfileId =
   | EnhancementProfileId
   | "anthropic-sonnet-5-v1"
-  | "google-gemini-3.5-flash-v1";
+  | "google-gemini-3.7-flash-v1"
+  | "deepseek-v4-pro-v1";
 export type EnhancementResearchLevel = "none" | "auto" | "deep";
 
 export interface EnhancementRunProfile {
@@ -80,7 +85,7 @@ export interface EnhancementProfile extends EnhancementRunProfile {
   id: EnhancementProfileId;
   provider: "openai";
   model: "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna";
-  reasoningEffort: "low" | "medium" | "high";
+  reasoningEffort: "low" | "medium" | "high" | "xhigh" | "max";
   textVerbosity: "low" | "medium" | "high";
 }
 
@@ -92,12 +97,12 @@ export const ENHANCEMENT_PROFILES: Readonly<
     title: "Standard · GPT-5.6 Terra",
     provider: "openai",
     model: "gpt-5.6-terra",
-    reasoningEffort: "medium",
+    reasoningEffort: "max",
     textVerbosity: "high",
-    maxOutputTokens: 6_000,
-    timeoutMs: 120_000,
+    maxOutputTokens: 16_000,
+    timeoutMs: 300_000,
     passes: 1,
-    purpose: "Everyday enhancement with a quality and cost balance.",
+    purpose: "Everyday enhancement with GPT-5.6 Terra at max reasoning.",
     pricing: {
       input: 2.5,
       cachedInput: 0.25,
@@ -168,6 +173,10 @@ export interface EnhancementRequest {
   selfReview?: boolean;
   /** Set on a follow-up run that revises an already-compiled result. */
   revision?: RevisionContext;
+  /** Similar library prompts used as compiler style examples only. */
+  similarPromptExamples?: SimilarPromptExample[];
+  /** True after Enhance asked or skipped blocking questions. */
+  elicitationAsked?: boolean;
 }
 
 export interface EnhancementSource {
@@ -538,6 +547,8 @@ export function enhancementCompilerInstructions(
         | "revision"
         | "project"
         | "allowedProjectFiles"
+        | "similarPromptExamples"
+        | "elicitationAsked"
       >
     >,
 ): string {
@@ -545,6 +556,10 @@ export function enhancementCompilerInstructions(
     ? validateEnhancementCompilerPolicy(request.compilerPolicy).instructions
     : BASE_COMPILER_INSTRUCTIONS;
   const sections = [instructions, COMPILER_WORKED_EXAMPLES];
+  const similar = similarPromptCompilerSection(
+    request.similarPromptExamples ?? [],
+  );
+  if (similar) sections.push(similar);
   if (request.revision) sections.push(REVISION_INSTRUCTIONS);
   // Only stated when the caller supplied the task, so metadata volume can match
   // task size instead of always demanding the complex-tier minimum.
@@ -568,7 +583,11 @@ export function enhancementCompilerInstructions(
         request.project || (request.allowedProjectFiles?.length ?? 0) > 0,
       ),
     });
-    sections.push(stages.gapAddendum);
+    sections.push(
+      compilerGapAddendum(stages.label, stages.gaps, stages.elicitation, {
+        elicitationAsked: Boolean(request.elicitationAsked),
+      }),
+    );
   }
   return sections.join("\n\n");
 }

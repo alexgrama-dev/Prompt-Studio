@@ -647,7 +647,7 @@ function validateEnhancement(value: unknown): EnhancementProvenance {
   return {
     provider: enumValue(
       value.provider,
-      ["openai", "anthropic", "google"] as const,
+      ["openai", "anthropic", "google", "deepseek"] as const,
       "prompt.enhancement.provider",
     ),
     profileId: requiredText(

@@ -3,6 +3,10 @@ import {
   type AnthropicEnhancementOptions,
 } from "./anthropic-enhancement.ts";
 import {
+  enhanceWithDeepSeek,
+  type DeepSeekEnhancementOptions,
+} from "./deepseek-enhancement.ts";
+import {
   enhanceWithOpenAI,
   type EnhancementCompilerPolicy,
   type EnhancementRequest,
@@ -19,9 +23,10 @@ import {
   loadActiveCompilerPolicy,
 } from "./compiler-state.ts";
 import { getFeatureStatus, type FeatureStatus } from "./features.ts";
+import { localProviderKeyFromEnvironmentName } from "./provider-keys.ts";
 import {
   getProviderEnhancementProfile,
-  type SelectableEnhancementProfileId,
+  normalizeSelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
 
 export interface EnhancementDispatchOptions {
@@ -38,9 +43,16 @@ export async function dispatchEnhancement(
   const effectiveRequest = options.compilerPolicy
     ? { ...request, compilerPolicy: options.compilerPolicy }
     : request;
-  const profile = getProviderEnhancementProfile(
-    effectiveRequest.profileId as SelectableEnhancementProfileId,
+  const profileId = normalizeSelectableEnhancementProfileId(
+    effectiveRequest.profileId,
   );
+  if (!profileId) {
+    throw new Error(
+      `Profile ${effectiveRequest.profileId} is not available for interactive enhancement.`,
+    );
+  }
+  const mappedRequest = { ...effectiveRequest, profileId };
+  const profile = getProviderEnhancementProfile(profileId);
   const common = {
     apiKey: options.apiKey,
     ...(options.signal ? { signal: options.signal } : {}),
@@ -50,19 +62,30 @@ export async function dispatchEnhancement(
   };
   if (profile.provider === "openai") {
     return enhanceWithOpenAI(
-      effectiveRequest,
+      mappedRequest,
       common as OpenAIEnhancementOptions,
     );
   }
   if (profile.provider === "anthropic") {
     return enhanceWithAnthropic(
-      effectiveRequest,
+      mappedRequest,
       common as AnthropicEnhancementOptions,
     );
   }
-  return enhanceWithGoogle(
-    effectiveRequest,
-    common as GoogleEnhancementOptions,
+  if (profile.provider === "deepseek") {
+    return enhanceWithDeepSeek(
+      mappedRequest,
+      common as DeepSeekEnhancementOptions,
+    );
+  }
+  if (profile.provider === "google") {
+    return enhanceWithGoogle(
+      mappedRequest,
+      common as GoogleEnhancementOptions,
+    );
+  }
+  throw new Error(
+    `Provider ${profile.provider} is not available for interactive enhancement. No provider fallback occurred.`,
   );
 }
 
@@ -85,8 +108,11 @@ export function providerKeyFromEnvironment(
       ? "ANTHROPIC_API_KEY"
       : provider === "google"
         ? "GEMINI_API_KEY"
-        : "OPENAI_API_KEY";
-  const value = env[name]?.trim();
+        : provider === "deepseek"
+          ? "DEEPSEEK_API_KEY"
+          : "OPENAI_API_KEY";
+  const value =
+    env[name]?.trim() || localProviderKeyFromEnvironmentName(name);
   if (!value) {
     throw new Error(
       `Set ${name} in the current process environment. API keys are not accepted as tool arguments.`,

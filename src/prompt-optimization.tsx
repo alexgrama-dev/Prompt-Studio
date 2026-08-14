@@ -80,7 +80,7 @@ export default function PromptOptimization() {
       if (feature.effectiveState === "disabled") {
         setFeatureDisabledReason(
           feature.reason ??
-            "Prompt Optimization is Disabled until Activation 15 reaches Preview.",
+            "Prompt Optimization is Disabled until Activation 16 reaches Preview.",
         );
         setFeatureState(undefined);
         setProposals([]);

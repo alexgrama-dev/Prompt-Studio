@@ -40,6 +40,33 @@ export interface AntiPatternFinding {
   evidence: string;
 }
 
+const HARD_ANTI_PATTERN_ID_SET = new Set<string>(HARD_ANTI_PATTERN_IDS);
+
+export function isHardAntiPatternId(id: string): boolean {
+  return HARD_ANTI_PATTERN_ID_SET.has(id);
+}
+
+export function hardAntiPatternFindings(
+  findings: readonly AntiPatternFinding[] | undefined,
+): AntiPatternFinding[] {
+  return (findings ?? []).filter((finding) => isHardAntiPatternId(finding.id));
+}
+
+export function enhancementSaveBlocked(
+  findings: readonly AntiPatternFinding[] | undefined,
+): boolean {
+  return hardAntiPatternFindings(findings).length > 0;
+}
+
+export function antiPatternSaveError(
+  findings: readonly AntiPatternFinding[] | undefined,
+): string | undefined {
+  const hard = hardAntiPatternFindings(findings);
+  if (hard.length === 0) return;
+  const ids = hard.map((finding) => finding.id).join(", ");
+  return `Hard anti-patterns block library save: ${ids}. Edit the prompt until those findings are gone.`;
+}
+
 export interface AntiPatternContext {
   prompt: string;
   roughInput: string;

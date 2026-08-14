@@ -6,7 +6,10 @@ import {
   type EvaluationSplit,
 } from "../src/core/evaluation.ts";
 import { providerKeyFromEnvironment } from "../src/core/enhancement-dispatch.ts";
-import type { SelectableEnhancementProfileId } from "../src/core/provider-profiles.ts";
+import {
+  normalizeSelectableEnhancementProfileId,
+  type SelectableEnhancementProfileId,
+} from "../src/core/provider-profiles.ts";
 
 interface Arguments {
   profileId: SelectableEnhancementProfileId;
@@ -125,17 +128,11 @@ function parseArguments(values: string[]): Arguments {
       continue;
     }
     if (value === "--profile" && next) {
-      if (
-        ![
-          "openai-standard-v1",
-          "openai-deep-v1",
-          "anthropic-sonnet-5-v1",
-          "google-gemini-3.5-flash-v1",
-        ].includes(next)
-      ) {
+      const mapped = normalizeSelectableEnhancementProfileId(next);
+      if (!mapped) {
         throw new Error(`Unsupported enhancement profile: ${next}.`);
       }
-      profileId = next as SelectableEnhancementProfileId;
+      profileId = mapped;
       index += 1;
     } else if (value === "--split" && next) {
       if (!["development", "validation", "protected"].includes(next)) {

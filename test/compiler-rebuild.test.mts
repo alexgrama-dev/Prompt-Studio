@@ -273,16 +273,30 @@ test("v2 judge schema clamps 0-4 scores and stays off the v1 0-100 path", () => 
   assert.match(JSON.stringify(body.system), /twelve independent/);
 });
 
-test("downstream eval and extended corpus stay dry-run by default", () => {
+test("downstream eval stays dry-run and loads shipped fixtures without spend confirmation", () => {
   const plan = planDownstreamEvaluation({});
   assert.equal(plan.mode, "dry-run");
-  assert.equal(plan.skipReason, "missing-fixtures");
+  assert.equal(plan.skipReason, "no-confirm-spend");
+  assert.ok(plan.fixtures.length >= 3);
+  assert.ok(plan.fixtures.every((fixture) => fixture.successChecks.length > 0));
   const frozen = getEnhancementEvaluationPlan("openai-standard-v1");
   assert.equal(frozen.cases.length, 24);
   const all = getEnhancementEvaluationPlan("openai-standard-v1", {
     corpus: "all",
   });
   assert.ok(all.cases.length >= 60);
+});
+
+test("downstream planner reports missing-fixtures when the directory is empty", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ps-down-empty-"));
+  try {
+    const plan = planDownstreamEvaluation({ fixtureDirectory: dir });
+    assert.equal(plan.mode, "dry-run");
+    assert.equal(plan.skipReason, "missing-fixtures");
+    assert.equal(plan.fixtures.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("downstream planner loads fixture manifests when spend is confirmed", () => {

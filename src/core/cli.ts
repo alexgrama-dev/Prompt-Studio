@@ -59,10 +59,13 @@ import {
   type McpMutationAction,
 } from "./mcp-confirmation.ts";
 import {
+  localProviderKeyFromEnvironmentName,
+} from "./provider-keys.ts";
+import {
   getProviderEnhancementProfile,
+  normalizeSelectableEnhancementProfileId,
   providerPricingDisclosure,
   providerPrivacyDisclosure,
-  SELECTABLE_ENHANCEMENT_PROFILE_IDS,
   type SelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
 import { listMissedSearches, tallyMissedSearches } from "./missed-searches.ts";
@@ -122,7 +125,7 @@ export interface PromptStudioCliOptions {
   readStdin?: () => Promise<string>;
   writeClipboard?: (value: string) => Promise<void>;
   providerFetchers?: Partial<
-    Record<"openai" | "anthropic" | "google", typeof fetch>
+    Record<"openai" | "anthropic" | "google" | "deepseek", typeof fetch>
   >;
   signal?: AbortSignal;
 }
@@ -1897,15 +1900,16 @@ function requireFeature(
 }
 
 function providerFeature(
-  provider: "openai" | "anthropic" | "google",
+  provider: "openai" | "anthropic" | "google" | "deepseek",
 ): FeatureId {
   if (provider === "anthropic") return "anthropic-provider";
   if (provider === "google") return "google-provider";
+  if (provider === "deepseek") return "deepseek-provider";
   return "openai-enhancement";
 }
 
 function selectedProviderKey(
-  provider: "openai" | "anthropic" | "google",
+  provider: "openai" | "anthropic" | "google" | "deepseek",
   env: PromptStudioCliOptions["env"] = {},
 ): string {
   const name =
@@ -1913,8 +1917,11 @@ function selectedProviderKey(
       ? "ANTHROPIC_API_KEY"
       : provider === "google"
         ? "GEMINI_API_KEY"
-        : "OPENAI_API_KEY";
-  const value = env?.[name]?.trim();
+        : provider === "deepseek"
+          ? "DEEPSEEK_API_KEY"
+          : "OPENAI_API_KEY";
+  const value =
+    env?.[name]?.trim() || localProviderKeyFromEnvironmentName(name);
   if (!value) {
     throw new CliError(
       "PROVIDER_KEY_REQUIRED",
@@ -2099,11 +2106,8 @@ function targetValue(value: unknown, fallback: PromptTarget): PromptTarget {
 }
 
 function selectedProfileId(value: string): SelectableEnhancementProfileId {
-  if (
-    (SELECTABLE_ENHANCEMENT_PROFILE_IDS as readonly string[]).includes(value)
-  ) {
-    return value as SelectableEnhancementProfileId;
-  }
+  const mapped = normalizeSelectableEnhancementProfileId(value);
+  if (mapped) return mapped;
   throw new CliError(
     "INVALID_PROFILE",
     `Unknown enhancement profile: ${value}.`,
@@ -2506,7 +2510,7 @@ Mutation and external-action rules:
   enhance requires --yes before a provider call and always writes Enhancement
   History first. A separate enhance save action requires its returned digest.
   The old one-call --save option is rejected before key access. Provider keys are read only from OPENAI_API_KEY,
-  ANTHROPIC_API_KEY, or GEMINI_API_KEY after activation and confirmation.
+  ANTHROPIC_API_KEY, GEMINI_API_KEY, or DEEPSEEK_API_KEY after activation and confirmation.
   API keys are never accepted as command-line options.
   feedback add, update, and delete require --yes. Feedback records stay local,
   preserve an immutable prompt-version snapshot, and never infer an outcome.

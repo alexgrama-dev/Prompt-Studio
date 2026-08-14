@@ -61,7 +61,7 @@ export interface PromptTaxonomy {
 }
 
 export interface EnhancementProvenance {
-  provider: "openai" | "anthropic" | "google";
+  provider: "openai" | "anthropic" | "google" | "deepseek";
   profileId: string;
   model: string;
   reasoningEffort: string;
@@ -1037,7 +1037,7 @@ function promptTaxonomy(value: unknown): PromptTaxonomy {
 function enhancementProvenance(value: unknown): EnhancementProvenance {
   if (!isObject(value)) throw new Error("enhancement must be an object.");
   const provider = requiredString(value.provider, "enhancement.provider");
-  if (!["openai", "anthropic", "google"].includes(provider)) {
+  if (!["openai", "anthropic", "google", "deepseek"].includes(provider)) {
     throw new Error(`Unsupported enhancement provider: ${provider}.`);
   }
   const outputSchemaVersion = value.outputSchemaVersion;

@@ -68,6 +68,7 @@ const child = spawn(process.execPath, [serverPath], {
   env: {
     ...definedEnvironment(),
     PROMPT_STUDIO_DISABLE_INDEX_SYNC: "1",
+    PROMPT_STUDIO_DISABLE_LOCAL_PROVIDER_KEYS: "1",
     PROMPT_STUDIO_LIBRARY_DIR: library,
     PROMPT_STUDIO_SEARCH_INDEX: searchIndex,
     PROMPT_STUDIO_MCP_AUDIT_LOG: audit,

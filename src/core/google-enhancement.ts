@@ -28,6 +28,11 @@ export const GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT =
 export const GOOGLE_PRIVACY_DISCLOSURE_VERSION =
   "gemini-generate-content-tier-aware-v1";
 
+export function googleThinkingLevel(effort: string): string {
+  if (effort === "xhigh" || effort === "max") return "extra_high";
+  return effort;
+}
+
 export interface GoogleEnhancementOptions extends ProviderTransportOptions {
   apiKey: string;
 }
@@ -68,14 +73,10 @@ export function buildGoogleGenerateContentRequest(
     generationConfig: {
       maxOutputTokens: profile.maxOutputTokens,
       thinkingConfig: {
-        thinkingLevel: profile.reasoningEffort,
+        thinkingLevel: googleThinkingLevel(profile.reasoningEffort),
       },
-      responseFormat: {
-        text: {
-          mimeType: "application/json",
-          schema: enhancementResultSchemaForProvider(),
-        },
-      },
+      responseMimeType: "application/json",
+      responseJsonSchema: enhancementResultSchemaForProvider(),
     },
   };
 }
@@ -85,7 +86,7 @@ export async function enhanceWithGoogle(
   options: GoogleEnhancementOptions,
 ): Promise<EnhancementRun> {
   const request = validateEnhancementRequest(unvalidatedRequest);
-  if (request.profileId !== "google-gemini-3.5-flash-v1") {
+  if (request.profileId !== "google-gemini-3.7-flash-v1") {
     throw new Error(
       `Profile ${request.profileId} cannot be sent to Google. No provider fallback occurred.`,
     );

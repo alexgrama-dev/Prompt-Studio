@@ -1,0 +1,9 @@
+{
+  "id": "ui-change",
+  "caseId": "dev-ui-empty-state",
+  "taskClass": "design-ui",
+  "repoPath": "ui-change",
+  "agent": "codex-cli",
+  "timeoutMs": 120000,
+  "successChecks": ["grep -q '>Save</button>' index.html"]
+}

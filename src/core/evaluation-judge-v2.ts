@@ -71,7 +71,7 @@ export interface EnhancementV2JudgeDocument {
 }
 
 const JUDGE_PROFILE_ID = "anthropic-sonnet-5-v1";
-const MAX_OUTPUT_TOKENS = 1_600;
+const MAX_OUTPUT_TOKENS = 4_000;
 const MAX_INPUT_TOKENS = 20_000;
 const INPUT_COST_PER_MILLION_USD = 3;
 const OUTPUT_COST_PER_MILLION_USD = 15;

@@ -32,6 +32,7 @@ import {
   type Context7ResearchResult,
 } from "./core/context7-research";
 import {
+  attachCompilerCritique,
   enhancementResultToPromptDraft,
   validateEnhancementResult,
   type EnhancementRequest,
@@ -117,6 +118,7 @@ import {
   enhancementHistoryDigest,
   enhancementHistoryDirectory,
   listPrompts,
+  listPromptsReadOnly,
   recordEnhancementHistory,
   resolvePromptDirectory,
   saveEnhancementHistoryToLibrary,
@@ -129,12 +131,24 @@ import {
 import {
   appendUntrustedEvidence,
   applyCaptureFence,
+  applyElicitationAnswers,
+  planCompilerStages,
+  type ElicitationAnswer,
 } from "./core/compiler-pipeline";
 import {
   enhancePromptEntryUntrustedSurface,
   ideaStudioLaunchContext,
   type EnhancePromptLaunchContext,
 } from "./core/launch-context";
+import {
+  ENHANCE_LAST_SETUP_KEY,
+  parseEnhanceLastSetup,
+  serializeEnhanceLastSetup,
+} from "./core/enhance-last-setup";
+import { recallSimilarPrompts } from "./core/similar-prompts";
+import {
+  antiPatternSaveError,
+} from "./core/anti-patterns";
 import { pushCaptureInbox } from "./open-studio-views";
 import {
   enhancementProfileIsAvailable,
@@ -146,6 +160,10 @@ import {
   type SelectableEnhancementProfileId,
 } from "./core/provider-profiles";
 import {
+  resolveProviderApiKey,
+  resolveProviderApiKeyForProvider,
+} from "./core/provider-keys";
+import {
   OPENAI_WEB_PRIVACY_DISCLOSURE,
   planWebResearch,
   researchWithOpenAIWeb,
@@ -153,6 +171,7 @@ import {
   type WebResearchResult,
 } from "./core/web-research";
 import { maximumJudgeCostUsd } from "./core/evaluation-judge";
+import { maximumV2JudgeCostUsd } from "./core/evaluation-judge-v2";
 import { findDuplicateCandidates } from "./core/overlap";
 import { ProjectContextCache } from "./core/ambient";
 
@@ -165,6 +184,7 @@ import {
   REVIEW_TOTAL,
   selectBestVariant,
   variantCount,
+  variantReviewSummary,
   type EnhancementVariant,
   type ScoredVariant,
   type VariantSelection,
@@ -179,13 +199,7 @@ function providerApiKeyForRequest(
   const provider = getProviderEnhancementProfile(
     request.profileId as SelectableEnhancementProfileId,
   ).provider;
-  const key =
-    provider === "anthropic"
-      ? preferences.anthropicApiKey
-      : provider === "google"
-        ? preferences.googleApiKey
-        : preferences.openaiApiKey;
-  return key?.trim() || undefined;
+  return resolveProviderApiKeyForProvider(preferences, provider);
 }
 
 /** Ask for one change, re-run from the previous result, then show what moved. */
@@ -359,15 +373,7 @@ function VariantComparison({
     `**Cost so far:** $${selection.enhancementCostUsd.toFixed(4)} generation · $${selection.judgeCostUsd.toFixed(4)} judging`,
     ...selection.ranked.flatMap((variant, position) => [
       `## ${position === 0 ? "Winner · " : ""}Variant ${variant.index + 1} — ${variant.score}/${REVIEW_TOTAL}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
-      [
-        `fidelity ${variant.review.fidelity}`,
-        `completeness ${variant.review.completeness}`,
-        `unsupported facts ${variant.review.unsupportedFacts}`,
-        `actionability ${variant.review.actionability}`,
-        `validation ${variant.review.validation}`,
-        `authorization ${variant.review.authorization}`,
-        `length ${variant.review.appropriateLength}`,
-      ].join(" · "),
+      variantReviewSummary(variant.review),
       variant.review.notes
         ? `**Judge notes:** ${escapeMarkdown(variant.review.notes)}`
         : "**Judge notes:** none",
@@ -422,6 +428,74 @@ function safePromptDirectory(): string | undefined {
   }
 }
 
+async function recallSimilarFromLibrary(
+  request: EnhancementRequest,
+): Promise<EnhancementRequest> {
+  if (request.similarPromptExamples) return request;
+  const directory = safePromptDirectory();
+  if (!directory) return { ...request, similarPromptExamples: [] };
+  try {
+    const library = await listPromptsReadOnly(directory);
+    return {
+      ...request,
+      similarPromptExamples: recallSimilarPrompts(
+        library.records,
+        request.roughThoughts,
+        { target: request.target },
+      ),
+    };
+  } catch {
+    return { ...request, similarPromptExamples: [] };
+  }
+}
+
+function ElicitationForm({
+  questions,
+  onContinue,
+  onSkip,
+}: {
+  questions: readonly string[];
+  onContinue: (answers: ElicitationAnswer[]) => Promise<void>;
+  onSkip: () => Promise<void>;
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function submit(values: Record<string, string>) {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onContinue(
+        questions.map((question, index) => ({
+          question,
+          answer: String(values[`q${index}`] ?? ""),
+        })),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      navigationTitle="Before Enhance"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Continue"
+            onSubmit={(values) => void submit(values)}
+          />
+          <Action title="Skip" onAction={() => void onSkip()} />
+        </ActionPanel>
+      }
+    >
+      {questions.map((question, index) => (
+        <Form.TextArea key={question} id={`q${index}`} title={question} />
+      ))}
+    </Form>
+  );
+}
+
 /** Research failures happen before the enhancement, after money is spent. */
 async function logResearchFailure(
   stage: RunStage,
@@ -466,6 +540,7 @@ interface Preferences {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   googleApiKey?: string;
+  deepseekApiKey?: string;
   context7ApiKey?: string;
   exaApiKey?: string;
   githubToken?: string;
@@ -514,6 +589,7 @@ export default function EnhancePrompt(props: {
   const initialThoughts =
     props.launchContext?.thoughts ??
     (props.arguments?.thoughts?.trim() || props.fallbackText?.trim() || "");
+  const launchNamedTarget = Boolean(props.launchContext?.target);
   const initialTarget = props.launchContext?.target ?? "codex";
   const initialSeed = props.launchContext?.seedId
     ? { id: props.launchContext.seedId, thoughts: initialThoughts }
@@ -539,6 +615,7 @@ export default function EnhancePrompt(props: {
   const [anthropicState, setAnthropicState] =
     useState<FeatureState>("disabled");
   const [googleState, setGoogleState] = useState<FeatureState>("disabled");
+  const [deepseekState, setDeepseekState] = useState<FeatureState>("disabled");
 
   useEffect(() => {
     void loadFeatureStatuses()
@@ -560,6 +637,9 @@ export default function EnhancePrompt(props: {
         );
         setGoogleState(
           getFeatureStatus(statuses, "google-provider").effectiveState,
+        );
+        setDeepseekState(
+          getFeatureStatus(statuses, "deepseek-provider").effectiveState,
         );
         if (feature.effectiveState === "disabled") {
           setState("disabled");
@@ -584,6 +664,7 @@ export default function EnhancePrompt(props: {
         state={state}
         initialThoughts={initialThoughts}
         initialTarget={initialTarget}
+        launchNamedTarget={launchNamedTarget}
         {...(initialUntrustedSurface
           ? { initialUntrustedSurface }
           : {})}
@@ -596,6 +677,7 @@ export default function EnhancePrompt(props: {
         githubState={githubState}
         anthropicState={anthropicState}
         googleState={googleState}
+        deepseekState={deepseekState}
       />
     );
   }
@@ -617,8 +699,10 @@ function EnhancementWorkspace({
   githubState,
   anthropicState,
   googleState,
+  deepseekState,
   initialThoughts,
   initialTarget,
+  launchNamedTarget,
   initialUntrustedSurface,
   initialSeed,
   revisionOfPromptId,
@@ -631,8 +715,10 @@ function EnhancementWorkspace({
   githubState: FeatureState;
   anthropicState: FeatureState;
   googleState: FeatureState;
+  deepseekState: FeatureState;
   initialThoughts: string;
   initialTarget: PromptTarget;
+  launchNamedTarget: boolean;
   initialUntrustedSurface?: EnhancePromptLaunchContext["untrustedSurface"];
   initialSeed?: PromptSeedReference;
   revisionOfPromptId?: string | undefined;
@@ -647,6 +733,7 @@ function EnhancementWorkspace({
     resolveDefaultEnhancementProfileId(preferences.defaultEnhancementProfile, {
       anthropic: anthropicState,
       google: googleState,
+      deepseek: deepseekState,
     }),
   );
   const [researchLevel, setResearchLevel] =
@@ -680,12 +767,18 @@ function EnhancementWorkspace({
   const formDraftLoaded = useRef(false);
   const projectDiscoveryStarted = useRef(false);
   const projectDiscoveryLoadingRef = useRef(false);
+  const lastProjectApplied = useRef(false);
+  const [lastSetup, setLastSetup] = useState<
+    ReturnType<typeof parseEnhanceLastSetup>
+  >();
+  const [formHydrated, setFormHydrated] = useState(false);
   const effectiveProfileId = profileId;
   const effectiveResearchLevel = setupMode === "smart" ? "none" : researchLevel;
   const profile = getProviderEnhancementProfile(effectiveProfileId);
   const profileAvailable = enhancementProfileIsAvailable(profileId, {
     anthropic: anthropicState,
     google: googleState,
+    deepseek: deepseekState,
   });
   const estimatedCost = useMemo(
     () =>
@@ -703,33 +796,42 @@ function EnhancementWorkspace({
   );
 
   useEffect(() => {
-    void LocalStorage.getItem<string>(ENHANCEMENT_FORM_DRAFT_KEY)
-      .then((stored) => {
+    void Promise.all([
+      LocalStorage.getItem<string>(ENHANCEMENT_FORM_DRAFT_KEY),
+      LocalStorage.getItem<string>(ENHANCE_LAST_SETUP_KEY),
+    ])
+      .then(([stored, lastStored]) => {
+        const last = parseEnhanceLastSetup(lastStored);
+        setLastSetup(last);
         const draft = restorableEnhancementFormDraft(stored, initialThoughts);
-        if (!draft) return;
-        setRoughThoughts(draft.roughThoughts);
-        if (draft.roughThoughts !== initialThoughts) {
-          setUntrustedSurface(undefined);
+        if (draft) {
+          setRoughThoughts(draft.roughThoughts);
+          if (draft.roughThoughts !== initialThoughts) {
+            setUntrustedSurface(undefined);
+          }
+          setTarget(draft.target);
+          setProject(draft.project);
+          setRepositoryFolder(draft.repositoryFolder);
+          setShowFolderPicker(draft.repositoryFolder.length > 0);
+          setSetupMode(draft.setupMode);
+          setProfileId(draft.profileId);
+          setResearchLevel(draft.researchLevel);
+          setOneRunInstruction(draft.oneRunInstruction);
+          setActiveSeed(
+            draft.seedId
+              ? { id: draft.seedId, thoughts: draft.roughThoughts }
+              : undefined,
+          );
+          return;
         }
-        setTarget(draft.target);
-        setProject(draft.project);
-        setRepositoryFolder(draft.repositoryFolder);
-        setShowFolderPicker(draft.repositoryFolder.length > 0);
-        setSetupMode(draft.setupMode);
-        setProfileId(draft.profileId);
-        setResearchLevel(draft.researchLevel);
-        setOneRunInstruction(draft.oneRunInstruction);
-        setActiveSeed(
-          draft.seedId
-            ? { id: draft.seedId, thoughts: draft.roughThoughts }
-            : undefined,
-        );
+        if (last && !launchNamedTarget) setTarget(last.target);
       })
       .catch(() => undefined)
       .finally(() => {
         formDraftLoaded.current = true;
+        setFormHydrated(true);
       });
-  }, [initialThoughts]);
+  }, [initialThoughts, launchNamedTarget]);
 
   useEffect(() => {
     if (!formDraftLoaded.current) return;
@@ -818,6 +920,23 @@ function EnhancementWorkspace({
   }, [loadProjects]);
 
   useEffect(() => {
+    if (!formHydrated || lastProjectApplied.current) return;
+    if (project !== "none") {
+      lastProjectApplied.current = true;
+      return;
+    }
+    const path = lastSetup?.project;
+    if (!path || path === "none") return;
+    const known = new Set([
+      ...projects.map((item) => item.path),
+      ...recentProjectPaths,
+    ]);
+    if (!known.has(path)) return;
+    lastProjectApplied.current = true;
+    setProject(path);
+  }, [formHydrated, lastSetup, project, projects, recentProjectPaths]);
+
+  useEffect(() => {
     void latestEnhancementEvaluation()
       .then((report) => {
         if (report) setEvaluationReport(report);
@@ -846,12 +965,13 @@ function EnhancementWorkspace({
       !enhancementProfileIsAvailable(values.profileId, {
         anthropic: anthropicState,
         google: googleState,
+        deepseek: deepseekState,
       })
     ) {
       await showToast(
         Toast.Style.Failure,
         "Saved Provider Is Unavailable",
-        "Open Advanced Provider and choose an enabled provider. Your task remains unchanged.",
+        "Choose an enabled model. Enable the provider in Feature Status if it is Disabled. Your task remains unchanged.",
       );
       return;
     }
@@ -1082,7 +1202,7 @@ function EnhancementWorkspace({
     let context7Plans: Context7Plan[] = context7Plan ? [context7Plan] : [];
     let exaPlans: ExaResearchPlan[] = exaPlan ? [exaPlan] : [];
     if (webPlan || exaPlan || context7Plan) {
-      const apiKey = preferences.openaiApiKey?.trim();
+      const apiKey = resolveProviderApiKey(preferences, "openaiApiKey");
       if (!apiKey) {
         await showToast(
           Toast.Style.Failure,
@@ -1322,22 +1442,59 @@ function EnhancementWorkspace({
 
   async function runEnhancement(request: EnhancementRequest) {
     if (activeController.current) return;
+    if (!request.elicitationAsked) {
+      const stages = planCompilerStages({
+        roughThoughts: request.roughThoughts,
+        target: request.target,
+        hasProject: Boolean(
+          request.project || (request.allowedProjectFiles?.length ?? 0) > 0,
+        ),
+      });
+      if (stages.elicitation.questions.length > 0) {
+        push(
+          <ElicitationForm
+            questions={stages.elicitation.questions}
+            onContinue={async (answers) => {
+              await runEnhancement(
+                await recallSimilarFromLibrary({
+                  ...request,
+                  roughThoughts: applyElicitationAnswers(
+                    request.roughThoughts,
+                    answers,
+                  ),
+                  elicitationAsked: true,
+                }),
+              );
+            }}
+            onSkip={async () => {
+              await runEnhancement(
+                await recallSimilarFromLibrary({
+                  ...request,
+                  elicitationAsked: true,
+                }),
+              );
+            }}
+          />,
+        );
+        return;
+      }
+      request = { ...request, elicitationAsked: true };
+    }
+    if (!request.similarPromptExamples) {
+      request = await recallSimilarFromLibrary(request);
+    }
     const selectedProfile = getProviderEnhancementProfile(
       request.profileId as SelectableEnhancementProfileId,
     );
-    if (
-      selectedProfile.provider === "anthropic" ||
-      selectedProfile.provider === "google"
-    ) {
-      const savedKey = (
-        selectedProfile.provider === "anthropic"
-          ? preferences.anthropicApiKey
-          : preferences.googleApiKey
-      )?.trim();
-      if (savedKey) {
-        await executeEnhancement(request, savedKey);
-        return;
-      }
+    const savedKey = resolveProviderApiKeyForProvider(
+      preferences,
+      selectedProfile.provider,
+    );
+    if (savedKey) {
+      await executeEnhancement(request, savedKey);
+      return;
+    }
+    if (selectedProfile.provider !== "openai") {
       push(
         <ProviderApiKeyForm
           provider={selectedProfile.provider}
@@ -1348,17 +1505,12 @@ function EnhancementWorkspace({
       );
       return;
     }
-    const openaiApiKey = preferences.openaiApiKey?.trim();
-    if (!openaiApiKey) {
-      await showToast(
-        Toast.Style.Failure,
-        "OpenAI API Key Required",
-        "Add the shared key in Prompt Studio extension preferences before enhancing.",
-      );
-      await openExtensionPreferences();
-      return;
-    }
-    await executeEnhancement(request, openaiApiKey);
+    await showToast(
+      Toast.Style.Failure,
+      "OpenAI API Key Required",
+      "Add the shared key in Prompt Studio extension preferences before enhancing.",
+    );
+    await openExtensionPreferences();
   }
 
   async function executeEnhancement(
@@ -1394,14 +1546,21 @@ function EnhancementWorkspace({
           signal: controller.signal,
         });
       } else {
-        const judgeKey = preferences.openaiApiKey?.trim();
+        const judgeKey =
+          resolveProviderApiKey(preferences, "anthropicApiKey") ||
+          resolveProviderApiKey(preferences, "openaiApiKey");
         if (!judgeKey) {
           throw new Error(
-            "Variant selection needs the OpenAI API key for the blind judge. Add it, or set Variants to Off.",
+            "Variant selection needs an Anthropic API key or an OpenAI API key for the blind judge. Add one, or set Variants to Off.",
           );
         }
+        const judgeRubric = resolveProviderApiKey(preferences, "anthropicApiKey") ? "v2" : "v1";
         const perRun = estimatedProviderMaximumCostUsd(effectiveRequest);
-        const ceiling = perRun * variants + maximumJudgeCostUsd(variants);
+        const ceiling =
+          perRun * variants +
+          (judgeRubric === "v2"
+            ? maximumV2JudgeCostUsd(variants)
+            : maximumJudgeCostUsd(variants));
         const confirmed = await confirmAlert({
           title: `Generate ${variants} variants?`,
           message: `Each variant is a separate ${providerDisplayName(effectiveRequest)} request, and each is then scored by a blind judge. Maximum total cost: $${ceiling.toFixed(3)}.`,
@@ -1431,6 +1590,7 @@ function EnhancementWorkspace({
         selection = await selectBestVariant(effectiveRequest, generated, {
           apiKey: judgeKey,
           signal: controller.signal,
+          rubric: judgeRubric,
         });
         run = selection.winner.run;
       }
@@ -1528,6 +1688,13 @@ function EnhancementWorkspace({
           ),
         () => LocalStorage.removeItem(ENHANCEMENT_FORM_DRAFT_KEY),
       );
+      await LocalStorage.setItem(
+        ENHANCE_LAST_SETUP_KEY,
+        serializeEnhanceLastSetup({
+          target: pending.request.target,
+          project: pending.request.project?.path ?? "none",
+        }),
+      ).catch(() => undefined);
       setPendingEnhancement(undefined);
       toast.style = Toast.Style.Success;
       toast.title = "Enhancement Ready";
@@ -1567,7 +1734,7 @@ function EnhancementWorkspace({
         );
         return;
       }
-      const savedKey = preferences.anthropicApiKey?.trim();
+      const savedKey = resolveProviderApiKey(preferences, "anthropicApiKey");
       if (savedKey) {
         await executeActivationEvaluation(effectiveProfileId, savedKey);
         return;
@@ -1594,7 +1761,7 @@ function EnhancementWorkspace({
         );
         return;
       }
-      const savedKey = preferences.googleApiKey?.trim();
+      const savedKey = resolveProviderApiKey(preferences, "googleApiKey");
       if (savedKey) {
         await executeActivationEvaluation(effectiveProfileId, savedKey);
         return;
@@ -1612,7 +1779,34 @@ function EnhancementWorkspace({
       );
       return;
     }
-    const apiKey = preferences.openaiApiKey?.trim();
+    if (profile.provider === "deepseek") {
+      if (deepseekState === "disabled") {
+        await showToast(
+          Toast.Style.Failure,
+          "DeepSeek Provider Is Disabled",
+          "Activation 11 must enter Preview before its quality evaluation can run.",
+        );
+        return;
+      }
+      const savedKey = resolveProviderApiKey(preferences, "deepseekApiKey");
+      if (savedKey) {
+        await executeActivationEvaluation(effectiveProfileId, savedKey);
+        return;
+      }
+      push(
+        <ProviderApiKeyForm
+          provider="deepseek"
+          profile={profile}
+          purpose="evaluation"
+          onSubmit={(apiKey) =>
+            executeActivationEvaluation(effectiveProfileId, apiKey)
+          }
+          onCancel={() => evaluationController.current?.abort()}
+        />,
+      );
+      return;
+    }
+    const apiKey = resolveProviderApiKey(preferences, "openaiApiKey");
     if (!apiKey) {
       await showToast(
         Toast.Style.Failure,
@@ -1861,6 +2055,7 @@ function EnhancementWorkspace({
                   selected={profileId}
                   anthropicState={anthropicState}
                   googleState={googleState}
+                  deepseekState={deepseekState}
                   onSelect={setProfileId}
                 />
               }
@@ -1931,6 +2126,44 @@ function EnhancementWorkspace({
         <Form.Dropdown.Item title="Codex" value="codex" />
         <Form.Dropdown.Item title="Claude Code" value="claude-code" />
         <Form.Dropdown.Item title="Generic / Any Agent" value="generic" />
+      </Form.Dropdown>
+      <Form.Dropdown
+        id="profileId"
+        title="Model"
+        value={profileId}
+        onChange={(value) =>
+          setProfileId(value as SelectableEnhancementProfileId)
+        }
+      >
+        <Form.Dropdown.Item
+          title={enhancementModelOptionTitle(
+            "google-gemini-3.7-flash-v1",
+            googleState,
+          )}
+          value="google-gemini-3.7-flash-v1"
+        />
+        <Form.Dropdown.Item
+          title={enhancementModelOptionTitle("openai-standard-v1", "active")}
+          value="openai-standard-v1"
+        />
+        <Form.Dropdown.Item
+          title={enhancementModelOptionTitle(
+            "anthropic-sonnet-5-v1",
+            anthropicState,
+          )}
+          value="anthropic-sonnet-5-v1"
+        />
+        <Form.Dropdown.Item
+          title={enhancementModelOptionTitle(
+            "deepseek-v4-pro-v1",
+            deepseekState,
+          )}
+          value="deepseek-v4-pro-v1"
+        />
+        <Form.Dropdown.Item
+          title={enhancementModelOptionTitle("openai-deep-v1", "active")}
+          value="openai-deep-v1"
+        />
       </Form.Dropdown>
       <Form.Dropdown
         id="project"
@@ -2061,15 +2294,21 @@ function AdvancedProviderSelection({
   selected,
   anthropicState,
   googleState,
+  deepseekState,
   onSelect,
 }: {
   selected: SelectableEnhancementProfileId;
   anthropicState: FeatureState;
   googleState: FeatureState;
+  deepseekState: FeatureState;
   onSelect: (profile: SelectableEnhancementProfileId) => void;
 }) {
   const { pop } = useNavigation();
-  const states = { anthropic: anthropicState, google: googleState };
+  const states = {
+    anthropic: anthropicState,
+    google: googleState,
+    deepseek: deepseekState,
+  };
   const [profileId, setProfileId] = useState<
     SelectableEnhancementProfileId | ""
   >(enhancementProfileIsAvailable(selected, states) ? selected : "");
@@ -2082,7 +2321,7 @@ function AdvancedProviderSelection({
       await showToast(
         Toast.Style.Failure,
         "Choose an Enabled Provider",
-        "Disabled providers are shown for context but cannot be selected.",
+        "Disabled providers are shown for context but cannot be selected here. Enable them in Feature Status, then choose them on the Model list.",
       );
       return;
     }
@@ -2131,8 +2370,14 @@ function AdvancedProviderSelection({
           )}
           {googleState === "disabled" ? null : (
             <Form.Dropdown.Item
-              title={`Gemini 3.5 Flash · ${title(googleState)}`}
-              value="google-gemini-3.5-flash-v1"
+              title={`Gemini 3.7 Flash · ${title(googleState)}`}
+              value="google-gemini-3.7-flash-v1"
+            />
+          )}
+          {deepseekState === "disabled" ? null : (
+            <Form.Dropdown.Item
+              title={`DeepSeek V4 Pro · ${title(deepseekState)}`}
+              value="deepseek-v4-pro-v1"
             />
           )}
         </Form.Dropdown.Section>
@@ -2142,7 +2387,7 @@ function AdvancedProviderSelection({
         text={
           profile
             ? `${profile.purpose} A failed request never falls back to another provider.`
-            : `Claude Sonnet 5 is ${title(anthropicState)}. Gemini 3.5 Flash is ${title(googleState)}. Choose an enabled provider; the saved task is unchanged.`
+            : `Claude Sonnet 5 is ${title(anthropicState)}. Gemini 3.7 Flash is ${title(googleState)}. DeepSeek V4 Pro is ${title(deepseekState)}. Choose an enabled provider; the saved task is unchanged.`
         }
       />
     </Form>
@@ -2475,7 +2720,7 @@ function ProviderApiKeyForm({
   onSubmit,
   onCancel,
 }: {
-  provider: "anthropic" | "google";
+  provider: "anthropic" | "google" | "deepseek";
   profile: EnhancementRunProfile;
   purpose?: "enhancement" | "evaluation";
   onSubmit: (apiKey: string) => Promise<void>;
@@ -2483,7 +2728,7 @@ function ProviderApiKeyForm({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const providerTitle = provider === "anthropic" ? "Anthropic" : "Google";
+  const providerTitle = providerName(provider);
 
   async function submit() {
     const value = apiKey.trim();
@@ -2533,7 +2778,9 @@ function ProviderApiKeyForm({
               url={
                 provider === "anthropic"
                   ? "https://console.anthropic.com/settings/keys"
-                  : "https://aistudio.google.com/app/apikey"
+                  : provider === "google"
+                    ? "https://aistudio.google.com/app/apikey"
+                    : "https://platform.deepseek.com/api_keys"
               }
             />
           ) : null}
@@ -3290,7 +3537,7 @@ function WebResearchPlanReview({
 
   async function retrieve() {
     if (controller.current) return;
-    const apiKey = preferences.openaiApiKey?.trim();
+    const apiKey = resolveProviderApiKey(preferences, "openaiApiKey");
     if (!apiKey) {
       await showToast(
         Toast.Style.Failure,
@@ -4047,9 +4294,15 @@ function EnhancementPreview({
     ]
       .filter(Boolean)
       .join(" · ") || "No project or external sources";
+  const findings = run.antiPatternFindings ?? [];
+  const saveError = antiPatternSaveError(findings);
 
   async function save(skipDuplicateCheck = false) {
     if (isSaving) return;
+    if (saveError) {
+      await showToast(Toast.Style.Failure, "Could Not Save Prompt", saveError);
+      return;
+    }
     setIsSaving(true);
     try {
       // Catch a near-duplicate before the write, not in a later audit.
@@ -4128,6 +4381,16 @@ function EnhancementPreview({
             title="Cost"
             text={`$${run.usage.estimatedCostUsd.toFixed(4)}`}
           />
+          {findings.map((finding) => (
+            <Detail.Metadata.Label
+              key={finding.id}
+              title={finding.id}
+              text={finding.evidence}
+            />
+          ))}
+          {saveError ? (
+            <Detail.Metadata.Label title="Save" text={saveError} />
+          ) : null}
           <Detail.Metadata.TagList title="Search Tags">
             {result.tags.map((tag) => (
               <Detail.Metadata.TagList.Item key={tag} text={tag} />
@@ -4146,12 +4409,14 @@ function EnhancementPreview({
             icon={Icon.ArrowRightCircle}
             onAction={() => pasteEnhancedPrompt(result.enhancedPrompt)}
           />
-          <Action
-            title="Save to Prompt Library"
-            icon={Icon.CheckCircle}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
-            onAction={() => void save()}
-          />
+          {saveError ? null : (
+            <Action
+              title="Save to Prompt Library"
+              icon={Icon.CheckCircle}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
+              onAction={() => void save()}
+            />
+          )}
           <Action.Push
             title="Edit Before Saving"
             icon={Icon.Pencil}
@@ -4228,7 +4493,12 @@ function EnhancementEditor({
         },
         request,
       );
-      const approvedRun: EnhancementRun = { ...run, result: edited };
+      const approvedRun = attachCompilerCritique(
+        { ...run, result: edited },
+        request,
+      );
+      const blocked = antiPatternSaveError(approvedRun.antiPatternFindings);
+      if (blocked) throw new Error(blocked);
       const draft = enhancementResultToPromptDraft(approvedRun, request, seed);
       const reviewedHistory = await updatePrompt(
         enhancementHistoryDirectory(directory),
@@ -4349,7 +4619,22 @@ function providerDisplayName(request: EnhancementRequest): string {
 function providerName(provider: EnhancementRunProfile["provider"]): string {
   if (provider === "anthropic") return "Anthropic";
   if (provider === "google") return "Google";
+  if (provider === "deepseek") return "DeepSeek";
   return "OpenAI";
+}
+
+function enhancementModelOptionTitle(
+  id: SelectableEnhancementProfileId,
+  state: FeatureState,
+): string {
+  const labels: Record<SelectableEnhancementProfileId, string> = {
+    "google-gemini-3.7-flash-v1": "Gemini 3.7 Flash",
+    "openai-standard-v1": "GPT-5.6 Terra",
+    "anthropic-sonnet-5-v1": "Claude Sonnet 5",
+    "deepseek-v4-pro-v1": "DeepSeek V4 Pro",
+    "openai-deep-v1": "GPT-5.6 Sol + Review",
+  };
+  return state === "disabled" ? `${labels[id]} · Disabled` : labels[id];
 }
 
 function targetTitle(target: PromptTarget): string {

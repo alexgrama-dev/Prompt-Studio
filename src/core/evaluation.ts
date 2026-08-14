@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import evaluationCases from "../../evals/cases.json" with { type: "json" };
 import extendedEvaluationCases from "../../evals/cases-extended.json" with { type: "json" };
 import { ANTHROPIC_PRIVACY_DISCLOSURE_VERSION } from "./anthropic-enhancement.ts";
+import { DEEPSEEK_PRIVACY_DISCLOSURE_VERSION } from "./deepseek-enhancement.ts";
 import { dispatchEnhancement } from "./enhancement-dispatch.ts";
 import {
   ENHANCEMENT_COMPILER_VERSION,
@@ -745,12 +746,16 @@ function privacyDisclosureVersionForProvider(
   if (provider === "google") {
     return GOOGLE_PRIVACY_DISCLOSURE_VERSION;
   }
+  if (provider === "deepseek") {
+    return DEEPSEEK_PRIVACY_DISCLOSURE_VERSION;
+  }
   return PRIVACY_DISCLOSURE_VERSION;
 }
 
 function providerTitle(provider: EnhancementRunProfile["provider"]): string {
   if (provider === "anthropic") return "Anthropic";
   if (provider === "google") return "Google";
+  if (provider === "deepseek") return "DeepSeek";
   return "OpenAI";
 }
 

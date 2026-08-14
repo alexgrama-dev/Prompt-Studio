@@ -1,0 +1,12 @@
+{
+  "id": "diagnose-claude",
+  "caseId": "dev-review-auth-diff",
+  "taskClass": "investigation",
+  "repoPath": "diagnose-claude",
+  "agent": "claude-code",
+  "timeoutMs": 120000,
+  "successChecks": [
+    "test -f DIAGNOSIS.md",
+    "cmp -s broken.py broken.py.frozen"
+  ]
+}

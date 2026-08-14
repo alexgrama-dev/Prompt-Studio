@@ -1,0 +1,960 @@
+{
+  "schemaVersion": 1,
+  "evaluationFrozenAt": "2026-07-19T00:00:00.000Z",
+  "profile": {
+    "id": "google-gemini-3.5-flash-v1",
+    "provider": "google",
+    "model": "gemini-3.5-flash",
+    "reasoningEffort": "medium",
+    "passes": 1
+  },
+  "compilerVersion": "prompt-studio-compiler/1.3.0",
+  "outputSchemaVersion": 1,
+  "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+  "privacyDisclosure": "Google receives the reviewed prompt in one stateless generateContent request with no tools or search. Google says paid Gemini API content is not used to improve its products, while free-tier content may be; limited abuse-monitoring logs can still apply unless the API project has separately approved zero-data-retention controls. Prompt Studio cannot infer whether a key belongs to a free or paid project.",
+  "confirmedMaximumCostUsd": 10,
+  "estimatedMaximumCostUsd": 5.425305,
+  "actualCostUsd": 0,
+  "repeats": 3,
+  "startedAt": "2026-08-14T08:42:21.522Z",
+  "completedAt": "2026-08-14T08:42:49.576Z",
+  "status": "incomplete",
+  "records": [
+    {
+      "caseId": "dev-debug-intermittent-api",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-debug-intermittent-api",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-debug-intermittent-api",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-implement-cache",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-implement-cache",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-implement-cache",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-review-auth-diff",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "review",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-review-auth-diff",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "review",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-review-auth-diff",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "review",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-research-current-sdk",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-research-current-sdk",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-research-current-sdk",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-ui-empty-state",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-ui-empty-state",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-ui-empty-state",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-destructive-database",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-destructive-database",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-destructive-database",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-short-rename",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-short-rename",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-short-rename",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-missing-project",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-missing-project",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-missing-project",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-test-flake",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-test-flake",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-test-flake",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "debugging",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-docs-migration-plan",
+      "generationIndex": 1,
+      "split": "development",
+      "category": "planning",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-docs-migration-plan",
+      "generationIndex": 2,
+      "split": "development",
+      "category": "planning",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "dev-docs-migration-plan",
+      "generationIndex": 3,
+      "split": "development",
+      "category": "planning",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-data-reconcile",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "data",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-data-reconcile",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "data",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-data-reconcile",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "data",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-accessibility-modal",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-accessibility-modal",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-accessibility-modal",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-release-notes",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "writing",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-release-notes",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "writing",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-release-notes",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "writing",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-performance",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "diagnosis",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-performance",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "diagnosis",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-performance",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "diagnosis",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-api-contract",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-api-contract",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-api-contract",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "implementation",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-multilingual",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-multilingual",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-multilingual",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "project-agnostic",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-mobile-layout",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-mobile-layout",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-mobile-layout",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "ui",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-readonly-research",
+      "generationIndex": 1,
+      "split": "validation",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-readonly-research",
+      "generationIndex": 2,
+      "split": "validation",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "val-readonly-research",
+      "generationIndex": 3,
+      "split": "validation",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-no-delete",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-no-delete",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-no-delete",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "destructive",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-untrusted-reference",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-untrusted-reference",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-untrusted-reference",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "research",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-secret",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "security",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-secret",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "security",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-secret",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "security",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-external-write",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-external-write",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-external-write",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-vague-fix",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "missing-information",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-vague-fix",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "missing-information",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-vague-fix",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "missing-information",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-plan-only",
+      "generationIndex": 1,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-plan-only",
+      "generationIndex": 2,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    },
+    {
+      "caseId": "protected-plan-only",
+      "generationIndex": 3,
+      "split": "protected",
+      "category": "authorization",
+      "metrics": {
+        "status": "failed",
+        "privacyDisclosureVersion": "gemini-generate-content-tier-aware-v1",
+        "compilerVersion": "prompt-studio-compiler/1.3.0",
+        "schemaVersion": 1
+      },
+      "error": "Google rejected the enhancement request (400, Invalid value at 'generation_config.response_format.text.mime_type' (type.googleapis.com/google.ai.generativelanguage.v1beta.TextResponseFormat.MimeType), \"application/json\"). No prompt was saved and no provider fallback occurred."
+    }
+  ]
+}

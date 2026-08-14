@@ -19,7 +19,7 @@ type ExtensionPreferences = {
   /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Capture Inbox; read only after an explicit OpenAI action */
   "openaiApiKey"?: string,
   /** Default Model - The enhancement profile Enhance Prompt starts with; a Disabled provider falls back to OpenAI Standard */
-  "defaultEnhancementProfile": "openai-standard-v1" | "openai-deep-v1" | "anthropic-sonnet-5-v1" | "google-gemini-3.5-flash-v1",
+  "defaultEnhancementProfile": "google-gemini-3.7-flash-v1" | "openai-standard-v1" | "openai-deep-v1" | "anthropic-sonnet-5-v1" | "deepseek-v4-pro-v1",
   /** Quality - Runs a second model pass that reviews the compiled prompt against your original thoughts. Roughly doubles the enhancement cost. */
   "selfReviewPass": boolean,
   /**  - Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each. */
@@ -28,6 +28,8 @@ type ExtensionPreferences = {
   "anthropicApiKey"?: string,
   /** Google API Key - Read only after you start a Google enhancement; leave blank to type a one-run key each time */
   "googleApiKey"?: string,
+  /** DeepSeek API Key - Read only after you start a DeepSeek enhancement; leave blank to type a one-run key each time */
+  "deepseekApiKey"?: string,
   /** Context7 API Key - Read only after you approve a Context7 documentation request; falls back to the CONTEXT7_API_KEY environment variable */
   "context7ApiKey"?: string,
   /** Exa API Key - Read only after you approve an Exa search and its maximum cost; leave blank to type a one-run key each time */

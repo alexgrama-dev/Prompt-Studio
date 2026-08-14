@@ -1,0 +1,9 @@
+{
+  "id": "bugfix-codex",
+  "caseId": "dev-debug-intermittent-api",
+  "taskClass": "bugfix",
+  "repoPath": "bugfix-codex",
+  "agent": "codex-cli",
+  "timeoutMs": 120000,
+  "successChecks": ["python3 -m unittest test_add.py -q"]
+}

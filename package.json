@@ -64,8 +64,12 @@
       "required": false,
       "title": "Default Model",
       "description": "The enhancement profile Enhance Prompt starts with; a Disabled provider falls back to OpenAI Standard",
-      "default": "openai-standard-v1",
+      "default": "google-gemini-3.7-flash-v1",
       "data": [
+        {
+          "title": "Google · Gemini 3.7 Flash",
+          "value": "google-gemini-3.7-flash-v1"
+        },
         {
           "title": "OpenAI · Standard",
           "value": "openai-standard-v1"
@@ -79,8 +83,8 @@
           "value": "anthropic-sonnet-5-v1"
         },
         {
-          "title": "Google · Gemini 3.5 Flash",
-          "value": "google-gemini-3.5-flash-v1"
+          "title": "DeepSeek · V4 Pro",
+          "value": "deepseek-v4-pro-v1"
         }
       ]
     },
@@ -99,7 +103,7 @@
       "required": false,
       "title": "",
       "description": "Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each.",
-      "default": "0",
+      "default": "3",
       "data": [
         {
           "title": "Off — one enhancement",
@@ -132,6 +136,13 @@
       "required": false,
       "title": "Google API Key",
       "description": "Read only after you start a Google enhancement; leave blank to type a one-run key each time"
+    },
+    {
+      "name": "deepseekApiKey",
+      "type": "password",
+      "required": false,
+      "title": "DeepSeek API Key",
+      "description": "Read only after you start a DeepSeek enhancement; leave blank to type a one-run key each time"
     },
     {
       "name": "context7ApiKey",
@@ -217,7 +228,7 @@
     "lint:store": "ray lint",
     "fix-lint": "eslint src test evals/*.mts cli/*.mts mcp/*.mts scripts/*.mts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "PROMPT_STUDIO_DISABLE_INDEX_SYNC=1 node --experimental-strip-types --test test/*.test.mts",
+    "test": "PROMPT_STUDIO_DISABLE_INDEX_SYNC=1 PROMPT_STUDIO_DISABLE_LOCAL_PROVIDER_KEYS=1 node --experimental-strip-types --test test/*.test.mts",
     "verify:mcp-bundle": "node --experimental-strip-types scripts/verify-mcp-bundle.mts",
     "verify:mcp-mutations": "node --experimental-strip-types scripts/verify-mcp-mutations.mts",
     "verify:mcp-runtime": "node --experimental-strip-types scripts/verify-mcp-runtime.mts",
@@ -230,7 +241,8 @@
     "eval:dry": "node --experimental-strip-types evals/run-provider.mts",
     "eval:openai": "node --experimental-strip-types evals/run-provider.mts --profile openai-standard-v1",
     "eval:anthropic": "node --experimental-strip-types evals/run-provider.mts --profile anthropic-sonnet-5-v1",
-    "eval:google": "node --experimental-strip-types evals/run-provider.mts --profile google-gemini-3.5-flash-v1",
+    "eval:google": "node --experimental-strip-types evals/run-provider.mts --profile google-gemini-3.7-flash-v1",
+    "eval:deepseek": "node --experimental-strip-types evals/run-provider.mts --profile deepseek-v4-pro-v1",
     "check": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm build:cli && pnpm build:mcp && pnpm verify:mcp-runtime && pnpm verify:mcp-bundle && pnpm verify:mcp-mutations && pnpm verify:feedback-cli && pnpm verify:optimization-cli",
     "eval:judge": "node --experimental-strip-types evals/judge-run.mts",
     "eval:downstream": "node --experimental-strip-types evals/downstream-run.mts"

@@ -70,6 +70,24 @@ export interface ElicitationPlan {
   skipAssumptions: string[];
 }
 
+export interface ElicitationAnswer {
+  question: string;
+  answer: string;
+}
+
+export function applyElicitationAnswers(
+  thoughts: string,
+  answers: readonly ElicitationAnswer[],
+): string {
+  const filled = answers.filter((item) => item.answer.trim().length > 0);
+  if (filled.length === 0) return thoughts;
+  const block = filled
+    .map((item) => `Q: ${item.question}\nA: ${item.answer.trim()}`)
+    .join("\n\n");
+  const head = thoughts.trimEnd();
+  return head ? `${head}\n\nAnswers:\n${block}` : `Answers:\n${block}`;
+}
+
 export interface CompilerStagePlan {
   capture: NormalizedInput;
   label: TaskLabel;
@@ -246,7 +264,9 @@ export function planCompilerStages(input: {
     gaps,
     elicitation,
     renderingAddendum: compilerRenderingAddendum(input.target),
-    gapAddendum: compilerGapAddendum(label, gaps, elicitation),
+    gapAddendum: compilerGapAddendum(label, gaps, elicitation, {
+      elicitationAsked: false,
+    }),
   };
 }
 
@@ -254,6 +274,7 @@ export function compilerGapAddendum(
   label: TaskLabel,
   gaps: readonly Gap[],
   elicitation: ElicitationPlan,
+  options: { elicitationAsked?: boolean } = {},
 ): string {
   const lines = [
     `Task class (rules, confidence ${label.confidence.toFixed(2)}): ${label.class}; scope ${label.scope}; certainty ${label.certainty}; risk ${label.risk}; verifiability ${label.verifiability}.`,
@@ -267,7 +288,7 @@ export function compilerGapAddendum(
       lines.push(`Blocking gap: ${gap.detail} Do not guess. List it in missingInformation.`);
     }
   }
-  if (elicitation.questions.length > 0) {
+  if (elicitation.questions.length > 0 && !options.elicitationAsked) {
     lines.push(
       `Elicitation is off on this path. ${elicitation.skipAssumptions.join(" ")}`,
     );

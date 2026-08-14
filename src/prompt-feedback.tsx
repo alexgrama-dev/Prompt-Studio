@@ -54,7 +54,7 @@ export default function PromptFeedback() {
       if (feature.effectiveState === "disabled") {
         setFeatureDisabledReason(
           feature.reason ??
-            "Outcome Feedback is Disabled until Activation 14 reaches Preview.",
+            "Outcome Feedback is Disabled until Activation 15 reaches Preview.",
         );
         setRecords([]);
         setInvalid([]);

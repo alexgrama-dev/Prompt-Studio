@@ -11,6 +11,7 @@ export interface PromptStudioPreferences {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   googleApiKey?: string;
+  deepseekApiKey?: string;
   context7ApiKey?: string;
   exaApiKey?: string;
   githubToken?: string;

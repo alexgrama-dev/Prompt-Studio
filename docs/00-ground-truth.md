@@ -73,6 +73,7 @@ text and typed items.
 | `src/core/enhancement.ts` | Compiler instructions, schema, OpenAI call, guardrails |
 | `src/core/anthropic-enhancement.ts` | Anthropic Messages path |
 | `src/core/google-enhancement.ts` | Gemini path |
+| `src/core/deepseek-enhancement.ts` | DeepSeek Chat Completions path |
 | `src/core/enhancement-dispatch.ts` | Provider routing |
 | `src/core/provider-profiles.ts` | Selectable profiles and availability |
 | `src/core/provider-transport.ts` | HTTP with timeout and retry |
@@ -96,13 +97,14 @@ Pinned generator models:
 
 | Profile | Model | Reasoning |
 | --- | --- | --- |
-| `openai-standard-v1` | `gpt-5.6-terra` | medium |
+| `openai-standard-v1` | `gpt-5.6-terra` | max |
 | `openai-deep-v1` | `gpt-5.6-sol` | high, two passes |
 | `openai-bulk-metadata-v1` | `gpt-5.6-luna` | low |
-| `anthropic-sonnet-5-v1` | `claude-sonnet-5` | medium |
-| `google-gemini-3.5-flash-v1` | `gemini-3.5-flash` | medium |
+| `anthropic-sonnet-5-v1` | `claude-sonnet-5` | xhigh |
+| `google-gemini-3.7-flash-v1` | `gemini-3.7-flash` | max (`extra_high` on the Google API) |
+| `deepseek-v4-pro-v1` | `deepseek-v4-pro` | max |
 
-Default preference: `openai-standard-v1`.
+Default preference: `google-gemini-3.7-flash-v1`. A Disabled provider falls back to `openai-standard-v1`. Enhance Prompt lists all four generators on the Model dropdown before generate.
 
 ### 2.3 Saved artifact
 

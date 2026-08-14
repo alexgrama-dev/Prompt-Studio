@@ -31,7 +31,7 @@ import {
 } from "./prompt-store.ts";
 import {
   getProviderEnhancementProfile,
-  SELECTABLE_ENHANCEMENT_PROFILE_IDS,
+  normalizeSelectableEnhancementProfileId,
   type SelectableEnhancementProfileId,
 } from "./provider-profiles.ts";
 import type { McpAuditWriter } from "./mcp-read.ts";
@@ -457,6 +457,7 @@ function requireFeature(
 function providerFeature(provider: EnhancementProvider): FeatureId {
   if (provider === "anthropic") return "anthropic-provider";
   if (provider === "google") return "google-provider";
+  if (provider === "deepseek") return "deepseek-provider";
   return "openai-enhancement";
 }
 
@@ -526,11 +527,9 @@ function target(value: unknown): PromptTarget {
 
 function profile(value: unknown): SelectableEnhancementProfileId {
   const selected = value ?? "openai-standard-v1";
-  if (
-    typeof selected === "string" &&
-    (SELECTABLE_ENHANCEMENT_PROFILE_IDS as readonly string[]).includes(selected)
-  ) {
-    return selected as SelectableEnhancementProfileId;
+  if (typeof selected === "string") {
+    const mapped = normalizeSelectableEnhancementProfileId(selected);
+    if (mapped) return mapped;
   }
   throw new Error("profile is not a supported enhancement profile.");
 }
