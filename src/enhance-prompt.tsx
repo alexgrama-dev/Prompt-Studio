@@ -182,6 +182,7 @@ import {
 } from "./core/web-research";
 import {
   maximumGeminiQualityCostUsd,
+  rankCompiledPrompts,
   ratePromptQuality,
   type GeminiQualityScore,
 } from "./core/google-quality-score";
@@ -197,6 +198,7 @@ import {
   REVIEW_TOTAL,
   generationPassCount,
   geminiQualityReview,
+  applyGeminiComparativeRank,
   isGeminiQualityReview,
   rankVariants,
   selectBestVariant,
@@ -401,10 +403,19 @@ function VariantComparison({
     selection.judgeRubric === "gemini-10" ? 10 : REVIEW_TOTAL;
   const markdown = [
     "# Compare Variants",
-    `**Nothing is saved yet.** ${selection.ranked.length} candidates were generated from the same request and scored blind — the judge never saw which run produced which.`,
+    selection.comparativeRationale
+      ? `**Nothing is saved yet.** ${selection.ranked.length} candidates were generated from the same request. Each was scored alone from 1 to 10. Gemini then ranked them against each other.`
+      : `**Nothing is saved yet.** ${selection.ranked.length} candidates were generated from the same request and scored blind — the judge never saw which run produced which.`,
+    selection.comparativeRationale
+      ? `**Head-to-head:** ${selection.ranked.map((variant) => `Variant ${variant.index + 1}`).join(", then ")}. ${escapeMarkdown(selection.comparativeRationale)}`
+      : undefined,
     `**Cost so far:** $${selection.enhancementCostUsd.toFixed(4)} generation · $${selection.judgeCostUsd.toFixed(4)} judging`,
     ...selection.ranked.flatMap((variant, position) => [
-      `## ${position === 0 ? "Winner · " : ""}Variant ${variant.index + 1} — ${variant.score}/${scoreMaximum}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
+      `## ${position === 0 ? "Winner · " : ""}${
+        isGeminiQualityReview(variant.review) && variant.review.comparativeRank
+          ? `Rank ${variant.review.comparativeRank} · `
+          : ""
+      }Variant ${variant.index + 1} — ${variant.score}/${scoreMaximum}${variant.review.hardFailure ? " · HARD FAILURE" : ""}`,
       variantReviewSummary(variant.review),
       variant.review.notes
         ? `**Judge notes:** ${escapeMarkdown(variant.review.notes)}`
@@ -412,7 +423,9 @@ function VariantComparison({
       `**Title:** ${escapeMarkdown(variant.run.result.title)}`,
       indentCode(variant.run.result.enhancedPrompt),
     ]),
-  ].join("\n\n");
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join("\n\n");
 
   async function choose(variant: ScoredVariant) {
     if (isChoosing) return;
@@ -436,8 +449,18 @@ function VariantComparison({
               key={variant.index}
               title={
                 position === 0
-                  ? `Keep Winner · Variant ${variant.index + 1} (${variant.score})`
-                  : `Keep Variant ${variant.index + 1} (${variant.score})`
+                  ? `Keep Winner · ${
+                      isGeminiQualityReview(variant.review) &&
+                      variant.review.comparativeRank
+                        ? `Rank ${variant.review.comparativeRank} · `
+                        : ""
+                    }Variant ${variant.index + 1} (${variant.score})`
+                  : `Keep ${
+                      isGeminiQualityReview(variant.review) &&
+                      variant.review.comparativeRank
+                        ? `Rank ${variant.review.comparativeRank} · `
+                        : ""
+                    }Variant ${variant.index + 1} (${variant.score})`
               }
               icon={position === 0 ? Icon.Trophy : Icon.Document}
               onAction={() => void choose(variant)}
@@ -897,7 +920,7 @@ function EnhancementWorkspace({
       });
       const quality =
         qualityScore === "gemini-3.7" && googleState !== "disabled"
-          ? maximumGeminiQualityCostUsd(passes)
+          ? maximumGeminiQualityCostUsd(passes + (passes >= 2 ? 1 : 0))
           : 0;
       return generate * passes + quality;
     },
@@ -1800,6 +1823,33 @@ function EnhancementWorkspace({
             });
           }
           selection = rankVariants(scored, "gemini-10");
+          if (variants >= 2) {
+            toast.message = `Ranking ${variants} passes against each other`;
+            try {
+              const comparative = await rankCompiledPrompts(
+                {
+                  roughThoughts: effectiveRequest.roughThoughts,
+                  target: effectiveRequest.target,
+                  prompts: generated.map((variant) => ({
+                    index: variant.index,
+                    enhancedPrompt: variant.run.result.enhancedPrompt,
+                  })),
+                },
+                { apiKey: qualityKey, signal: controller.signal },
+              );
+              selection = applyGeminiComparativeRank(
+                scored,
+                comparative.order,
+                comparative.rationale,
+                comparative.estimatedCostUsd,
+              );
+            } catch (rankError) {
+              toast.message =
+                rankError instanceof Error
+                  ? rankError.message
+                  : String(rankError);
+            }
+          }
           run = selection.winner.run;
           const winnerReview = selection.winner.review;
           if (isGeminiQualityReview(winnerReview)) {

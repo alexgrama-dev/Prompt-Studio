@@ -38,6 +38,9 @@ export interface GeminiQualityReview {
   rationale: string;
   hardFailure: boolean;
   notes: string;
+  comparativeRank?: number;
+  comparativeTotal?: number;
+  comparativeRationale?: string;
 }
 
 export interface EnhancementVariant {
@@ -57,6 +60,7 @@ export interface VariantSelection {
   judgeCostUsd: number;
   enhancementCostUsd: number;
   judgeRubric: VariantJudgeRubric;
+  comparativeRationale?: string;
 }
 
 export interface VariantJudgeOptions extends EvaluationJudgeOptions {
@@ -91,6 +95,11 @@ export function isGeminiQualityReview(
 export function geminiQualityReview(
   score: number,
   rationale: string,
+  comparative?: {
+    rank: number;
+    total: number;
+    rationale: string;
+  },
 ): GeminiQualityReview {
   return {
     kind: "gemini-10",
@@ -98,6 +107,13 @@ export function geminiQualityReview(
     rationale,
     hardFailure: false,
     notes: rationale,
+    ...(comparative
+      ? {
+          comparativeRank: comparative.rank,
+          comparativeTotal: comparative.total,
+          comparativeRationale: comparative.rationale,
+        }
+      : {}),
   };
 }
 
@@ -121,7 +137,11 @@ export function reviewTotal(review: EnhancementHumanReviewInput): number {
 
 export function variantReviewSummary(review: VariantReview): string {
   if (isGeminiQualityReview(review)) {
-    return `Gemini 3.7 Flash ${review.score}/10 · ${review.rationale}`;
+    const rank =
+      review.comparativeRank && review.comparativeTotal
+        ? ` · Rank ${review.comparativeRank} of ${review.comparativeTotal}`
+        : "";
+    return `Gemini 3.7 Flash ${review.score}/10${rank} · ${review.rationale}`;
   }
   if (isV1VariantReview(review)) {
     return [
@@ -246,6 +266,58 @@ export function rankVariants(
       ),
     ),
     judgeRubric: rubric,
+  };
+}
+
+export function applyGeminiComparativeRank(
+  scored: ScoredVariant[],
+  order: readonly number[],
+  rationale: string,
+  extraCostUsd: number,
+): VariantSelection {
+  const expected = new Set(scored.map((variant) => variant.index));
+  if (order.length !== scored.length) {
+    throw new Error("Comparative rank must include every variant once.");
+  }
+  const seen = new Set<number>();
+  for (const index of order) {
+    if (!expected.has(index) || seen.has(index)) {
+      throw new Error("Comparative rank must be a permutation of the variants.");
+    }
+    seen.add(index);
+  }
+  const byIndex = new Map(scored.map((variant) => [variant.index, variant]));
+  const ranked = order.map((index, position) => {
+    const variant = byIndex.get(index);
+    if (!variant) {
+      throw new Error("Comparative rank pointed at a missing variant.");
+    }
+    if (!isGeminiQualityReview(variant.review)) return variant;
+    return {
+      ...variant,
+      review: geminiQualityReview(variant.review.score, variant.review.rationale, {
+        rank: position + 1,
+        total: order.length,
+        rationale,
+      }),
+    };
+  });
+  const winner = ranked[0];
+  if (!winner) throw new Error("Comparative rank produced no winner.");
+  return {
+    ranked,
+    winner,
+    judgeCostUsd: round(
+      scored.reduce((total, item) => total + item.judgeCostUsd, 0) + extraCostUsd,
+    ),
+    enhancementCostUsd: round(
+      scored.reduce(
+        (total, item) => total + item.run.usage.estimatedCostUsd,
+        0,
+      ),
+    ),
+    judgeRubric: "gemini-10",
+    comparativeRationale: rationale,
   };
 }
 
