@@ -484,7 +484,7 @@ test("execution guardrails normalize every frozen case without changing its task
     "claude-code": "applicable CLAUDE.md and repository instructions",
   } as const;
 
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.1");
   for (const item of raw.cases) {
     const taskPrompt = `${item.roughInput.trim()}\n\nPreserve this case's stricter evidence and authorization thresholds.`;
     const request: EnhancementRequest = {
@@ -3586,6 +3586,12 @@ test("the extended evaluation corpus is additive and does not change the frozen 
   assert.match(locked.roughInput, /leftover\.zip is already fixed in the dirty tree; re-prove/);
   assert.match(locked.roughInput, /Do not commit, deploy, or discard the dirty tree/);
   assert.match(locked.roughInput, /upload the brief, pause on the gate, delete leftover\.zip/);
+  assert.match(
+    locked.roughInput,
+    /Do not load design-council or impeccable unless asked/,
+  );
+  assert.match(locked.roughInput, /This prove does not require a board/);
+  assert.match(locked.roughInput, /Impeccable lock 2026-08-17: Proposed B/);
   assert.equal(
     locked.requiredFacts.some((fact) => /copied at full strength/i.test(fact)),
     false,
@@ -3594,6 +3600,20 @@ test("the extended evaluation corpus is additive and does not change the frozen 
   assert.ok(
     locked.requiredFacts.some((fact) =>
       fact.includes('Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"'),
+    ),
+  );
+  assert.ok(
+    locked.requiredFacts.some((fact) =>
+      fact.includes("Do not load design-council or impeccable unless asked."),
+    ),
+  );
+  assert.ok(
+    locked.mustContain?.includes("design-council"),
+    "mustContain must hard-require the named do-not-load tool",
+  );
+  assert.ok(
+    locked.mustContain?.includes(
+      "Do not load design-council or impeccable unless asked",
     ),
   );
   assert.ok(
@@ -3612,6 +3632,9 @@ test("the extended evaluation corpus is additive and does not change the frozen 
     "leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.",
     "Walker 400s are not bugs.",
     "Finish review only after the prove log is attached.",
+    "Impeccable lock 2026-08-17: Proposed B",
+    "Do not load design-council or impeccable unless asked.",
+    "This prove does not require a board.",
     "Do not commit, deploy, or discard the dirty tree.",
     "Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log.",
   ].join("\n");
@@ -3632,6 +3655,26 @@ test("the extended evaluation corpus is additive and does not change the frozen 
     coverage.requiredFacts,
     locked.requiredFacts.length,
     "a prompt that copies standing facts verbatim must not fail coverage for omitting 'copied'",
+  );
+  const droppedLoad = factCoverage({
+    ...judgeFixtureRecord(),
+    requiredFacts: locked.requiredFacts,
+    prohibitedInventions: [],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts: locked.roughInput,
+    },
+    result: {
+      ...enhancementFixture(),
+      enhancedPrompt: copiedFacts.replace(
+        "Do not load design-council or impeccable unless asked.\n",
+        "Don't restyle.\n",
+      ),
+    },
+  });
+  assert.ok(
+    droppedLoad.requiredFacts < locked.requiredFacts.length,
+    "dropping the named do-not-load line must fail required-fact coverage",
   );
   const pinned = getEnhancementEvaluationPlan("openai-standard-v1", {
     corpus: "all",
@@ -9094,7 +9137,7 @@ test("compiler 1.3.0 pins threshold preservation, untrusted paraphrase, and skip
 });
 
 test("compiler 1.4.0 pins acceptance predicates in the prompt and critique-aware review", () => {
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.1");
   assert.equal(getEnhancementProfile("openai-standard-v1").passes, 1);
   assert.equal(getEnhancementProfile("openai-deep-v1").passes, 2);
 
@@ -9165,7 +9208,7 @@ test("compiler 1.4.0 pins acceptance predicates in the prompt and critique-aware
 });
 
 test("compiler 1.5.0 pins locked-brief copy and session-mutation action scope", () => {
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.1");
   assert.equal(getEnhancementProfile("openai-standard-v1").passes, 1);
 
   const base = BASE_COMPILER_INSTRUCTIONS.replace(/\s+/g, " ");
@@ -9214,7 +9257,7 @@ test("compiler 1.5.0 pins locked-brief copy and session-mutation action scope", 
   const reviewer = REVIEWER_INSTRUCTIONS.replace(/\s+/g, " ");
   assert.match(
     reviewer,
-    /standing-facts, exact pass language, gated review sentence, or host-or-copy distinction/,
+    /standing-facts, exact pass language, gated review sentence,\s+host-or-copy distinction, or named do-not-load \/ do-not-open tool-or-lock/,
   );
   assert.match(
     reviewer,
@@ -9232,6 +9275,62 @@ test("compiler 1.5.0 pins locked-brief copy and session-mutation action scope", 
       /do not upgrade a no-commit, no-deploy, or no-discard rule into a read-only walk/,
     );
   }
+});
+
+test("compiler 1.5.1 pins named do-not-load tool-or-lock copy", () => {
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.1");
+  assert.equal(getEnhancementProfile("openai-standard-v1").passes, 1);
+
+  const base = BASE_COMPILER_INSTRUCTIONS.replace(/\s+/g, " ");
+  assert.match(base, /If the input names a tool, lock, board, or file the agent must not load/);
+  assert.match(base, /design-council, impeccable, DESIGN\.md/);
+  assert.match(base, /this prove does not require a board/);
+  assert.match(base, /copy that prohibition into enhancedPrompt at full strength/);
+  assert.match(base, /Do not collapse it into a generic "don't restyle"/);
+  assert.match(
+    base,
+    /Do not drop it because a later standing-fact mentions an Impeccable lock date/,
+  );
+
+  const standard = enhancementCompilerInstructions({
+    target: "generic",
+    roughThoughts: "prove the locked brief",
+  });
+  assert.ok(
+    standard.includes(BASE_COMPILER_INSTRUCTIONS),
+    "do-not-load rules must be Standard-visible in BASE",
+  );
+  assert.ok(standard.includes(COMPILER_WORKED_EXAMPLES));
+
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /Do not load design-council or impeccable unless asked/,
+  );
+  assert.match(COMPILER_WORKED_EXAMPLES, /This prove does not require a board/);
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /Impeccable lock 2026-08-17: Proposed B/,
+  );
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /named do-not-load line stayed at full strength/,
+  );
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /named do-not-load \/ do-not-open tool-or-lock collapsed into a generic restyle ban/,
+  );
+
+  const reviewer = REVIEWER_INSTRUCTIONS.replace(/\s+/g, " ");
+  assert.match(
+    reviewer,
+    /named do-not-load \/ do-not-open tool-or-lock/,
+  );
+
+  const judgeInstructions = String(buildJudgeRequest(judgeFixtureRecord()).instructions);
+  assert.match(
+    judgeInstructions,
+    /named do-not-load \/ do-not-open tool-or-lock was summarized away/,
+  );
 });
 
 test("Deep and selfReview passes send detector ids to the reviewer; Standard stays one pass", async () => {
@@ -9868,6 +9967,9 @@ const LOCKED_BRIEF_FIXTURE = `Prove the AMP Studio Brief Decoder e2e walk.
 - leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken
 - Walker 400s are not bugs
 - Finish review is gated: say "Finish review only after the prove log is attached" and do not unlock earlier
+- Impeccable lock 2026-08-17: Proposed B
+
+Do not load design-council or impeccable unless asked. This prove does not require a board.
 
 Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.`;
 
@@ -9920,7 +10022,28 @@ test("the live v1 judge sends a >8k original in full and extracts locked-brief f
   assert.ok(extracted.some((fact) => /127\.0\.0\.1/.test(fact) && /localhost/.test(fact)));
   assert.ok(extracted.some((fact) => /leftover\.zip/.test(fact) && /re-prove/.test(fact)));
   assert.ok(extracted.some((fact) => /Finish review only after the prove log is attached/.test(fact)));
+  assert.ok(
+    extracted.some((fact) =>
+      fact.includes("Do not load design-council or impeccable unless asked."),
+    ),
+  );
+  assert.ok(
+    extracted.some((fact) => fact.includes("This prove does not require a board.")),
+  );
   assert.deepEqual(extractRequiredFacts("make the readme setup section clearer"), []);
+  assert.equal(
+    looksLikeLockedOperationalBrief(
+      "Do not load design-council or impeccable unless asked.",
+    ),
+    true,
+  );
+  assert.ok(
+    extractRequiredFacts(
+      "Do not load design-council or impeccable unless asked.",
+    ).some((fact) =>
+      fact.includes("Do not load design-council or impeccable unless asked."),
+    ),
+  );
 
   const payload = judgeRequestPayload(buildJudgeRequest(record));
   assert.equal(payload.roughThoughts, roughThoughts);
@@ -9959,7 +10082,7 @@ test("locked-brief extraction keeps wrapped standing facts and ignores narrative
 Exact copy: "brief locked: 12 facts, 0 missing"
 - Treat 127.0.0.1 and localhost as different JS hosts
 
-Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.
+Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked.
 
 Then confirm the dashboard loaded and delete the temp file.`;
   const standing = extractStandingFactsBlock(wrapped);
@@ -9979,6 +10102,11 @@ Then confirm the dashboard loaded and delete the temp file.`;
   const extracted = extractRequiredFacts(wrapped);
   assert.ok(
     extracted.some((fact) => /authorized session/.test(fact) && /upload/.test(fact)),
+  );
+  assert.ok(
+    extracted.some((fact) =>
+      /Do not load design-council or impeccable unless asked/.test(fact),
+    ),
   );
   assert.equal(
     extracted.some((fact) => /confirm the dashboard loaded/.test(fact)),

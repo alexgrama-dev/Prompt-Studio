@@ -106,7 +106,7 @@ function runFor(resultPrompt: string, req: EnhancementRequest): EnhancementRun {
 }
 
 test("compiler 1.4.0 resolves vendor-tier profiles at generate time and branches C1-C4", () => {
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.1");
   assert.equal(resolveRenderingProfileId("claude-code"), "anthropic-reasoning-v1");
   assert.equal(resolveRenderingProfileId("codex"), "openai-codex-reasoning-v1");
   assert.equal(resolveRenderingProfileId("generic"), "generic-fallback-v1");

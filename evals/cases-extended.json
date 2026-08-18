@@ -647,13 +647,16 @@
       "taskClass": "audit",
       "target": "claude-code",
       "projectAware": false,
-      "roughInput": "Prove the AMP Studio Brief Decoder e2e walk.\n\n## Standing facts\n- Pass only when the decoder prints: \"brief locked: 12 facts, 0 missing\"\n- Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only\n- leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken\n- Walker 400s are not bugs\n- Finish review is gated: say \"Finish review only after the prove log is attached\" and do not unlock earlier\n\nWalk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.",
+      "roughInput": "Prove the AMP Studio Brief Decoder e2e walk.\n\n## Standing facts\n- Pass only when the decoder prints: \"brief locked: 12 facts, 0 missing\"\n- Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only\n- leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken\n- Walker 400s are not bugs\n- Finish review is gated: say \"Finish review only after the prove log is attached\" and do not unlock earlier\n- Impeccable lock 2026-08-17: Proposed B\n\nDo not load design-council or impeccable unless asked. This prove does not require a board.\n\nWalk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.",
       "requiredFacts": [
         "Pass only when the decoder prints: \"brief locked: 12 facts, 0 missing\"",
         "127.0.0.1 and localhost are different JS hosts; the fixture binds 127.0.0.1 only.",
         "leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.",
         "Walker 400s are not bugs.",
         "Finish review only after the prove log is attached.",
+        "Impeccable lock 2026-08-17: Proposed B",
+        "Do not load design-council or impeccable unless asked.",
+        "This prove does not require a board.",
         "Do not commit, deploy, or discard the dirty tree.",
         "The walk may upload, pause, delete, confirm, and raise."
       ],
@@ -662,7 +665,9 @@
         "Reframing the authorized session walk as read-only.",
         "Permission to commit, deploy, or discard the dirty tree.",
         "Treating leftover.zip as still broken instead of re-proving.",
-        "A host, path, or pass sentence the brief did not state."
+        "A host, path, or pass sentence the brief did not state.",
+        "Collapsing the named do-not-load prohibition into a generic don't-restyle rule.",
+        "Dropping the do-not-load line because a standing-fact mentions an Impeccable lock date."
       ],
       "mustContain": [
         "brief locked: 12 facts, 0 missing",
@@ -670,7 +675,9 @@
         "localhost",
         "leftover.zip",
         "re-prove",
-        "Finish review only after the prove log is attached"
+        "Finish review only after the prove log is attached",
+        "design-council",
+        "Do not load design-council or impeccable unless asked"
       ],
       "mustNotContain": [
         "Read-only review of the decoder prove",

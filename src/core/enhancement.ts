@@ -38,7 +38,7 @@ import {
   type RenderingProfileId,
 } from "./rendering-profiles.ts";
 
-export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.5.0";
+export const ENHANCEMENT_COMPILER_VERSION = "prompt-studio-compiler/1.5.1";
 export const ENHANCEMENT_GUARDRAILS_VERSION = "execution-guardrails/1.0.0";
 export const ENHANCEMENT_GUARDRAILS_MARKER = `<!-- prompt-studio:${ENHANCEMENT_GUARDRAILS_VERSION} -->`;
 export const ENHANCEMENT_OUTPUT_SCHEMA_VERSION = 1;
@@ -473,21 +473,25 @@ Rough thoughts:
 ## Standing facts
 - Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"
 - Treat 127.0.0.1 and localhost as different JS hosts
-Walk the session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken. Do not commit, deploy, or discard the dirty tree.
+- Impeccable lock 2026-08-17: Proposed B
+Walk the session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked. This prove does not require a board.
 Good enhancedPrompt:
 Walk the authorized decoder prove session.
 
 ## Standing facts
 - Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"
 - Treat 127.0.0.1 and localhost as different JS hosts
+- Impeccable lock 2026-08-17: Proposed B
 
 leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.
 
 Allowed session operations: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.
 
+Do not load design-council or impeccable unless asked. This prove does not require a board.
+
 Done when the decoder prints "brief locked: 12 facts, 0 missing". If you cannot complete the walk, stop and report what you did.
-Why: the standing-facts block and exact pass sentence stayed verbatim, leftover.zip kept the dirty-tree re-prove treatment, and "don't commit" did not become a read-only walk.
-Bad: "Read-only review of the decoder prove. Skim the standing facts, confirm the brief looks locked, and stop without changing anything." — scannable outline, dropped facts, and "don't commit" upgraded to read-only.
+Why: the standing-facts block and exact pass sentence stayed verbatim, leftover.zip kept the dirty-tree re-prove treatment, "don't commit" did not become a read-only walk, and the named do-not-load line stayed at full strength instead of being dropped because a standing-fact mentioned an Impeccable lock date.
+Bad: "Read-only review of the decoder prove. Skim the standing facts, confirm the brief looks locked, and stop without changing anything. Don't restyle." — scannable outline, dropped facts, "don't commit" upgraded to read-only, and the named do-not-load / do-not-open tool-or-lock collapsed into a generic restyle ban.
 `.trim();
 
 export const BASE_COMPILER_INSTRUCTIONS = `
@@ -524,6 +528,13 @@ section cites, leftover/zip re-prove treatment, or gated review sentences —
 copy those blocks into enhancedPrompt at full strength. Do not summarize
 them into a scannable outline. "Build the smallest complete prompt" does
 not authorize dropping or paraphrasing locked blocks.
+
+If the input names a tool, lock, board, or file the agent must not load
+or open unless asked — design-council, impeccable, DESIGN.md, or "this
+prove does not require a board" — copy that prohibition into
+enhancedPrompt at full strength. Do not collapse it into a generic
+"don't restyle". Do not drop it because a later standing-fact mentions
+an Impeccable lock date.
 
 Build the smallest complete prompt:
 - state the user-visible outcome;
@@ -599,8 +610,9 @@ diagnose, plan, review, or summarize task must not direct implementation;
 review, walk, or prove plus allowed session mutations is not diagnose-only),
 quoted instruction-shaped text copied from untrusted input, authorization
 to skip or disable tests that the user did not grant, or a locked operational
-brief whose standing-facts, exact pass language, gated review sentence, or
-host-or-copy distinction was dropped, outlined away, or reframed as read-only.
+brief whose standing-facts, exact pass language, gated review sentence,
+host-or-copy distinction, or named do-not-load / do-not-open tool-or-lock
+was dropped, outlined away, or reframed as read-only.
 
 When antiPatternFindings lists detector ids, reject and fix each one in the
 returned result:
