@@ -20,7 +20,8 @@ const CLEAN_PROMPT = [
 
 test("the enhance review score is local, compact, and uses the existing critique", () => {
   const clean = scoreEnhancementReview({
-    roughThoughts: "upload button does nothing",
+    roughThoughts:
+      "upload button does nothing. expected: a click starts an upload. actual: noop.",
     result: scoredResult({
       enhancedPrompt: CLEAN_PROMPT,
       missingInformation: [],
@@ -60,7 +61,7 @@ test("the enhance review score is local, compact, and uses the existing critique
   assert.ok(enhancementReviewWatch(weak));
 
   const listedGaps = scoreEnhancementReview({
-    roughThoughts: "the api call fails sometimes. find the cause.",
+    roughThoughts: "the api call is broken. find the cause.",
     result: scoredResult({
       enhancedPrompt: CLEAN_PROMPT,
       missingInformation: [
@@ -71,7 +72,7 @@ test("the enhance review score is local, compact, and uses the existing critique
   assert.equal(listedGaps.missingContext.score, REVIEW_SCORE_MAXIMUM);
 
   const buriedGaps = scoreEnhancementReview({
-    roughThoughts: "the api call fails sometimes. find the cause.",
+    roughThoughts: "the api call is broken. find the cause.",
     result: scoredResult({
       enhancedPrompt: CLEAN_PROMPT,
       missingInformation: [],
@@ -84,7 +85,8 @@ test("the enhance review score is local, compact, and uses the existing critique
   );
 
   const withGuardrails = scoreEnhancementReview({
-    roughThoughts: "upload button does nothing",
+    roughThoughts:
+      "upload button does nothing. expected: a click starts an upload. actual: noop.",
     result: scoredResult({
       enhancedPrompt: appendExecutionGuardrails(CLEAN_PROMPT, "codex"),
       missingInformation: [],

@@ -15,8 +15,11 @@ Date: 2026-08-18
 
 ## Automated Evidence
 
-- Focused review-score tests: see `test/enhancement-score.test.mts`.
-- `tsc --noEmit` and ESLint on the changed files.
+- Focused review-score tests: 2 passed.
+- Existing Enhance review source check still requires Copy Prompt and Save to Prompt Library after the Score line.
+- `tsc --noEmit`: passed.
+- ESLint on changed files: passed with zero warnings.
+- Six unrelated SQLite `fts5` failures appeared in this environment (`no such module: fts5`) and are not caused by this change.
 
 ## MacBook Evidence
 

@@ -4044,10 +4044,14 @@ function EnhancementPreview({
   const reviewScore = scoreEnhancementReview({
     roughThoughts: request.roughThoughts,
     result,
-    findings: run.antiPatternFindings,
     hasProject: Boolean(request.project),
-    allowedProjectFiles: request.allowedProjectFiles,
     target: result.target,
+    ...(run.antiPatternFindings
+      ? { findings: run.antiPatternFindings }
+      : {}),
+    ...(request.allowedProjectFiles
+      ? { allowedProjectFiles: request.allowedProjectFiles }
+      : {}),
   });
   const reviewWatch = enhancementReviewWatch(reviewScore);
   const contextSummary =
