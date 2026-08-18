@@ -74,6 +74,7 @@ import {
   ENHANCEMENT_GUARDRAILS_MARKER,
   ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
   ENHANCEMENT_PROMPT_MAX_LENGTH,
+  ENHANCEMENT_PROMPT_RAW_MAX_LENGTH,
   ENHANCEMENT_RESULT_SCHEMA,
   enhanceWithOpenAI,
   estimatedMaximumCostForProfileUsd,
@@ -548,10 +549,12 @@ test("execution guardrails normalize every frozen case without changing its task
   assert.throws(
     () =>
       appendExecutionGuardrails(
-        "x".repeat(ENHANCEMENT_PROMPT_MAX_LENGTH),
+        "x".repeat(ENHANCEMENT_PROMPT_RAW_MAX_LENGTH + 1),
         "codex",
       ),
-    /must contain 1-100000 characters/,
+    new RegExp(
+      `enhancedPrompt must contain 1-${ENHANCEMENT_PROMPT_RAW_MAX_LENGTH} characters`,
+    ),
   );
 });
 
@@ -615,30 +618,51 @@ test("enhancement request accepts 100000-character roughThoughts and rejects 100
   );
 });
 
-test("enhancement result accepts 100000-character enhancedPrompt and rejects 100001", () => {
+test("enhancement result reserves guardrail overhead so a raw max prompt still saves", () => {
   const request = enhancementRequest();
+  const rawMaxDescription = `Use 1-${ENHANCEMENT_PROMPT_RAW_MAX_LENGTH} characters.`;
+  assert.ok(
+    ENHANCEMENT_PROMPT_RAW_MAX_LENGTH < ENHANCEMENT_PROMPT_MAX_LENGTH,
+  );
   assert.equal(
     ENHANCEMENT_RESULT_SCHEMA.properties.enhancedPrompt.maxLength,
-    ENHANCEMENT_PROMPT_MAX_LENGTH,
+    ENHANCEMENT_PROMPT_RAW_MAX_LENGTH,
   );
   const schema = enhancementResultSchemaForProvider() as {
     properties: { enhancedPrompt: { description?: string } };
   };
-  assert.equal(
-    schema.properties.enhancedPrompt.description,
-    "Use 1-100000 characters.",
-  );
+  assert.equal(schema.properties.enhancedPrompt.description, rawMaxDescription);
 
-  const guardrailOverhead =
-    appendExecutionGuardrails("x", "codex").length - 1;
-  const justUnder = "x".repeat(
-    ENHANCEMENT_PROMPT_MAX_LENGTH - guardrailOverhead,
-  );
   const accepted = validateEnhancementResult(
-    { ...enhancementFixture(), enhancedPrompt: justUnder },
+    {
+      ...enhancementFixture(),
+      enhancedPrompt: "x".repeat(ENHANCEMENT_PROMPT_RAW_MAX_LENGTH),
+    },
     request,
   );
-  assert.equal(accepted.enhancedPrompt.length, ENHANCEMENT_PROMPT_MAX_LENGTH);
+  assert.ok(accepted.enhancedPrompt.length > ENHANCEMENT_PROMPT_RAW_MAX_LENGTH);
+  assert.ok(accepted.enhancedPrompt.length <= ENHANCEMENT_PROMPT_MAX_LENGTH);
+
+  assert.throws(
+    () =>
+      validateEnhancementResult(
+        {
+          ...enhancementFixture(),
+          enhancedPrompt: "x".repeat(ENHANCEMENT_PROMPT_RAW_MAX_LENGTH + 1),
+        },
+        request,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(
+        error.message,
+        new RegExp(
+          `^enhancedPrompt must contain 1-${ENHANCEMENT_PROMPT_RAW_MAX_LENGTH} characters\\.$`,
+        ),
+      );
+      return true;
+    },
+  );
 
   assert.throws(
     () =>
@@ -2926,7 +2950,7 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
   assert.equal(schema.properties.summary.description, "Use 1-240 characters.");
   assert.equal(
     schema.properties.enhancedPrompt.description,
-    "Use 1-100000 characters.",
+    `Use 1-${ENHANCEMENT_PROMPT_RAW_MAX_LENGTH} characters.`,
   );
 
   const longSummary = `${"Establish the cause of the intermittent failure and ship only an evidence-backed fix. ".repeat(5)}end`;
@@ -2984,7 +3008,9 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
               type: "text",
               text: JSON.stringify({
                 ...enhancementFixture(),
-                enhancedPrompt: "x".repeat(ENHANCEMENT_PROMPT_MAX_LENGTH + 1),
+                enhancedPrompt: "x".repeat(
+                  ENHANCEMENT_PROMPT_RAW_MAX_LENGTH + 1,
+                ),
               }),
             },
           ],
@@ -2993,7 +3019,9 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
           usage: { input_tokens: 900, output_tokens: 500 },
         })) as typeof fetch,
     }),
-    /enhancedPrompt must contain 1-100000 characters/,
+    new RegExp(
+      `enhancedPrompt must contain 1-${ENHANCEMENT_PROMPT_RAW_MAX_LENGTH} characters`,
+    ),
   );
 });
 
