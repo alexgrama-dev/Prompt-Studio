@@ -5,6 +5,7 @@ import {
   CAPTURE_INBOX_ITEM_ID,
   ENHANCE_PROMPT_ITEM_ID,
   REVERSE_PROMPT_ITEM_ID,
+  reversePromptLibrarySource,
   selectedLibraryItemId,
 } from "../src/core/browse-state.ts";
 import {
@@ -176,6 +177,15 @@ test("Prompt Library keeps paste selected when studio rows sit above prompts", (
     CAPTURE_INBOX_ITEM_ID,
   );
   assert.equal(selectedLibraryItemId(null, [], []), undefined);
+});
+
+test("Reverse Prompt library actions keep selected text when search is empty", () => {
+  assert.equal(reversePromptLibrarySource("  https://example.com/ui  "), "https://example.com/ui");
+  assert.equal(
+    reversePromptLibrarySource("", "  /tmp/hero.png  "),
+    "/tmp/hero.png",
+  );
+  assert.equal(reversePromptLibrarySource("   ", undefined), "");
 });
 
 test("fallback paste requires one exact active prompt without placeholders", () => {

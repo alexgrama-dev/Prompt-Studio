@@ -1,21 +1,40 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   buildReversePromptThoughts,
   classifyReversePromptInput,
   initialReversePromptFields,
+  reversePromptFormSource,
   reversePromptSourceFromFiles,
 } from "../src/core/reverse-prompt.ts";
 
-test("Reverse Prompt classifies image, URL, and video without fetching", () => {
-  assert.deepEqual(
-    classifyReversePromptInput({ filePath: "/tmp/hero.png" }),
-    { kind: "image", value: "/tmp/hero.png", label: "hero.png" },
-  );
-  assert.deepEqual(
-    classifyReversePromptInput({ filePath: "clip.MOV" }),
-    { kind: "video", value: "clip.MOV", label: "clip.MOV" },
-  );
+async function writableMediaFile(
+  directory: string,
+  name: string,
+): Promise<string> {
+  const path = join(directory, name);
+  await writeFile(path, "fixture");
+  return path;
+}
+
+test("Reverse Prompt classifies image, URL, and video without fetching", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-reverse-"));
+  const image = await writableMediaFile(directory, "hero.png");
+  const video = await writableMediaFile(directory, "clip.MOV");
+
+  assert.deepEqual(classifyReversePromptInput({ filePath: image }), {
+    kind: "image",
+    value: image,
+    label: "hero.png",
+  });
+  assert.deepEqual(classifyReversePromptInput({ filePath: video }), {
+    kind: "video",
+    value: video,
+    label: "clip.MOV",
+  });
   assert.deepEqual(classifyReversePromptInput({ url: "https://example.com/ui" }), {
     kind: "url",
     value: "https://example.com/ui",
@@ -33,11 +52,16 @@ test("Reverse Prompt classifies image, URL, and video without fetching", () => {
   );
 });
 
-test("Reverse Prompt rejects mixed, credentialed, or unknown sources", () => {
+test("Reverse Prompt rejects mixed, credentialed, unknown, or unreadable sources", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-reverse-"));
+  const missing = join(directory, "missing.png");
+  const nested = join(directory, "folder.png");
+  await mkdir(nested);
+
   assert.throws(
     () =>
       classifyReversePromptInput({
-        filePath: "shot.png",
+        filePath: join(directory, "shot.png"),
         url: "https://example.com",
       }),
     /not both/,
@@ -51,13 +75,21 @@ test("Reverse Prompt rejects mixed, credentialed, or unknown sources", () => {
     /http or https/,
   );
   assert.throws(
-    () => classifyReversePromptInput({ filePath: "notes.md" }),
+    () => classifyReversePromptInput({ filePath: join(directory, "notes.md") }),
     /image|video/,
   );
   assert.throws(() => classifyReversePromptInput({}), /Choose one/);
   assert.throws(
     () => reversePromptSourceFromFiles(["a.png", "b.png"]),
     /one image or video/,
+  );
+  assert.throws(
+    () => classifyReversePromptInput({ filePath: missing }),
+    /not readable/,
+  );
+  assert.throws(
+    () => classifyReversePromptInput({ filePath: nested }),
+    /image or video file/,
   );
 });
 
@@ -105,18 +137,45 @@ test("Reverse Prompt builds enhance-ready thoughts and keeps URL evidence fenced
   );
 });
 
-test("Reverse Prompt prefills a URL or media path from launch text", () => {
+test("Reverse Prompt prefills a URL or existing media path from launch text", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-reverse-"));
+  const image = await writableMediaFile(directory, "demo.webp");
+  const missing = join(directory, "absent.webp");
+
   assert.deepEqual(initialReversePromptFields(), { files: [], url: "" });
-  assert.deepEqual(
-    initialReversePromptFields("https://example.com/app"),
-    { files: [], url: "https://example.com/app" },
-  );
-  assert.deepEqual(initialReversePromptFields(undefined, "/tmp/demo.webp"), {
-    files: ["/tmp/demo.webp"],
+  assert.deepEqual(initialReversePromptFields("https://example.com/app"), {
+    files: [],
+    url: "https://example.com/app",
+  });
+  assert.deepEqual(initialReversePromptFields(undefined, image), {
+    files: [image],
+    url: "",
+  });
+  assert.deepEqual(initialReversePromptFields(undefined, missing), {
+    files: [],
     url: "",
   });
   assert.deepEqual(initialReversePromptFields("just a sentence"), {
     files: [],
     url: "",
   });
+});
+
+test("Reverse Prompt submit uses current form values and ignores launch text", () => {
+  assert.deepEqual(reversePromptFormSource({ files: [], url: "" }), {});
+  assert.deepEqual(
+    reversePromptFormSource({
+      files: [],
+      url: "https://example.com/typed",
+    }),
+    { url: "https://example.com/typed" },
+  );
+  assert.deepEqual(
+    reversePromptFormSource({ files: ["/tmp/hero.png"], url: "" }),
+    { filePath: "/tmp/hero.png" },
+  );
+  assert.throws(() => classifyReversePromptInput(reversePromptFormSource({
+    files: [],
+    url: "",
+  })), /Choose one/);
 });

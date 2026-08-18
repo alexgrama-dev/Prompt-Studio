@@ -97,6 +97,7 @@ import {
   CAPTURE_INBOX_ITEM_ID,
   ENHANCE_PROMPT_ITEM_ID,
   REVERSE_PROMPT_ITEM_ID,
+  reversePromptLibrarySource,
   selectedLibraryItemId,
   type BrowseEmptyState,
 } from "./core/browse-state";
@@ -737,7 +738,7 @@ function ReversePromptListItem({
   onShowAll: () => void;
 }) {
   const { push } = useNavigation();
-  const source = searchText.trim() || fallbackText?.trim() || "";
+  const source = reversePromptLibrarySource(searchText, fallbackText);
   return (
     <List.Item
       id={REVERSE_PROMPT_ITEM_ID}
@@ -909,12 +910,13 @@ function StudioScreenActions({
         <Action
           title="Reverse Prompt"
           icon={Icon.Image}
-          onAction={() =>
+          onAction={() => {
+            const source = reversePromptLibrarySource(thoughts, fallbackText);
             void pushReversePrompt(
               push,
-              thoughts ? { fallbackText: thoughts } : {},
-            )
-          }
+              source ? { fallbackText: source } : {},
+            );
+          }}
         />
       ) : null}
       {CAPTURE_INBOX_AVAILABLE ? (

@@ -1,3 +1,4 @@
+import { accessSync, constants, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { appendUntrustedEvidence } from "./compiler-pipeline.ts";
 import type { PromptTarget } from "./prompt-store.ts";
@@ -108,6 +109,18 @@ export function reversePromptSourceFromFiles(
   return files[0]?.trim() || undefined;
 }
 
+export function reversePromptFormSource(input: {
+  files: readonly string[];
+  url: string;
+}): ReversePromptInput {
+  const filePath = reversePromptSourceFromFiles(input.files);
+  const url = input.url.trim();
+  return {
+    ...(filePath ? { filePath } : {}),
+    ...(url ? { url } : {}),
+  };
+}
+
 export function initialReversePromptFields(
   argument?: string,
   fallbackText?: string,
@@ -124,6 +137,21 @@ export function initialReversePromptFields(
   }
 }
 
+export function assertReadableRegularFile(filePath: string): void {
+  let info;
+  try {
+    accessSync(filePath, constants.R_OK);
+    info = statSync(filePath);
+  } catch {
+    throw new Error(
+      `The selected file is not readable: ${basename(filePath) || filePath}`,
+    );
+  }
+  if (!info.isFile()) {
+    throw new Error("Choose one image or video file.");
+  }
+}
+
 function classifyLocalMedia(filePath: string): ReversePromptSource {
   const extension = extname(filePath).toLowerCase();
   const kind = mediaKindForExtension(extension);
@@ -134,6 +162,7 @@ function classifyLocalMedia(filePath: string): ReversePromptSource {
   }
   const name = basename(filePath);
   if (!name) throw new Error("Choose one image or video file.");
+  assertReadableRegularFile(filePath);
   return { kind, value: filePath, label: name };
 }
 

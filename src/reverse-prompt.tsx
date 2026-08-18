@@ -7,7 +7,7 @@ import {
   getSelectedFinderItems,
   useNavigation,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getFeatureStatus, loadFeatureStatuses } from "./core/features";
 import { enhancePromptThoughtsLaunchContext } from "./core/launch-context";
 import type { PromptTarget } from "./core/prompt-store";
@@ -15,7 +15,7 @@ import {
   buildReversePromptThoughts,
   classifyReversePromptInput,
   initialReversePromptFields,
-  reversePromptSourceFromFiles,
+  reversePromptFormSource,
 } from "./core/reverse-prompt";
 import {
   pushEnhancePrompt,
@@ -81,26 +81,33 @@ function ReversePromptForm({
   const [notes, setNotes] = useState("");
   const [target, setTarget] = useState<PromptTarget>("codex");
   const [error, setError] = useState<string>();
+  const filesRef = useRef(files);
+  const urlRef = useRef(url);
+  filesRef.current = files;
+  urlRef.current = url;
 
   useEffect(() => {
     if (files.length > 0 || url.trim()) return;
+    let cancelled = false;
     void getSelectedFinderItems()
       .then((items) => {
+        if (cancelled || filesRef.current.length > 0 || urlRef.current.trim()) {
+          return;
+        }
         const paths = items.map((item) => item.path).filter(Boolean);
         if (paths.length === 1) setFiles(paths);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [files.length, url]);
 
   async function submit() {
     try {
-      const filePath = reversePromptSourceFromFiles(files);
-      const fallback = argument?.trim() || fallbackText?.trim() || "";
-      const source = classifyReversePromptInput({
-        ...(filePath ? { filePath } : {}),
-        ...(url.trim() ? { url: url.trim() } : {}),
-        ...(fallback ? { fallbackText: fallback } : {}),
-      });
+      const source = classifyReversePromptInput(
+        reversePromptFormSource({ files, url }),
+      );
       const thoughts = buildReversePromptThoughts({
         source,
         ...(notes.trim() ? { notes: notes.trim() } : {}),
