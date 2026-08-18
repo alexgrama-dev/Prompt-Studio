@@ -586,6 +586,23 @@ test("enhancement results enforce target, provenance, and discovery metadata bou
   );
 });
 
+test("enhancement request accepts 100000-character roughThoughts and rejects 100001", () => {
+  const accepted = validateEnhancementRequest({
+    ...enhancementRequest(),
+    roughThoughts: "x".repeat(100_000),
+  });
+  assert.equal(accepted.roughThoughts.length, 100_000);
+
+  assert.throws(
+    () =>
+      validateEnhancementRequest({
+        ...enhancementRequest(),
+        roughThoughts: "x".repeat(100_001),
+      }),
+    /roughThoughts must contain 1-100000 characters/,
+  );
+});
+
 test("Context7 planning sanitizes the reviewed query and retrieves the exact requested library version", async () => {
   const roughThoughts = [
     "Use React useEffect for a subscription.",
