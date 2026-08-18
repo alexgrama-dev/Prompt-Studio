@@ -15,5 +15,10 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["raycast-env.d.ts", "src/browse-prompts.tsx", "src/menubar-prompts.tsx"]
+  "include": [
+    "raycast-env.d.ts",
+    "src/browse-prompts.tsx",
+    "src/enhance-prompt.tsx",
+    "src/menubar-prompts.tsx"
+  ]
 }

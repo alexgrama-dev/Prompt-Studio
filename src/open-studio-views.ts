@@ -5,6 +5,7 @@ import type {
 } from "./core/launch-context";
 
 export const STUDIO_SCREENS_AVAILABLE = true;
+export const CAPTURE_INBOX_AVAILABLE = true;
 
 export interface EnhancePromptViewProps {
   arguments?: { thoughts?: string };

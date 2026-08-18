@@ -1,6 +1,8 @@
 # Privacy
 
-Prompt Studio's initial Raycast Store release is local-only.
+Prompt Studio's Raycast Store release keeps Prompt Library and Frequent Prompts
+local. Enhance Prompt contacts a model provider only after you submit an
+enhancement and provide a key for that run.
 
 ## Data it handles
 
@@ -8,8 +10,8 @@ Prompt Studio's initial Raycast Store release is local-only.
 - The extension reads and writes those prompt files when you browse, create,
   edit, duplicate, archive, restore, or delete a prompt.
 - Paste and copy actions use Raycast's clipboard and paste APIs.
-- Usage ranking is stored in a rebuildable local cache file. The initial Store
-  release uses JSON; advanced source builds may use SQLite.
+- Usage ranking is stored in a rebuildable local cache file. The Store release
+  uses JSON; advanced source builds may use SQLite.
 
 JSON is readable structured text. SQLite is a local database file. "Rebuildable"
 means either cache can be deleted and re-created without losing the Markdown
@@ -17,19 +19,26 @@ prompts themselves.
 
 ## Network access
 
-The commands included in the initial Store release do not send prompts,
-clipboard contents, usage history, or prompt files to Prompt Studio servers or
-third-party services. Prompt Studio does not include advertising, external
-analytics, or tracking.
+Prompt Library and Frequent Prompts do not send prompts, clipboard contents,
+usage history, or prompt files to Prompt Studio servers or third-party
+services.
+
+Enhance Prompt sends the reviewed task to the provider you choose only after
+you choose Enhance and enter a key for that attempt. Opening Enhance Prompt,
+typing rough thoughts, or reviewing a result does not look up a saved key or
+make a model request. The one-run key is used in the provider authentication
+header and is not written into prompt files.
+
+Prompt Studio does not include advertising, external analytics, or tracking.
 
 Raycast itself is a separate product with its own privacy practices.
 
-## Advanced source-tree features
+## Source-tree features that stay Disabled
 
-The repository contains experimental enhancement and research features that are
-not included as commands in the initial Store release. Those features stay
-disabled on a fresh installation and require an explicit setup and review step
-before any external request.
+The repository contains experimental research, project-context, command-line,
+and local agent features that are not Store commands. Those features stay
+Disabled on a Store installation and require an explicit later activation
+before any additional external request.
 
 ## Removing local data
 

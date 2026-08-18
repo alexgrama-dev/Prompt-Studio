@@ -66,11 +66,10 @@ const STORE_FEATURES: readonly FeatureStatus[] = [
     "Find prompts by meaning when the exact words differ.",
     2,
   ),
-  disabled(
+  active(
     "openai-enhancement",
     "OpenAI Enhancement",
     "Turn rough thoughts into validated, editable prompts.",
-    3,
   ),
   disabled(
     "project-context",
@@ -195,7 +194,7 @@ function disabled(
     blocksLaterActivations: false,
     requestedState: "disabled",
     effectiveState: "disabled",
-    reason: "Not included in the initial Raycast Store release.",
+    reason: "Not included in the Raycast Store package.",
     history: [],
   };
 }

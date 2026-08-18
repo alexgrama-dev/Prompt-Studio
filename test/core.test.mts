@@ -2494,6 +2494,7 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
     storeManifest.commands?.map(({ name, title, icon }) => [name, title, icon]),
     [
       ["browse-prompts", "Prompt Library", "prompt-library.png"],
+      ["enhance-prompt", "Enhance Prompt", "enhance-prompt.png"],
       ["menubar-prompts", "Frequent Prompts Menu", "frequent-prompts.png"],
     ],
   );
@@ -3856,6 +3857,12 @@ test("personal launcher exposes Prompt Library as the only root command", async 
   assert.doesNotMatch(ideaSource, /name: "enhance-prompt"/);
   const enhanceSource = await readFile("src/enhance-prompt.tsx", "utf8");
   assert.doesNotMatch(enhanceSource, /name: "idea-studio"/);
+  assert.match(enhanceSource, /provider="openai"/);
+  assert.match(enhanceSource, /function ProviderApiKeyForm\(/);
+  assert.doesNotMatch(
+    enhanceSource,
+    /Add the shared key in Prompt Studio extension preferences before enhancing/,
+  );
   await readFile("src/open-studio-views.ts", "utf8");
   await readFile("src/enhance-prompt.tsx", "utf8");
   await readFile("src/idea-studio.tsx", "utf8");
