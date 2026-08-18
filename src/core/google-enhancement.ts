@@ -89,7 +89,10 @@ export async function enhanceWithGoogle(
   options: GoogleEnhancementOptions,
 ): Promise<EnhancementRun> {
   const request = validateEnhancementRequest(unvalidatedRequest);
-  if (request.profileId !== "google-gemini-3.5-flash-v1") {
+  if (
+    request.profileId !== "google-gemini-3.5-flash-v1" &&
+    request.profileId !== "google-gemini-3.7-flash-v1"
+  ) {
     throw new Error(
       `Profile ${request.profileId} cannot be sent to Google. No provider fallback occurred.`,
     );

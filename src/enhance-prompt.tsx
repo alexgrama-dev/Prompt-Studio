@@ -131,7 +131,11 @@ import {
   applyCaptureFence,
 } from "./core/compiler-pipeline";
 import {
+  assertProviderAcceptsVision,
+  placeholderVisionForSource,
+  providerAcceptsVision,
   resolveEnhancementVision,
+  visionMediaKind,
   type EnhancementVisionImage,
   type EnhancementVisionSource,
 } from "./core/enhancement-vision";
@@ -707,13 +711,7 @@ function EnhancementWorkspace({
         profileId: effectiveProfileId,
         researchLevel: effectiveResearchLevel,
         ...(initialVisionSource
-          ? {
-              vision: {
-                mimeType: "image/png",
-                label: initialVisionSource.label,
-                base64: "AA==",
-              },
-            }
+          ? { vision: placeholderVisionForSource(initialVisionSource) }
           : {}),
       }),
     [
@@ -892,11 +890,14 @@ function EnhancementWorkspace({
     let vision: EnhancementVisionImage | undefined;
     if (initialVisionSource) {
       try {
+        assertProviderAcceptsVision(profile.provider, initialVisionSource);
         vision = await resolveEnhancementVision(initialVisionSource);
       } catch (error) {
         await showToast(
           Toast.Style.Failure,
-          "Could Not Attach Image",
+          visionMediaKind(initialVisionSource) === "video"
+            ? "Could Not Attach Video"
+            : "Could Not Attach Image",
           error instanceof Error ? error.message : String(error),
         );
         return;
@@ -1861,6 +1862,7 @@ function EnhancementWorkspace({
                     profile,
                     estimatedCost,
                     effectiveResearchLevel,
+                    initialVisionSource,
                   )}
                 />
               }
@@ -2096,8 +2098,8 @@ function EnhancementWorkspace({
           !profileAvailable
             ? `${profile.title} is Disabled. Your task is preserved; choose an enabled provider before enhancing.`
             : setupMode === "smart"
-              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}.${initialVisionSource ? " The attached image pixels are included in that request." : ""} Completed results go to local history; the prompt library changes only when you approve.`
-              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}.${initialVisionSource ? " The attached image pixels are included in that request." : ""} Completed results go to local history; the prompt library changes only when you approve.`
+              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}.${visionReadyCopy(initialVisionSource, profile.provider)} Completed results go to local history; the prompt library changes only when you approve.`
+              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}.${visionReadyCopy(initialVisionSource, profile.provider)} Completed results go to local history; the prompt library changes only when you approve.`
         }
       />
     </Form>
@@ -2177,10 +2179,16 @@ function AdvancedProviderSelection({
             />
           )}
           {googleState === "disabled" ? null : (
-            <Form.Dropdown.Item
-              title={`Gemini 3.5 Flash · ${title(googleState)}`}
-              value="google-gemini-3.5-flash-v1"
-            />
+            <>
+              <Form.Dropdown.Item
+                title={`Gemini 3.7 Flash · ${title(googleState)}`}
+                value="google-gemini-3.7-flash-v1"
+              />
+              <Form.Dropdown.Item
+                title={`Gemini 3.5 Flash · ${title(googleState)}`}
+                value="google-gemini-3.5-flash-v1"
+              />
+            </>
           )}
         </Form.Dropdown.Section>
       </Form.Dropdown>
@@ -2189,7 +2197,7 @@ function AdvancedProviderSelection({
         text={
           profile
             ? `${profile.purpose} A failed request never falls back to another provider.`
-            : `Claude Sonnet 5 is ${title(anthropicState)}. Gemini 3.5 Flash is ${title(googleState)}. Choose an enabled provider; the saved task is unchanged.`
+            : `Claude Sonnet 5 is ${title(anthropicState)}. Gemini 3.7 Flash and Gemini 3.5 Flash are ${title(googleState)}. Choose an enabled provider; the saved task is unchanged.`
         }
       />
     </Form>
@@ -2200,6 +2208,7 @@ function enhancementSetupMarkdown(
   profile: EnhancementRunProfile,
   estimatedCost: number,
   researchLevel: EnhancementResearchLevel,
+  visionSource?: EnhancementVisionSource,
 ): string {
   return [
     "# Enhancement Setup",
@@ -2209,11 +2218,25 @@ function enhancementSetupMarkdown(
     `**External research:** ${title(researchLevel)}`,
     `**Maximum model-token estimate:** $${estimatedCost.toFixed(3)}`,
     "The actual model cost is calculated from returned token counts and is usually lower. Project files and external research have separate review steps when enabled. Completed results are kept in local Enhancement History; the main prompt library changes only when you approve.",
-    providerPricingDisclosure(profile),
+    providerPricingDisclosure(profile, new Date(), visionSource),
     providerPrivacyDisclosure(profile),
+    visionReadyCopy(visionSource, profile.provider).trim(),
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function visionReadyCopy(
+  source: EnhancementVisionSource | undefined,
+  provider: EnhancementRunProfile["provider"],
+): string {
+  if (!source) return "";
+  if (!providerAcceptsVision(provider, source)) {
+    return " The attached video cannot be sent to this provider. Choose Google Gemini, or export a screenshot instead.";
+  }
+  return source.kind === "local-video"
+    ? " The attached video bytes are included in that request."
+    : " The attached image pixels are included in that request.";
 }
 
 function EvaluationReview({ path }: { path: string }) {

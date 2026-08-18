@@ -14,11 +14,14 @@ import {
   type EnhancementRequest,
 } from "../src/core/enhancement.ts";
 import {
+  anthropicVisionContentPart,
+  assertProviderAcceptsVision,
   isSafeRemoteImageUrl,
   openaiVisionContentPart,
   resolveEnhancementVision,
   validateEnhancementVision,
   VISION_COMPILER_ADDENDUM,
+  VISION_VIDEO_COMPILER_ADDENDUM,
 } from "../src/core/enhancement-vision.ts";
 import { buildGoogleGenerateContentRequest } from "../src/core/google-enhancement.ts";
 import { getProviderEnhancementProfile } from "../src/core/provider-profiles.ts";
@@ -189,5 +192,94 @@ test("OpenAI, Anthropic, and Google enhancement requests include image parts and
         vision: { ...request.vision!, label: "/tmp/01-screen.png" },
       }),
     /filename, not a path/,
+  );
+});
+
+test("local video bytes become Google vision input and other providers fail before the request", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-video-"));
+  const filePath = join(directory, "clip.mp4");
+  const bytes = Buffer.from("fake-mp4-bytes");
+  await writeFile(filePath, bytes);
+
+  const vision = await resolveEnhancementVision({
+    kind: "local-video",
+    filePath,
+    label: "clip.mp4",
+  });
+  assert.equal(vision.mimeType, "video/mp4");
+  assert.equal(vision.label, "clip.mp4");
+  assert.equal(Buffer.from(vision.base64, "base64").equals(bytes), true);
+  assert.deepEqual(validateEnhancementVision(vision), vision);
+
+  const request: EnhancementRequest = {
+    roughThoughts:
+      "Write a reusable prompt that would produce this video.\n\nA video is attached as vision input.",
+    target: "codex",
+    profileId: "google-gemini-3.7-flash-v1",
+    researchLevel: "none",
+    vision,
+  };
+  const google = buildGoogleGenerateContentRequest(
+    request,
+    getProviderEnhancementProfile("google-gemini-3.7-flash-v1"),
+  );
+  const parts = (
+    google.contents as Array<{ parts: Array<Record<string, unknown>> }>
+  )[0]!.parts;
+  assert.equal(
+    (parts[1]?.inline_data as { mime_type?: string }).mime_type,
+    "video/mp4",
+  );
+  assert.doesNotMatch(JSON.stringify(google), /\/tmp\//);
+  assert.match(enhancementCompilerInput(request), /"kind": "video"/);
+  assert.doesNotMatch(enhancementCompilerInput(request), /fake-mp4-bytes/);
+  assert.match(
+    enhancementCompilerInstructions(request),
+    new RegExp(VISION_VIDEO_COMPILER_ADDENDUM.slice(0, 40)),
+  );
+
+  const withVideo = estimatedMaximumCostForProfileUsd(
+    request,
+    getProviderEnhancementProfile("google-gemini-3.7-flash-v1"),
+  );
+  const withoutVideo = estimatedMaximumCostForProfileUsd(
+    {
+      roughThoughts: request.roughThoughts,
+      target: request.target,
+      profileId: request.profileId,
+      researchLevel: request.researchLevel,
+    },
+    getProviderEnhancementProfile("google-gemini-3.7-flash-v1"),
+  );
+  assert.ok(withVideo > withoutVideo);
+
+  assert.throws(() => openaiVisionContentPart(vision), /cannot accept video/);
+  assert.throws(
+    () => anthropicVisionContentPart(vision),
+    /cannot accept video/,
+  );
+  assert.throws(
+    () => assertProviderAcceptsVision("openai", vision),
+    /cannot accept video/,
+  );
+  assert.doesNotThrow(() => assertProviderAcceptsVision("google", vision));
+
+  assert.throws(
+    () =>
+      buildOpenAIResponseRequest(
+        { ...request, profileId: "openai-standard-v1" },
+        getEnhancementProfile("openai-standard-v1"),
+        "compiler",
+        enhancementCompilerInput(request),
+      ),
+    /cannot accept video/,
+  );
+  assert.throws(
+    () =>
+      buildAnthropicMessageRequest(
+        { ...request, profileId: "anthropic-sonnet-5-v1" },
+        getProviderEnhancementProfile("anthropic-sonnet-5-v1"),
+      ),
+    /cannot accept video/,
   );
 });

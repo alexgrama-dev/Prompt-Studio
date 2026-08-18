@@ -97,6 +97,22 @@
       }
     },
     {
+      "id": "google-gemini-3.7-flash-v1",
+      "provider": "google",
+      "model": "gemini-3.7-flash",
+      "reasoningEffort": "high",
+      "passes": 1,
+      "textVerbosity": "structured",
+      "maxOutputTokens": 8000,
+      "timeoutMs": 180000,
+      "pricing": {
+        "input": 0.75,
+        "cachedInput": 0.075,
+        "cacheWrite": 0,
+        "output": 3.75
+      }
+    },
+    {
       "id": "google-gemini-3.5-flash-v1",
       "provider": "google",
       "model": "gemini-3.5-flash",

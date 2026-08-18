@@ -64,7 +64,7 @@
       "required": false,
       "title": "Default Model",
       "description": "The enhancement profile Enhance Prompt starts with; a Disabled provider falls back to OpenAI Standard",
-      "default": "openai-standard-v1",
+      "default": "google-gemini-3.7-flash-v1",
       "data": [
         {
           "title": "OpenAI · Standard",
@@ -77,6 +77,10 @@
         {
           "title": "Anthropic · Claude Sonnet 5",
           "value": "anthropic-sonnet-5-v1"
+        },
+        {
+          "title": "Google · Gemini 3.7 Flash",
+          "value": "google-gemini-3.7-flash-v1"
         },
         {
           "title": "Google · Gemini 3.5 Flash",
@@ -276,6 +280,8 @@
     "node": ">=22.22.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

@@ -19,7 +19,7 @@ type ExtensionPreferences = {
   /** OpenAI API Key - Shared encrypted preference for Enhance Prompt and Capture Inbox; read only after an explicit OpenAI action */
   "openaiApiKey"?: string,
   /** Default Model - The enhancement profile Enhance Prompt starts with; a Disabled provider falls back to OpenAI Standard */
-  "defaultEnhancementProfile": "openai-standard-v1" | "openai-deep-v1" | "anthropic-sonnet-5-v1" | "google-gemini-3.5-flash-v1",
+  "defaultEnhancementProfile": "openai-standard-v1" | "openai-deep-v1" | "anthropic-sonnet-5-v1" | "google-gemini-3.7-flash-v1" | "google-gemini-3.5-flash-v1",
   /** Quality - Runs a second model pass that reviews the compiled prompt against your original thoughts. Roughly doubles the enhancement cost. */
   "selfReviewPass": boolean,
   /**  - Generate several candidates, score each with a blind judge, and preselect the winner. Multiplies the enhancement cost by the number of variants and adds one judge call each. */

@@ -144,7 +144,7 @@ function ReversePromptForm({
     >
       <Form.Description
         title="One Source"
-        text="Pick an image or video, or paste a URL. This screen stays local. Continue opens Enhance, where cost and privacy review happens before any model call. A local PNG, JPEG, WebP, or GIF is sent as vision so the model sees the pixels, not just the filename."
+        text="Pick an image or video, or paste a URL. This screen stays local. Continue opens Enhance, where cost and privacy review happens before any model call. A local PNG, JPEG, WebP, or GIF, or a local MP4, MOV, M4V, WebM, AVI, or MKV, is sent as vision so the model sees the media, not just the filename. Video requires Google Gemini."
       />
       <Form.FilePicker
         id="sourceFile"
