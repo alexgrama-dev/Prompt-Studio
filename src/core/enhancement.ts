@@ -26,8 +26,8 @@ import { planCompilerStages } from "./compiler-pipeline.ts";
 import {
   openaiVisionContentPart,
   validateEnhancementVision,
-  VISION_COMPILER_ADDENDUM,
-  VISION_IMAGE_TOKEN_ESTIMATE,
+  visionCompilerAddendum,
+  visionTokenEstimate,
   visionInputSummary,
   type EnhancementVisionImage,
 } from "./enhancement-vision.ts";
@@ -62,7 +62,8 @@ export type EnhancementProvider = "openai" | "anthropic" | "google";
 export type EnhancementProviderProfileId =
   | EnhancementProfileId
   | "anthropic-sonnet-5-v1"
-  | "google-gemini-3.5-flash-v1";
+  | "google-gemini-3.5-flash-v1"
+  | "google-gemini-3.7-flash-v1";
 export type EnhancementResearchLevel = "none" | "auto" | "deep";
 
 export interface EnhancementRunProfile {
@@ -557,7 +558,7 @@ export function enhancementCompilerInstructions(
     : BASE_COMPILER_INSTRUCTIONS;
   const sections = [instructions, COMPILER_WORKED_EXAMPLES];
   if (request.revision) sections.push(REVISION_INSTRUCTIONS);
-  if (request.vision) sections.push(VISION_COMPILER_ADDENDUM);
+  if (request.vision) sections.push(visionCompilerAddendum(request.vision));
   // Only stated when the caller supplied the task, so metadata volume can match
   // task size instead of always demanding the complex-tier minimum.
   if (typeof request.roughThoughts === "string") {
@@ -1054,7 +1055,7 @@ export function estimatedMaximumCostForProfileUsd(
     Math.ceil(
       request.sources?.length ? JSON.stringify(request.sources).length / 4 : 0,
     ) +
-    (request.vision ? VISION_IMAGE_TOKEN_ESTIMATE : 0);
+    (request.vision ? visionTokenEstimate(request.vision) : 0);
   const first =
     (approximateInputTokens * profile.pricing.input +
       profile.maxOutputTokens * profile.pricing.output) /

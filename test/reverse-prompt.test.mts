@@ -148,8 +148,14 @@ test("Reverse Prompt builds enhance-ready thoughts and keeps URL evidence fenced
     },
     target: "codex",
   });
-  assert.match(videoThoughts, /cannot accept video bytes/);
+  assert.match(videoThoughts, /video is attached as vision input/);
+  assert.match(videoThoughts, /frames and audible speech/);
+  assert.doesNotMatch(videoThoughts, /cannot accept video bytes/);
   assert.doesNotMatch(videoThoughts, /\/tmp\/clip\.mp4/);
+  assert.doesNotMatch(
+    videoThoughts,
+    /Do not invent visual, spoken, or page details that were not supplied/,
+  );
 
   assert.throws(
     () =>
@@ -217,6 +223,33 @@ test("Reverse Prompt hands local images to Enhance as vision, not filename-only 
       label: "example.com/docs",
     }),
     undefined,
+  );
+});
+
+test("Reverse Prompt hands local video to Enhance as vision, not filename-only thoughts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-reverse-"));
+  const video = await writableMediaFile(directory, "walkthrough.mp4");
+  const source = classifyReversePromptInput({ filePath: video });
+  const vision = reversePromptVisionSource(source);
+  assert.deepEqual(vision, {
+    kind: "local-video",
+    filePath: video,
+    label: "walkthrough.mp4",
+  });
+  const context = enhancePromptThoughtsLaunchContext(
+    buildReversePromptThoughts({ source, target: "codex" }),
+    "codex",
+    undefined,
+    vision,
+  );
+  assert.equal(context.untrustedSurface, undefined);
+  assert.deepEqual(context.visionSource, vision);
+  assert.match(context.thoughts, /attached as vision input/);
+  assert.match(context.thoughts, /walkthrough\.mp4/);
+  assert.doesNotMatch(context.thoughts, /open walkthrough\.mp4/);
+  assert.doesNotMatch(
+    context.thoughts,
+    new RegExp(video.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
   );
 });
 

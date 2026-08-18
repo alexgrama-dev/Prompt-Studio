@@ -130,6 +130,7 @@ function parseArguments(values: string[]): Arguments {
           "openai-standard-v1",
           "openai-deep-v1",
           "anthropic-sonnet-5-v1",
+          "google-gemini-3.7-flash-v1",
           "google-gemini-3.5-flash-v1",
         ].includes(next)
       ) {

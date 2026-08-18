@@ -100,9 +100,10 @@ Pinned generator models:
 | `openai-deep-v1` | `gpt-5.6-sol` | high, two passes |
 | `openai-bulk-metadata-v1` | `gpt-5.6-luna` | low |
 | `anthropic-sonnet-5-v1` | `claude-sonnet-5` | medium |
+| `google-gemini-3.7-flash-v1` | `gemini-3.7-flash` | high |
 | `google-gemini-3.5-flash-v1` | `gemini-3.5-flash` | medium |
 
-Default preference: `openai-standard-v1`.
+Default preference: `google-gemini-3.7-flash-v1`. Disabled Google activation still falls back to `openai-standard-v1`.
 
 ### 2.3 Saved artifact
 
