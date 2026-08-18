@@ -265,6 +265,7 @@ interface ModelPass {
 
 export const ENHANCEMENT_TITLE_MAX_LENGTH = 120;
 export const ENHANCEMENT_SUMMARY_MAX_LENGTH = 240;
+export const ENHANCEMENT_PROMPT_MAX_LENGTH = 100_000;
 
 export const ENHANCEMENT_RESULT_SCHEMA = {
   type: "object",
@@ -296,7 +297,11 @@ export const ENHANCEMENT_RESULT_SCHEMA = {
       maxLength: ENHANCEMENT_SUMMARY_MAX_LENGTH,
     },
     target: { type: "string", enum: ["generic", "codex", "claude-code"] },
-    enhancedPrompt: { type: "string", minLength: 1, maxLength: 30_000 },
+    enhancedPrompt: {
+      type: "string",
+      minLength: 1,
+      maxLength: ENHANCEMENT_PROMPT_MAX_LENGTH,
+    },
     assumptions: {
       type: "array",
       maxItems: 20,
@@ -678,7 +683,12 @@ export function appendExecutionGuardrails(
   value: string,
   target: PromptTarget,
 ): string {
-  const prompt = boundedString(value, "enhancedPrompt", 1, 30_000);
+  const prompt = boundedString(
+    value,
+    "enhancedPrompt",
+    1,
+    ENHANCEMENT_PROMPT_MAX_LENGTH,
+  );
   const taskPrompt = splitExecutionGuardrails(prompt).taskPrompt;
   const guardrails = [
     ENHANCEMENT_GUARDRAILS_MARKER,
@@ -696,7 +706,7 @@ export function appendExecutionGuardrails(
     `${taskPrompt}\n\n${guardrails}`,
     "enhancedPrompt",
     1,
-    30_000,
+    ENHANCEMENT_PROMPT_MAX_LENGTH,
   );
 }
 
@@ -984,7 +994,12 @@ export function validateEnhancementResult(
     ),
     target: request.target,
     enhancedPrompt: appendExecutionGuardrails(
-      boundedString(value.enhancedPrompt, "enhancedPrompt", 1, 30_000),
+      boundedString(
+        value.enhancedPrompt,
+        "enhancedPrompt",
+        1,
+        ENHANCEMENT_PROMPT_MAX_LENGTH,
+      ),
       request.target,
     ),
     assumptions: textList(value.assumptions, "assumptions", 0, 20, 500),

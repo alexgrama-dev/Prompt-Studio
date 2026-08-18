@@ -73,6 +73,7 @@ import {
   ENHANCEMENT_COMPILER_VERSION,
   ENHANCEMENT_GUARDRAILS_MARKER,
   ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
+  ENHANCEMENT_PROMPT_MAX_LENGTH,
   ENHANCEMENT_RESULT_SCHEMA,
   enhanceWithOpenAI,
   estimatedMaximumCostForProfileUsd,
@@ -530,7 +531,7 @@ test("execution guardrails normalize every frozen case without changing its task
       request,
     );
     assert.equal(normalizedAgain.enhancedPrompt, result.enhancedPrompt);
-    assert.ok(result.enhancedPrompt.length <= 30_000);
+    assert.ok(result.enhancedPrompt.length <= ENHANCEMENT_PROMPT_MAX_LENGTH);
   }
 
   const upgraded = appendExecutionGuardrails(
@@ -545,8 +546,12 @@ test("execution guardrails normalize every frozen case without changing its task
   assert.equal(upgraded.split(ENHANCEMENT_GUARDRAILS_MARKER).length - 1, 1);
   assert.doesNotMatch(upgraded, /Obsolete Guardrails/);
   assert.throws(
-    () => appendExecutionGuardrails("x".repeat(30_000), "codex"),
-    /must contain 1-30000 characters/,
+    () =>
+      appendExecutionGuardrails(
+        "x".repeat(ENHANCEMENT_PROMPT_MAX_LENGTH),
+        "codex",
+      ),
+    /must contain 1-100000 characters/,
   );
 });
 
@@ -607,6 +612,44 @@ test("enhancement request accepts 100000-character roughThoughts and rejects 100
         roughThoughts: "x".repeat(100_001),
       }),
     /roughThoughts must contain 1-100000 characters/,
+  );
+});
+
+test("enhancement result accepts 100000-character enhancedPrompt and rejects 100001", () => {
+  const request = enhancementRequest();
+  assert.equal(
+    ENHANCEMENT_RESULT_SCHEMA.properties.enhancedPrompt.maxLength,
+    ENHANCEMENT_PROMPT_MAX_LENGTH,
+  );
+  const schema = enhancementResultSchemaForProvider() as {
+    properties: { enhancedPrompt: { description?: string } };
+  };
+  assert.equal(
+    schema.properties.enhancedPrompt.description,
+    "Use 1-100000 characters.",
+  );
+
+  const guardrailOverhead =
+    appendExecutionGuardrails("x", "codex").length - 1;
+  const justUnder = "x".repeat(
+    ENHANCEMENT_PROMPT_MAX_LENGTH - guardrailOverhead,
+  );
+  const accepted = validateEnhancementResult(
+    { ...enhancementFixture(), enhancedPrompt: justUnder },
+    request,
+  );
+  assert.equal(accepted.enhancedPrompt.length, ENHANCEMENT_PROMPT_MAX_LENGTH);
+
+  assert.throws(
+    () =>
+      validateEnhancementResult(
+        {
+          ...enhancementFixture(),
+          enhancedPrompt: "x".repeat(ENHANCEMENT_PROMPT_MAX_LENGTH + 1),
+        },
+        request,
+      ),
+    /enhancedPrompt must contain 1-100000 characters/,
   );
 });
 
@@ -2874,12 +2917,17 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
     properties: {
       title: { description?: string };
       summary: { description?: string };
+      enhancedPrompt: { description?: string };
     };
   };
   assert.equal(JSON.stringify(schema).includes("minLength"), false);
   assert.equal(JSON.stringify(schema).includes("maxLength"), false);
   assert.equal(schema.properties.title.description, "Use 1-120 characters.");
   assert.equal(schema.properties.summary.description, "Use 1-240 characters.");
+  assert.equal(
+    schema.properties.enhancedPrompt.description,
+    "Use 1-100000 characters.",
+  );
 
   const longSummary = `${"Establish the cause of the intermittent failure and ship only an evidence-backed fix. ".repeat(5)}end`;
   assert.ok(longSummary.length > 240);
@@ -2936,7 +2984,7 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
               type: "text",
               text: JSON.stringify({
                 ...enhancementFixture(),
-                enhancedPrompt: "x".repeat(30_001),
+                enhancedPrompt: "x".repeat(ENHANCEMENT_PROMPT_MAX_LENGTH + 1),
               }),
             },
           ],
@@ -2945,7 +2993,7 @@ test("provider schemas state string bounds and over-long labels are trimmed inst
           usage: { input_tokens: 900, output_tokens: 500 },
         })) as typeof fetch,
     }),
-    /enhancedPrompt must contain 1-30000 characters/,
+    /enhancedPrompt must contain 1-100000 characters/,
   );
 });
 
