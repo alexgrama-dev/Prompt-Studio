@@ -2577,7 +2577,11 @@ test("daily Raycast panels preserve the distilled action hierarchy", async () =>
   );
   const copyIndex = preview.indexOf('title="Copy Prompt"');
   const pasteIndex = preview.indexOf('title="Paste in Active App"');
-  assert.ok(copyIndex > 0 && pasteIndex > copyIndex);
+  const saveIndex = preview.indexOf('title="Save to Prompt Library"');
+  const scoreIndex = preview.indexOf('title="Score"');
+  assert.ok(copyIndex > 0 && pasteIndex > copyIndex && saveIndex > pasteIndex);
+  assert.ok(scoreIndex > 0 && scoreIndex < copyIndex);
+  assert.match(preview, /formatEnhancementReviewScore\(reviewScore\)/);
 
   const menuSource = await readFile("src/menubar-prompts.tsx", "utf8");
   assert.match(
