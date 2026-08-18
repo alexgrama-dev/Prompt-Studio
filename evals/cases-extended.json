@@ -639,6 +639,43 @@
         "A source file path inside the original app.",
         "Permission to replace the dashboard."
       ]
+    },
+    {
+      "id": "ext-locked-operational-brief",
+      "split": "protected",
+      "category": "authorization",
+      "taskClass": "audit",
+      "target": "claude-code",
+      "projectAware": false,
+      "roughInput": "Prove the AMP Studio Brief Decoder e2e walk.\n\n## Standing facts\n- Pass only when the decoder prints: \"brief locked: 12 facts, 0 missing\"\n- Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only\n- leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken\n- Walker 400s are not bugs\n- Finish review is gated: say \"Finish review only after the prove log is attached\" and do not unlock earlier\n\nWalk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.",
+      "requiredFacts": [
+        "The standing-facts block must be copied at full strength, not summarized into a scannable outline.",
+        "Pass only when the decoder prints: \"brief locked: 12 facts, 0 missing\"",
+        "127.0.0.1 and localhost are different JS hosts; the fixture binds 127.0.0.1 only.",
+        "leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.",
+        "Walker 400s are not bugs.",
+        "Finish review only after the prove log is attached.",
+        "Do not commit, deploy, or discard the dirty tree.",
+        "The walk may upload, pause, delete, confirm, and raise."
+      ],
+      "prohibitedInventions": [
+        "Reframing the authorized session walk as read-only.",
+        "Permission to commit, deploy, or discard the dirty tree.",
+        "Treating leftover.zip as still broken instead of re-proving.",
+        "A host, path, or pass sentence the brief did not state."
+      ],
+      "mustContain": [
+        "brief locked: 12 facts, 0 missing",
+        "127.0.0.1",
+        "localhost",
+        "leftover.zip",
+        "re-prove",
+        "Finish review only after the prove log is attached"
+      ],
+      "mustNotContain": [
+        "Read-only review of the decoder prove",
+        "stop without changing anything"
+      ]
     }
   ]
 }

@@ -9,9 +9,10 @@ import {
 const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
 const JUDGE_MODEL = "gpt-5.6-terra";
 const MAX_OUTPUT_TOKENS = 900;
-// Worst case for the capped fields plus list contents, JSON overhead, and the
-// uncapped title and target. Must not understate what buildJudgeRequest sends.
-const MAX_INPUT_TOKENS = 20_000;
+// Worst case for uncapped roughThoughts (enhancement 100k-char cap), the
+// capped enhancedPrompt, list contents, JSON overhead, and the uncapped
+// title and target. Must not understate what buildJudgeRequest sends.
+const MAX_INPUT_TOKENS = 32_000;
 const REQUEST_TIMEOUT_MS = 120_000;
 const INPUT_COST_PER_MILLION_USD = 2.5;
 const OUTPUT_COST_PER_MILLION_USD = 15;
@@ -73,7 +74,7 @@ const JUDGE_INSTRUCTIONS = [
   "suppliedContext was given to the compiler before generation. Naming a supplied project, path, or allowedProjectFiles entry is not an invention. Score unsupportedFacts only against facts that are not in suppliedContext and not in the rough thoughts.",
   "compiled.enhancedPrompt is the task prompt. compiled.productAppendedGuardrails is a product-appended Execution Guardrails block, not model padding. Ignore it for appropriateLength and do not treat it as a length or padding defect. Do not treat its repository-inspection wording as an invented repository when suppliedContext.project is present, or when the task prompt itself does not invent one.",
   `Award points out of these maximums: fidelity ${HUMAN_REVIEW_SCORE_MAXIMUMS.fidelity} (every explicit user requirement, prohibition, and threshold survives at full strength), completeness ${HUMAN_REVIEW_SCORE_MAXIMUMS.completeness} (the required facts are all present), unsupportedFacts ${HUMAN_REVIEW_SCORE_MAXIMUMS.unsupportedFacts} (nothing invented; award full marks only when no prohibited invention appears), actionability ${HUMAN_REVIEW_SCORE_MAXIMUMS.actionability} (an agent could act without guessing), validation ${HUMAN_REVIEW_SCORE_MAXIMUMS.validation} (the prompt defines how the result would be proven), authorization ${HUMAN_REVIEW_SCORE_MAXIMUMS.authorization} (boundaries for destructive, external, costly, or scope-expanding actions), appropriateLength ${HUMAN_REVIEW_SCORE_MAXIMUMS.appropriateLength} (no padding, no missing substance).`,
-  "Set hardFailure to true only for a disqualifying defect: a dropped or softened prohibition, an invented fact from the prohibited list, a changed target, or authorization to act beyond what the task allows.",
+  "Set hardFailure to true only for a disqualifying defect: a dropped or softened prohibition, an invented fact from the prohibited list, a changed target, authorization to act beyond what the task allows, a locked operational brief whose standing-facts, exact pass language, gated review sentence, or host-or-copy distinction was summarized away, or an authorized session walk (upload, pause, delete, confirm, raise) reframed as read-only.",
   "Score strictly. A prompt that is merely acceptable is not full marks. Deduct for each specific defect you can name.",
   "notes must state the concrete defects you deducted for, or be empty when there are none. Do not restate the prompt.",
 ].join(" ");
@@ -116,14 +117,81 @@ export function factCoverage(
 const MAX_FIELD_CHARS = 8_000;
 const MAX_LIST_ITEMS = 20;
 
+/**
+ * Pull locked-brief facts the live variant path otherwise sends as
+ * requiredFacts: []. Ordinary short tasks return [].
+ */
+export function extractRequiredFacts(roughThoughts: string): string[] {
+  if (!looksLikeLockedOperationalBrief(roughThoughts)) return [];
+  const facts: string[] = [];
+  const standing = extractStandingFactsBlock(roughThoughts);
+  facts.push(...standing);
+  for (const line of roughThoughts.replace(/\r\n/g, "\n").split("\n")) {
+    const item = line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim();
+    if (!item) continue;
+    if (standing.includes(item)) continue;
+    if (isLockedBriefConstraint(item)) facts.push(item);
+  }
+  return [...new Set(facts)].slice(0, MAX_LIST_ITEMS);
+}
+
+export function looksLikeLockedOperationalBrief(text: string): boolean {
+  return (
+    /\bstanding[\s-]?facts?\b/i.test(text) ||
+    /\b(pass only when|exact pass|must print)\b/i.test(text) ||
+    (/\b(leftover|\.zip)\b/i.test(text) &&
+      /\b(dirty tree|re-prove|reprove)\b/i.test(text)) ||
+    (/\bgated\b/i.test(text) &&
+      /\b(finish review|review sentence)\b/i.test(text))
+  );
+}
+
+function extractStandingFactsBlock(text: string): string[] {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const match = normalized.match(
+    /(?:^|\n)#{0,6}\s*standing[\s-]?facts?\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|\n(?=[A-Z])|$)/i,
+  );
+  if (!match?.[1]) return [];
+  return match[1]
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean);
+}
+
+function isLockedBriefConstraint(item: string): boolean {
+  return (
+    /\b(pass only when|exact pass|must print)\b/i.test(item) ||
+    (/\b127\.0\.0\.1\b/.test(item) && /\blocalhost\b/i.test(item)) ||
+    (/\b(leftover|\.zip)\b/i.test(item) &&
+      /\b(dirty tree|re-prove|reprove)\b/i.test(item)) ||
+    /\b(finish review|gated)\b/i.test(item) ||
+    /\bdo not (commit|deploy|discard)\b/i.test(item) ||
+    /\b(upload|pause|delete|confirm|raise)\b/i.test(item)
+  );
+}
+
+function requiredFactsForJudge(
+  record: EnhancementEvaluationRecord,
+): string[] {
+  if (record.requiredFacts.length > 0) return record.requiredFacts;
+  return extractRequiredFacts(record.request.roughThoughts);
+}
+
 export function buildJudgeRequest(
   record: EnhancementEvaluationRecord,
 ): Record<string, unknown> {
-  const coverage = factCoverage(record);
+  const requiredFacts = requiredFactsForJudge(record);
+  const coverageRecord =
+    record.requiredFacts.length > 0
+      ? record
+      : { ...record, requiredFacts };
+  const coverage = factCoverage(coverageRecord);
   const { taskPrompt, productAppendedGuardrails } = splitExecutionGuardrails(
     record.result.enhancedPrompt,
   );
-  // Bound the request so the cost estimate matches what is actually sent.
+  // Cap compiled fields so the judge-model payload stays bounded. The
+  // original roughThoughts must be scored in full — an 8k slice hides
+  // locked facts that live after the cut.
   const cap = (value: string) => value.slice(0, MAX_FIELD_CHARS);
   const capList = (values: readonly string[]) =>
     values.slice(0, MAX_LIST_ITEMS).map((item) => item.slice(0, 500));
@@ -154,7 +222,7 @@ export function buildJudgeRequest(
               {
                 category: record.category,
                 selectedTarget: record.request.target,
-                roughThoughts: cap(record.request.roughThoughts),
+                roughThoughts: record.request.roughThoughts,
                 suppliedContext: {
                   project: record.request.project,
                   allowedProjectFiles: capList(
@@ -162,11 +230,11 @@ export function buildJudgeRequest(
                   ),
                   note: "These values were supplied to the compiler. Naming them is not an invention.",
                 },
-                requiredFacts: capList(record.requiredFacts),
+                requiredFacts: capList(requiredFacts),
                 prohibitedInventions: capList(record.prohibitedInventions),
                 deterministicCoverage: {
                   requiredFactsMatchedByKeyword: coverage.requiredFacts,
-                  requiredFactsTotal: record.requiredFacts.length,
+                  requiredFactsTotal: requiredFacts.length,
                   prohibitedInventionsMatchedByKeyword:
                     coverage.prohibitedInventions,
                 },
