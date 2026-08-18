@@ -4,6 +4,7 @@ import {
   type EnhancementHumanReviewInput,
 } from "./evaluation.ts";
 import {
+  extractRequiredFacts,
   judgeEvaluationRecord,
   type EvaluationJudgeOptions,
 } from "./evaluation-judge.ts";
@@ -70,7 +71,7 @@ export function variantAsEvaluationRecord(
     generationIndex: 1,
     split: "development",
     category: "interactive",
-    requiredFacts: [],
+    requiredFacts: extractRequiredFacts(request.roughThoughts),
     prohibitedInventions: [],
     request: {
       target: request.target,

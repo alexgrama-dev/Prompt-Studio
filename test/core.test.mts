@@ -93,8 +93,12 @@ import {
 } from "../src/core/enhancement.ts";
 import {
   buildJudgeRequest,
+  extractRequiredFacts,
+  extractStandingFactsBlock,
   factCoverage,
   judgeEvaluationRecord,
+  looksLikeLockedOperationalBrief,
+  MAX_INPUT_TOKENS,
   maximumJudgeCostUsd,
 } from "../src/core/evaluation-judge.ts";
 import {
@@ -475,7 +479,7 @@ test("execution guardrails normalize every frozen case without changing its task
     "claude-code": "applicable CLAUDE.md and repository instructions",
   } as const;
 
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.4.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
   for (const item of raw.cases) {
     const taskPrompt = `${item.roughInput.trim()}\n\nPreserve this case's stricter evidence and authorization thresholds.`;
     const request: EnhancementRequest = {
@@ -3393,6 +3397,73 @@ test("the extended evaluation corpus is additive and does not change the frozen 
   assert.ok(
     all.cases.some((item) => item.id === "protected-untrusted-reference"),
   );
+  const locked = all.cases.find(
+    (item) => item.id === "ext-locked-operational-brief",
+  );
+  assert.ok(locked, "locked operational brief case must be loadable");
+  assert.equal(locked.split, "protected");
+  assert.match(locked.roughInput, /## Standing facts/);
+  assert.match(
+    locked.roughInput,
+    /Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"/,
+  );
+  assert.match(locked.roughInput, /127\.0\.0\.1 and localhost/);
+  assert.match(locked.roughInput, /leftover\.zip is already fixed in the dirty tree; re-prove/);
+  assert.match(locked.roughInput, /Do not commit, deploy, or discard the dirty tree/);
+  assert.match(locked.roughInput, /upload the brief, pause on the gate, delete leftover\.zip/);
+  assert.equal(
+    locked.requiredFacts.some((fact) => /copied at full strength/i.test(fact)),
+    false,
+    "requiredFacts must be verbatim brief facts, not compiler meta-instructions",
+  );
+  assert.ok(
+    locked.requiredFacts.some((fact) =>
+      fact.includes('Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"'),
+    ),
+  );
+  assert.ok(
+    locked.prohibitedInventions.some((item) =>
+      /summarizing the standing-facts block into a scannable outline/i.test(item),
+    ),
+  );
+  assert.ok(
+    locked.prohibitedInventions.some((item) =>
+      /reframing the authorized session walk as read-only/i.test(item),
+    ),
+  );
+  const copiedFacts = [
+    'Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"',
+    "Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only.",
+    "leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.",
+    "Walker 400s are not bugs.",
+    "Finish review only after the prove log is attached.",
+    "Do not commit, deploy, or discard the dirty tree.",
+    "Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log.",
+  ].join("\n");
+  const coverage = factCoverage({
+    ...judgeFixtureRecord(),
+    requiredFacts: locked.requiredFacts,
+    prohibitedInventions: [],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts: locked.roughInput,
+    },
+    result: {
+      ...enhancementFixture(),
+      enhancedPrompt: copiedFacts,
+    },
+  });
+  assert.equal(
+    coverage.requiredFacts,
+    locked.requiredFacts.length,
+    "a prompt that copies standing facts verbatim must not fail coverage for omitting 'copied'",
+  );
+  const pinned = getEnhancementEvaluationPlan("openai-standard-v1", {
+    corpus: "all",
+    caseIds: ["ext-locked-operational-brief"],
+  });
+  assert.equal(pinned.cases.length, 1);
+  assert.equal(pinned.cases[0]?.id, "ext-locked-operational-brief");
 });
 
 test("repeated case selection can pin two frozen cases", () => {
@@ -8848,7 +8919,7 @@ test("compiler 1.3.0 pins threshold preservation, untrusted paraphrase, and skip
 });
 
 test("compiler 1.4.0 pins acceptance predicates in the prompt and critique-aware review", () => {
-  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.4.0");
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
   assert.equal(getEnhancementProfile("openai-standard-v1").passes, 1);
   assert.equal(getEnhancementProfile("openai-deep-v1").passes, 2);
 
@@ -8916,6 +8987,76 @@ test("compiler 1.4.0 pins acceptance predicates in the prompt and critique-aware
     reviewIds.includes("missing-stopping-rules"),
     `reviewerInput missed missing-stopping-rules (got: ${reviewIds.join(", ") || "none"})`,
   );
+});
+
+test("compiler 1.5.0 pins locked-brief copy and session-mutation action scope", () => {
+  assert.equal(ENHANCEMENT_COMPILER_VERSION, "prompt-studio-compiler/1.5.0");
+  assert.equal(getEnhancementProfile("openai-standard-v1").passes, 1);
+
+  const base = BASE_COMPILER_INSTRUCTIONS.replace(/\s+/g, " ");
+  assert.match(base, /complete operational brief/);
+  assert.match(base, /standing-facts/);
+  assert.match(base, /copy those blocks into enhancedPrompt at full strength/);
+  assert.match(base, /Do not summarize them into a scannable outline/);
+  assert.match(base, /does not authorize dropping or paraphrasing locked blocks/);
+  assert.match(base, /review, walk, or prove is not diagnose-only/);
+  assert.match(base, /repository-write prohibition/);
+  assert.match(base, /authorized session operations/);
+  assert.match(base, /Do not upgrade "don't commit" into a read-only walk/);
+  assert.match(base, /Build the smallest complete prompt/);
+  assert.match(base, /Keep a simple task short/);
+
+  const standard = enhancementCompilerInstructions({
+    target: "generic",
+    roughThoughts: "prove the locked brief",
+  });
+  assert.ok(
+    standard.includes(BASE_COMPILER_INSTRUCTIONS),
+    "locked-brief rules must be Standard-visible in BASE",
+  );
+  assert.ok(standard.includes(COMPILER_WORKED_EXAMPLES));
+
+  assert.match(COMPILER_WORKED_EXAMPLES, /Example 6/);
+  assert.match(COMPILER_WORKED_EXAMPLES, /## Standing facts/);
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"/,
+  );
+  assert.match(COMPILER_WORKED_EXAMPLES, /Do not commit, deploy, or discard the dirty tree/);
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /Allowed session operations: upload the brief, pause on the gate, delete leftover.zip/,
+  );
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /Read-only review of the decoder prove/,
+  );
+  assert.match(
+    COMPILER_WORKED_EXAMPLES,
+    /"don't commit" upgraded to read-only/,
+  );
+
+  const reviewer = REVIEWER_INSTRUCTIONS.replace(/\s+/g, " ");
+  assert.match(
+    reviewer,
+    /standing-facts, exact pass language, gated review sentence, or host-or-copy distinction/,
+  );
+  assert.match(
+    reviewer,
+    /Do not expand a correct concise prompt merely to make it look more detailed/,
+  );
+  assert.match(
+    reviewer,
+    /review, walk, or prove plus allowed session mutations is not diagnose-only/,
+  );
+
+  for (const target of ["codex", "claude-code"] as const) {
+    const composed = enhancementCompilerInstructions({ target });
+    assert.match(
+      composed,
+      /do not upgrade a no-commit, no-deploy, or no-discard rule into a read-only walk/,
+    );
+  }
 });
 
 test("Deep and selfReview passes send detector ids to the reviewer; Standard stays one pass", async () => {
@@ -9544,6 +9685,133 @@ test("the evaluation judge is blind, bounded, and cannot inflate a score", async
   );
 });
 
+const LOCKED_BRIEF_FIXTURE = `Prove the AMP Studio Brief Decoder e2e walk.
+
+## Standing facts
+- Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"
+- Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only
+- leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken
+- Walker 400s are not bugs
+- Finish review is gated: say "Finish review only after the prove log is attached" and do not unlock earlier
+
+Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.`;
+
+function judgeRequestPayload(body: Record<string, unknown>): {
+  roughThoughts: string;
+  requiredFacts: string[];
+  compiled: { enhancedPrompt: string };
+} {
+  return JSON.parse(
+    (
+      body as {
+        input: Array<{ content: Array<{ text: string }> }>;
+      }
+    ).input[0]!.content[0]!.text,
+  ) as {
+    roughThoughts: string;
+    requiredFacts: string[];
+    compiled: { enhancedPrompt: string };
+  };
+}
+
+test("the live v1 judge sends a >8k original in full and extracts locked-brief facts", () => {
+  const tail = "LOCKED_BRIEF_TAIL_MARKER_AFTER_8K unique-pass-token-z9q";
+  const padding = "padding ".repeat(1_200);
+  const roughThoughts = `${LOCKED_BRIEF_FIXTURE}\n\n${padding}\n${tail}`;
+  assert.ok(roughThoughts.length > 8_000);
+
+  const record = {
+    ...judgeFixtureRecord(),
+    requiredFacts: [] as string[],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts,
+    },
+    result: {
+      ...enhancementFixture(),
+      target: "codex" as const,
+      enhancedPrompt: `${"compiled padding ".repeat(1_200)}COMPILED_TAIL_SHOULD_BE_CAPPED`,
+    },
+  };
+  assert.ok(record.result.enhancedPrompt.length > 8_000);
+
+  assert.equal(looksLikeLockedOperationalBrief(roughThoughts), true);
+  const extracted = extractRequiredFacts(roughThoughts);
+  assert.ok(
+    extracted.some((fact) =>
+      fact.includes('Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"'),
+    ),
+  );
+  assert.ok(extracted.some((fact) => /127\.0\.0\.1/.test(fact) && /localhost/.test(fact)));
+  assert.ok(extracted.some((fact) => /leftover\.zip/.test(fact) && /re-prove/.test(fact)));
+  assert.ok(extracted.some((fact) => /Finish review only after the prove log is attached/.test(fact)));
+  assert.deepEqual(extractRequiredFacts("make the readme setup section clearer"), []);
+
+  const payload = judgeRequestPayload(buildJudgeRequest(record));
+  assert.equal(payload.roughThoughts, roughThoughts);
+  assert.match(payload.roughThoughts, /LOCKED_BRIEF_TAIL_MARKER_AFTER_8K unique-pass-token-z9q/);
+  assert.ok(
+    payload.requiredFacts.some((fact) =>
+      fact.includes("brief locked: 12 facts, 0 missing"),
+    ),
+  );
+  assert.ok(payload.compiled.enhancedPrompt.length <= 8_000);
+  assert.equal(
+    payload.compiled.enhancedPrompt.includes("COMPILED_TAIL_SHOULD_BE_CAPPED"),
+    false,
+  );
+
+  const explicit = judgeRequestPayload(
+    buildJudgeRequest({
+      ...record,
+      requiredFacts: ["Caller-supplied fact must win."],
+    }),
+  );
+  assert.deepEqual(explicit.requiredFacts, ["Caller-supplied fact must win."]);
+
+  assert.ok(
+    MAX_INPUT_TOKENS >= 100_000 / 4 + 8_000 / 4,
+    "judge spend ceiling must cover a full 100k original plus the capped enhancedPrompt",
+  );
+  assert.ok(maximumJudgeCostUsd(1) >= (MAX_INPUT_TOKENS * 2.5) / 1_000_000);
+});
+
+test("locked-brief extraction keeps wrapped standing facts and ignores narrative session verbs", () => {
+  const wrapped = `Prove the walk.
+
+## Standing facts
+- Pass only when the decoder prints:
+Exact copy: "brief locked: 12 facts, 0 missing"
+- Treat 127.0.0.1 and localhost as different JS hosts
+
+Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.
+
+Then confirm the dashboard loaded and delete the temp file.`;
+  const standing = extractStandingFactsBlock(wrapped);
+  assert.ok(
+    standing.some((fact) =>
+      fact.includes('Exact copy: "brief locked: 12 facts, 0 missing"'),
+    ),
+    "capitalized wrapped standing-fact lines must stay in the block",
+  );
+  assert.ok(standing.some((fact) => /127\.0\.0\.1/.test(fact)));
+  assert.equal(
+    standing.some((fact) => /Walk the authorized session/.test(fact)),
+    false,
+    "the blank-line boundary must end the standing-facts block",
+  );
+
+  const extracted = extractRequiredFacts(wrapped);
+  assert.ok(
+    extracted.some((fact) => /authorized session/.test(fact) && /upload/.test(fact)),
+  );
+  assert.equal(
+    extracted.some((fact) => /confirm the dashboard loaded/.test(fact)),
+    false,
+    "ordinary confirm/delete narrative is not a required fact",
+  );
+});
+
 test("the evaluation judge treats supplied files as not-an-invention and exempts product guardrails from length", () => {
   const taskPrompt =
     "Diagnose the CI-only flake in test/jobs/worker.test.ts with evidence. Keep the change narrow and explain how it removes nondeterminism.";
@@ -9857,6 +10125,17 @@ test("variant selection is blind, hard-failure-aware, and deterministic on ties"
   // The judge must not be able to tell variants apart by anything but content.
   assert.deepEqual(record.responseIds, []);
   assert.equal(record.request.roughThoughts, request.roughThoughts);
+  assert.deepEqual(record.requiredFacts, []);
+
+  const lockedRecord = variantAsEvaluationRecord(
+    { ...request, roughThoughts: LOCKED_BRIEF_FIXTURE },
+    { index: 1, run: { result: enhancementFixture() } as never },
+  );
+  assert.ok(
+    lockedRecord.requiredFacts.some((fact) =>
+      fact.includes("brief locked: 12 facts, 0 missing"),
+    ),
+  );
 
   const variant = (
     index: number,

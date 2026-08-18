@@ -10,7 +10,7 @@ tuned.
 - `protected`: regression cases that cannot fail even when the aggregate score
   improves.
 
-`cases-extended.json` adds 36 cases covering task classes and adversarial
+`cases-extended.json` adds 37 cases covering task classes and adversarial
 shapes. The default evaluation plan still uses only the frozen 24. Pass
 `{ corpus: "all" }` to include both (60+).
 
