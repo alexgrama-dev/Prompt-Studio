@@ -134,11 +134,7 @@ export function detectAntiPatterns(
     );
   }
 
-  if (
-    !/\b(?:done when|stop when|ask (?:the user )?when|do not (?:keep )?(?:iterating|continue)|finished when|stop iterating)\b/i.test(
-      prompt,
-    )
-  ) {
+  if (!hasStoppingRule(prompt)) {
     add("missing-stopping-rules", "No done / ask / stop-iterating condition.");
   }
 
@@ -393,6 +389,17 @@ function collapseBlankLines(value: string): string {
 
 function extractPaths(value: string): string[] {
   return value.match(PATH_PATTERN) ?? [];
+}
+
+const EXPLICIT_STOPPING_RULE =
+  /\b(?:done when|stop when|ask (?:the user )?when|do not (?:keep )?(?:iterating|continue)|finished when|stop iterating|stop without guessing|stop and report)\b/i;
+
+const FAIL_CLOSED_CANNOT_STOP = /\bif you cannot\b[\s\S]{0,80}?\bstop\b/i;
+
+function hasStoppingRule(prompt: string): boolean {
+  return (
+    EXPLICIT_STOPPING_RULE.test(prompt) || FAIL_CLOSED_CANNOT_STOP.test(prompt)
+  );
 }
 
 function wordCount(value: string): number {
