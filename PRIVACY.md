@@ -2,7 +2,8 @@
 
 Prompt Studio's Raycast Store release keeps Prompt Library and Frequent Prompts
 local. Enhance Prompt contacts a model provider only after you submit an
-enhancement and provide a key for that run.
+enhancement. It uses a saved provider key if one exists, and asks for a
+one-run key only when none is saved.
 
 ## Data it handles
 
@@ -24,9 +25,10 @@ usage history, or prompt files to Prompt Studio servers or third-party
 services.
 
 Enhance Prompt sends the reviewed task to the provider you choose only after
-you choose Enhance and enter a key for that attempt. Opening Enhance Prompt,
-typing rough thoughts, or reviewing a result does not look up a saved key or
-make a model request. The one-run key is used in the provider authentication
+you choose Enhance. If a provider key is already saved, that saved key is
+used. If none is saved, Prompt Studio asks for a one-run key. Opening Enhance
+Prompt, typing rough thoughts, or reviewing a result does not make a model
+request. The key used for the attempt is sent in the provider authentication
 header and is not written into prompt files.
 
 Prompt Studio does not include advertising, external analytics, or tracking.

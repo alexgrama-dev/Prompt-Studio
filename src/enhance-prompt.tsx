@@ -1396,7 +1396,10 @@ function EnhancementWorkspace({
           signal: controller.signal,
         });
       } else {
-        const judgeKey = preferences.openaiApiKey?.trim();
+        const judgeKey =
+          selectedProfile.provider === "openai"
+            ? apiKey.trim()
+            : preferences.openaiApiKey?.trim();
         if (!judgeKey) {
           throw new Error(
             "Variant selection needs the OpenAI API key for the blind judge. Add it, or set Variants to Off.",

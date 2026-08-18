@@ -3859,6 +3859,10 @@ test("personal launcher exposes Prompt Library as the only root command", async 
   assert.doesNotMatch(enhanceSource, /name: "idea-studio"/);
   assert.match(enhanceSource, /provider="openai"/);
   assert.match(enhanceSource, /function ProviderApiKeyForm\(/);
+  assert.match(
+    enhanceSource,
+    /selectedProfile\.provider === "openai"\s*\n\s*\? apiKey\.trim\(\)/,
+  );
   assert.doesNotMatch(
     enhanceSource,
     /Add the shared key in Prompt Studio extension preferences before enhancing/,

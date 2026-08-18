@@ -56,6 +56,11 @@ test("Store-facing copy unhides Enhance / Optimize and keeps credentials off fir
   );
   assert.match(privacy, /Enhance Prompt contacts a model provider only after/);
   assert.match(
+    privacy,
+    /uses a saved provider key if one exists, and asks for a\s*one-run key only when none is saved/,
+  );
+  assert.doesNotMatch(privacy, /does not look up a saved key/);
+  assert.match(
     changelog,
     /Ask for a provider key only when you submit an enhancement/,
   );
