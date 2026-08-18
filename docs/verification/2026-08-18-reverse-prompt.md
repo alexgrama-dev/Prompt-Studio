@@ -11,9 +11,10 @@ Date: 2026-08-18
 
 ## Automated Evidence
 
-- `pnpm test`: includes `test/reverse-prompt.test.mts` for classification, secret rejection, URL fencing, and launch prefill.
-- `pnpm typecheck`: TypeScript validation.
-- `pnpm lint`: Raycast lint.
+- Focused Reverse Prompt and launch-context tests: 10 passed.
+- Full `test/*.test.mts`: Reverse Prompt and command-manifest checks passed. Six unrelated SQLite `fts5` failures appeared in this environment (`no such module: fts5`) and are not caused by this change.
+- `tsc --noEmit`: passed.
+- ESLint on the changed files: passed with zero warnings.
 
 `pnpm build` and `pnpm dev` stay on the MacBook Pro.
 

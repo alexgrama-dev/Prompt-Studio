@@ -94,14 +94,12 @@ function ReversePromptForm({
 
   async function submit() {
     try {
+      const filePath = reversePromptSourceFromFiles(files);
+      const fallback = argument?.trim() || fallbackText?.trim() || "";
       const source = classifyReversePromptInput({
-        ...(reversePromptSourceFromFiles(files)
-          ? { filePath: reversePromptSourceFromFiles(files) }
-          : {}),
+        ...(filePath ? { filePath } : {}),
         ...(url.trim() ? { url: url.trim() } : {}),
-        ...(argument || fallbackText
-          ? { fallbackText: argument?.trim() || fallbackText?.trim() }
-          : {}),
+        ...(fallback ? { fallbackText: fallback } : {}),
       });
       const thoughts = buildReversePromptThoughts({
         source,
