@@ -20,8 +20,9 @@ Date: 2026-08-18
 - `tsc --noEmit`: passed.
 - ESLint on changed files: passed with zero warnings.
 - Six unrelated SQLite `fts5` failures appeared in this environment (`no such module: fts5`) and are not caused by this change.
+- Full check: pending.
 
-## MacBook Evidence
+## Pending MacBook Verification
 
 - Run Enhance Prompt on the MacBook Pro.
 - On Review Enhanced Prompt, confirm the Score line:
