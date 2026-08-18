@@ -75,7 +75,9 @@ export function buildGoogleGenerateContentRequest(
         thinkingLevel: profile.reasoningEffort,
       },
       responseMimeType: "application/json",
-      responseSchema: enhancementResultSchemaForProvider(),
+      responseSchema: withoutAdditionalProperties(
+        enhancementResultSchemaForProvider(),
+      ),
     },
   };
 }
@@ -295,6 +297,19 @@ function nonNegativeInteger(value: unknown): number {
 
 function roundCost(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+// Gemini generateContent rejects additionalProperties on response_schema.
+function withoutAdditionalProperties(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(withoutAdditionalProperties);
+  }
+  if (!isObject(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "additionalProperties")
+      .map(([key, child]) => [key, withoutAdditionalProperties(child)]),
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -73,6 +73,7 @@ import {
   ENHANCEMENT_COMPILER_VERSION,
   ENHANCEMENT_GUARDRAILS_MARKER,
   ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
+  ENHANCEMENT_RESULT_SCHEMA,
   enhanceWithOpenAI,
   enhancementResultSchemaForProvider,
   enhancementResultToPromptDraft,
@@ -2740,7 +2741,7 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
   assert.equal(generationConfig.responseMimeType, "application/json");
   assert.deepEqual(
     generationConfig.responseSchema,
-    enhancementResultSchemaForProvider(),
+    omitAdditionalProperties(enhancementResultSchemaForProvider()),
   );
   assert.equal("responseFormat" in generationConfig, false);
   assert.equal(JSON.stringify(googleBody).includes("responseFormat"), false);
@@ -2771,7 +2772,7 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
   assert.equal(google37Config.responseMimeType, "application/json");
   assert.deepEqual(
     google37Config.responseSchema,
-    enhancementResultSchemaForProvider(),
+    omitAdditionalProperties(enhancementResultSchemaForProvider()),
   );
   assert.equal("responseFormat" in google37Config, false);
   assert.equal(JSON.stringify(google37Body).includes("responseFormat"), false);
@@ -2800,6 +2801,36 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     /zero-data-retention/,
   );
   assert.match(providerPrivacyDisclosure(googleProfile), /free-tier/);
+});
+
+test("Google generateContent responseSchema omits additionalProperties for Gemini Flash profiles", () => {
+  assert.equal(ENHANCEMENT_RESULT_SCHEMA.additionalProperties, false);
+  assert.equal(
+    (enhancementResultSchemaForProvider() as { additionalProperties?: unknown })
+      .additionalProperties,
+    false,
+  );
+
+  for (const profileId of [
+    "google-gemini-3.7-flash-v1",
+    "google-gemini-3.5-flash-v1",
+  ] as const) {
+    const body = buildGoogleGenerateContentRequest(
+      { ...enhancementRequest(), profileId },
+      getProviderEnhancementProfile(profileId),
+    );
+    const generationConfig = body.generationConfig as {
+      thinkingConfig: { thinkingLevel: string };
+      responseMimeType: string;
+      responseSchema: unknown;
+    };
+    assert.equal(generationConfig.responseMimeType, "application/json");
+    assert.equal(typeof generationConfig.thinkingConfig.thinkingLevel, "string");
+    assertNoAdditionalProperties(
+      generationConfig.responseSchema,
+      `${profileId}.generationConfig.responseSchema`,
+    );
+  }
 });
 
 test("provider schemas state string bounds and over-long labels are trimmed instead of discarding the run", async () => {
@@ -7591,6 +7622,37 @@ function enhancementRequest(): EnhancementRequest {
     profileId: "openai-standard-v1",
     researchLevel: "none",
   };
+}
+
+function omitAdditionalProperties(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(omitAdditionalProperties);
+  }
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== "additionalProperties")
+      .map(([key, child]) => [key, omitAdditionalProperties(child)]),
+  );
+}
+
+function assertNoAdditionalProperties(value: unknown, path: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      assertNoAdditionalProperties(item, `${path}[${index}]`),
+    );
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  const record = value as Record<string, unknown>;
+  assert.equal(
+    "additionalProperties" in record,
+    false,
+    `${path} must not include additionalProperties`,
+  );
+  for (const [key, child] of Object.entries(record)) {
+    assertNoAdditionalProperties(child, `${path}.${key}`);
+  }
 }
 
 async function gitFixture(directory: string, args: string[]): Promise<string> {
