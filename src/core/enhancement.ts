@@ -731,7 +731,7 @@ export function validateEnhancementRequest(
     request.roughThoughts,
     "roughThoughts",
     1,
-    30_000,
+    100_000,
   );
   assertNoLikelySecret(roughThoughts);
   const oneRunInstruction = request.oneRunInstruction?.trim();
