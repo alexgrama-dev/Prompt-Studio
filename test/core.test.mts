@@ -2732,16 +2732,19 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
   );
   const generationConfig = googleBody.generationConfig as {
     thinkingConfig: { thinkingLevel: string };
-    responseFormat: {
-      text: { mimeType: string; schema: unknown };
-    };
+    responseMimeType: string;
+    responseSchema: unknown;
   };
   assert.equal(googleProfile.model, "gemini-3.5-flash");
   assert.equal(generationConfig.thinkingConfig.thinkingLevel, "medium");
-  assert.equal(
-    generationConfig.responseFormat.text.mimeType,
-    "application/json",
+  assert.equal(generationConfig.responseMimeType, "application/json");
+  assert.deepEqual(
+    generationConfig.responseSchema,
+    enhancementResultSchemaForProvider(),
   );
+  assert.equal("responseFormat" in generationConfig, false);
+  assert.equal(JSON.stringify(googleBody).includes("responseFormat"), false);
+  assert.equal(JSON.stringify(googleBody).includes('"mimeType"'), false);
   assert.equal(JSON.stringify(googleBody).includes("tools"), false);
   assert.equal(JSON.stringify(googleBody).includes("maxLength"), false);
 
@@ -2757,14 +2760,22 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     { ...enhancementRequest(), profileId: "google-gemini-3.7-flash-v1" },
     google37Intro,
   );
-  const google37Thinking = (
-    google37Body.generationConfig as {
-      thinkingConfig: { thinkingLevel: string };
-    }
-  ).thinkingConfig.thinkingLevel;
+  const google37Config = google37Body.generationConfig as {
+    thinkingConfig: { thinkingLevel: string };
+    responseMimeType: string;
+    responseSchema: unknown;
+  };
   assert.equal(google37Intro.model, "gemini-3.7-flash");
   assert.equal(google37Intro.reasoningEffort, "high");
-  assert.equal(google37Thinking, "high");
+  assert.equal(google37Config.thinkingConfig.thinkingLevel, "high");
+  assert.equal(google37Config.responseMimeType, "application/json");
+  assert.deepEqual(
+    google37Config.responseSchema,
+    enhancementResultSchemaForProvider(),
+  );
+  assert.equal("responseFormat" in google37Config, false);
+  assert.equal(JSON.stringify(google37Body).includes("responseFormat"), false);
+  assert.equal(JSON.stringify(google37Body).includes('"mimeType"'), false);
   assert.equal(JSON.stringify(google37Body).includes("xhigh"), false);
   assert.equal(google37Intro.pricing.input, 0.75);
   assert.equal(google37Intro.pricing.output, 3.75);
