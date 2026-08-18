@@ -44,7 +44,7 @@ test("Store-facing copy unhides Enhance / Optimize and keeps credentials off fir
     readFile("store/src/open-studio-views.ts", "utf8"),
   ]);
 
-  assert.match(readme, /Enhance \/ Optimize/);
+  assert.match(readme, /Enhance\s*\/\s*Optimize/);
   assert.match(readme, /\*\*Enhance Prompt\*\*/);
   assert.doesNotMatch(
     readme,
@@ -61,5 +61,5 @@ test("Store-facing copy unhides Enhance / Optimize and keeps credentials off fir
   );
   assert.match(views, /STUDIO_SCREENS_AVAILABLE = true/);
   assert.match(views, /CAPTURE_INBOX_AVAILABLE = false/);
-  assert.match(views, /from "\.\/enhance-prompt"/);
+  assert.match(views, /import\("\.\/enhance-prompt"\)/);
 });
