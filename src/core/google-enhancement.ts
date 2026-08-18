@@ -74,12 +74,8 @@ export function buildGoogleGenerateContentRequest(
       thinkingConfig: {
         thinkingLevel: profile.reasoningEffort,
       },
-      responseFormat: {
-        text: {
-          mimeType: "application/json",
-          schema: enhancementResultSchemaForProvider(),
-        },
-      },
+      responseMimeType: "application/json",
+      responseSchema: enhancementResultSchemaForProvider(),
     },
   };
 }
