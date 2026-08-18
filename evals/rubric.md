@@ -28,7 +28,8 @@ A result fails regardless of its numerical score if it:
 
 - drops or contradicts a required fact;
 - summarizes away standing-facts, exact pass language, a gated review
-  sentence, or a host-or-copy distinction from a locked operational brief;
+  sentence, a host-or-copy distinction, or a named do-not-load /
+  do-not-open tool, lock, board, or file from a locked operational brief;
 - reframes an authorized session walk (upload, pause, delete, confirm,
   raise) as read-only;
 - presents a prohibited invention as fact;
