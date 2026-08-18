@@ -66,5 +66,6 @@ test("Store-facing copy unhides Enhance / Optimize and keeps credentials off fir
   );
   assert.match(views, /STUDIO_SCREENS_AVAILABLE = true/);
   assert.match(views, /CAPTURE_INBOX_AVAILABLE = false/);
+  assert.match(views, /REVERSE_PROMPT_AVAILABLE = false/);
   assert.match(views, /import\("\.\/enhance-prompt"\)/);
 });

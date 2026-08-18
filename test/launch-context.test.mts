@@ -4,6 +4,8 @@ import {
   browseEmptyState,
   CAPTURE_INBOX_ITEM_ID,
   ENHANCE_PROMPT_ITEM_ID,
+  REVERSE_PROMPT_ITEM_ID,
+  reversePromptLibrarySource,
   selectedLibraryItemId,
 } from "../src/core/browse-state.ts";
 import {
@@ -140,7 +142,11 @@ test("browse recovery distinguishes empty, no-match, filtered, and failed states
 });
 
 test("Prompt Library keeps paste selected when studio rows sit above prompts", () => {
-  const studioRows = [ENHANCE_PROMPT_ITEM_ID, CAPTURE_INBOX_ITEM_ID];
+  const studioRows = [
+    ENHANCE_PROMPT_ITEM_ID,
+    REVERSE_PROMPT_ITEM_ID,
+    CAPTURE_INBOX_ITEM_ID,
+  ];
   assert.equal(
     selectedLibraryItemId(null, ["prompt-1", "prompt-2"], studioRows),
     "prompt-1",
@@ -148,6 +154,10 @@ test("Prompt Library keeps paste selected when studio rows sit above prompts", (
   assert.equal(
     selectedLibraryItemId(ENHANCE_PROMPT_ITEM_ID, ["prompt-1"], studioRows),
     ENHANCE_PROMPT_ITEM_ID,
+  );
+  assert.equal(
+    selectedLibraryItemId(REVERSE_PROMPT_ITEM_ID, ["prompt-1"], studioRows),
+    REVERSE_PROMPT_ITEM_ID,
   );
   assert.equal(
     selectedLibraryItemId(CAPTURE_INBOX_ITEM_ID, ["prompt-1"], studioRows),
@@ -167,6 +177,15 @@ test("Prompt Library keeps paste selected when studio rows sit above prompts", (
     CAPTURE_INBOX_ITEM_ID,
   );
   assert.equal(selectedLibraryItemId(null, [], []), undefined);
+});
+
+test("Reverse Prompt library actions keep selected text when search is empty", () => {
+  assert.equal(reversePromptLibrarySource("  https://example.com/ui  "), "https://example.com/ui");
+  assert.equal(
+    reversePromptLibrarySource("", "  /tmp/hero.png  "),
+    "/tmp/hero.png",
+  );
+  assert.equal(reversePromptLibrarySource("   ", undefined), "");
 });
 
 test("fallback paste requires one exact active prompt without placeholders", () => {

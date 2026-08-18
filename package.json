@@ -202,10 +202,32 @@
         "browse prompts",
         "saved prompts",
         "enhance prompt",
+        "reverse prompt",
         "capture inbox",
         "idea studio"
       ],
       "mode": "view"
+    },
+    {
+      "name": "reverse-prompt",
+      "title": "Reverse Prompt",
+      "description": "Turn an image, URL, or video into a reusable prompt",
+      "icon": "reverse-prompt.png",
+      "keywords": [
+        "reverse prompt",
+        "image prompt",
+        "video prompt",
+        "url prompt"
+      ],
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "source",
+          "placeholder": "URL or leave blank to pick a file",
+          "type": "text",
+          "required": false
+        }
+      ]
     }
   ],
   "scripts": {

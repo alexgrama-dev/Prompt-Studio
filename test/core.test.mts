@@ -2461,6 +2461,7 @@ test("Raycast commands use job-based titles and distinct icons", async () => {
   const commands = manifest.commands ?? [];
   const expected = [
     ["browse-prompts", "Prompt Library", "prompt-library.png"],
+    ["reverse-prompt", "Reverse Prompt", "reverse-prompt.png"],
   ];
 
   assert.equal(manifest.title, "Prompt Studio");
@@ -3826,18 +3827,19 @@ test("capture labels and titles stay bounded and valid", () => {
   }
 });
 
-test("personal launcher exposes Prompt Library as the only root command", async () => {
+test("personal launcher exposes Prompt Library and Reverse Prompt as root commands", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     commands?: Array<{
       name?: string;
       mode?: string;
       keywords?: string[];
+      preferences?: Array<{ name?: string }>;
     }>;
   };
   const commands = manifest.commands ?? [];
   assert.deepEqual(
     commands.map((command) => command.name),
-    ["browse-prompts"],
+    ["browse-prompts", "reverse-prompt"],
   );
   assert.ok(commands.every((command) => command.mode === "view"));
   assert.deepEqual(commands[0]?.keywords, [
@@ -3845,14 +3847,24 @@ test("personal launcher exposes Prompt Library as the only root command", async 
     "browse prompts",
     "saved prompts",
     "enhance prompt",
+    "reverse prompt",
     "capture inbox",
     "idea studio",
   ]);
+  assert.equal(
+    commands
+      .find((command) => command.name === "reverse-prompt")
+      ?.preferences?.some((preference) => preference.name === "openaiApiKey") ??
+      false,
+    false,
+  );
   const browseSource = await readFile("src/browse-prompts.tsx", "utf8");
   assert.match(browseSource, /title="Enhance Prompt"/);
   assert.match(browseSource, /function EnhancePromptListItem\(/);
+  assert.match(browseSource, /function ReversePromptListItem\(/);
   assert.match(browseSource, /function CaptureInboxListItem\(/);
   assert.match(browseSource, /id=\{ENHANCE_PROMPT_ITEM_ID\}/);
+  assert.match(browseSource, /id=\{REVERSE_PROMPT_ITEM_ID\}/);
   assert.match(browseSource, /id=\{CAPTURE_INBOX_ITEM_ID\}/);
   assert.match(browseSource, /title="Open Capture Inbox"/);
   assert.doesNotMatch(browseSource, /name: "enhance-prompt"/);
@@ -3871,6 +3883,9 @@ test("personal launcher exposes Prompt Library as the only root command", async 
     enhanceSource,
     /Add the shared key in Prompt Studio extension preferences before enhancing/,
   );
+  const reverseSource = await readFile("src/reverse-prompt.tsx", "utf8");
+  assert.match(reverseSource, /title="Continue to Enhance"/);
+  assert.doesNotMatch(reverseSource, /openaiApiKey/);
   await readFile("src/open-studio-views.ts", "utf8");
   await readFile("src/enhance-prompt.tsx", "utf8");
   await readFile("src/idea-studio.tsx", "utf8");
