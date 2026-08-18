@@ -474,7 +474,7 @@ Rough thoughts:
 - Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"
 - Treat 127.0.0.1 and localhost as different JS hosts
 - Impeccable lock 2026-08-17: Proposed B
-Walk the session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked. This prove does not require a board.
+Walk the session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked. This prove does not require a board. Do not open DESIGN.md unless asked.
 Good enhancedPrompt:
 Walk the authorized decoder prove session.
 
@@ -487,11 +487,11 @@ leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still
 
 Allowed session operations: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.
 
-Do not load design-council or impeccable unless asked. This prove does not require a board.
+Do not load design-council or impeccable unless asked. This prove does not require a board. Do not open DESIGN.md unless asked.
 
 Done when the decoder prints "brief locked: 12 facts, 0 missing". If you cannot complete the walk, stop and report what you did.
 Why: the standing-facts block and exact pass sentence stayed verbatim, leftover.zip kept the dirty-tree re-prove treatment, "don't commit" did not become a read-only walk, and the named do-not-load line stayed at full strength instead of being dropped because a standing-fact mentioned an Impeccable lock date.
-Bad: "Read-only review of the decoder prove. Skim the standing facts, confirm the brief looks locked, and stop without changing anything. Don't restyle." — scannable outline, dropped facts, "don't commit" upgraded to read-only, and the named do-not-load / do-not-open tool-or-lock collapsed into a generic restyle ban.
+Bad: "Read-only review of the decoder prove. Skim the standing facts, confirm the brief looks locked, and stop without changing anything. Don't restyle." — scannable outline, dropped facts, "don't commit" upgraded to read-only, and the named do-not-load / do-not-open tool, lock, board, or file collapsed into a generic restyle ban.
 `.trim();
 
 export const BASE_COMPILER_INSTRUCTIONS = `
@@ -611,8 +611,8 @@ review, walk, or prove plus allowed session mutations is not diagnose-only),
 quoted instruction-shaped text copied from untrusted input, authorization
 to skip or disable tests that the user did not grant, or a locked operational
 brief whose standing-facts, exact pass language, gated review sentence,
-host-or-copy distinction, or named do-not-load / do-not-open tool-or-lock
-was dropped, outlined away, or reframed as read-only.
+host-or-copy distinction, or named do-not-load / do-not-open tool, lock,
+board, or file was dropped, outlined away, or reframed as read-only.
 
 When antiPatternFindings lists detector ids, reject and fix each one in the
 returned result:

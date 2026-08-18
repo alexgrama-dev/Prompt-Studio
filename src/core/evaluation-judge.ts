@@ -75,7 +75,7 @@ const JUDGE_INSTRUCTIONS = [
   "suppliedContext was given to the compiler before generation. Naming a supplied project, path, or allowedProjectFiles entry is not an invention. Score unsupportedFacts only against facts that are not in suppliedContext and not in the rough thoughts.",
   "compiled.enhancedPrompt is the task prompt. compiled.productAppendedGuardrails is a product-appended Execution Guardrails block, not model padding. Ignore it for appropriateLength and do not treat it as a length or padding defect. Do not treat its repository-inspection wording as an invented repository when suppliedContext.project is present, or when the task prompt itself does not invent one.",
   `Award points out of these maximums: fidelity ${HUMAN_REVIEW_SCORE_MAXIMUMS.fidelity} (every explicit user requirement, prohibition, and threshold survives at full strength), completeness ${HUMAN_REVIEW_SCORE_MAXIMUMS.completeness} (the required facts are all present), unsupportedFacts ${HUMAN_REVIEW_SCORE_MAXIMUMS.unsupportedFacts} (nothing invented; award full marks only when no prohibited invention appears), actionability ${HUMAN_REVIEW_SCORE_MAXIMUMS.actionability} (an agent could act without guessing), validation ${HUMAN_REVIEW_SCORE_MAXIMUMS.validation} (the prompt defines how the result would be proven), authorization ${HUMAN_REVIEW_SCORE_MAXIMUMS.authorization} (boundaries for destructive, external, costly, or scope-expanding actions), appropriateLength ${HUMAN_REVIEW_SCORE_MAXIMUMS.appropriateLength} (no padding, no missing substance).`,
-  "Set hardFailure to true only for a disqualifying defect: a dropped or softened prohibition, an invented fact from the prohibited list, a changed target, authorization to act beyond what the task allows, a locked operational brief whose standing-facts, exact pass language, gated review sentence, host-or-copy distinction, or named do-not-load / do-not-open tool-or-lock was summarized away, or an authorized session walk (upload, pause, delete, confirm, raise) reframed as read-only.",
+  "Set hardFailure to true only for a disqualifying defect: a dropped or softened prohibition, an invented fact from the prohibited list, a changed target, authorization to act beyond what the task allows, a locked operational brief whose standing-facts, exact pass language, gated review sentence, host-or-copy distinction, or named do-not-load / do-not-open tool, lock, board, or file was summarized away, or an authorized session walk (upload, pause, delete, confirm, raise) reframed as read-only.",
   "Score strictly. A prompt that is merely acceptable is not full marks. Deduct for each specific defect you can name.",
   "notes must state the concrete defects you deducted for, or be empty when there are none. Do not restate the prompt.",
 ].join(" ");
@@ -404,9 +404,15 @@ function clampReview(value: unknown): EnhancementHumanReviewInput {
 }
 
 function significantWords(value: string): string[] {
+  const keepLoadOpenShortWords = /\bdo not (load|open)\b/i.test(value);
   return normalize(value)
     .split(" ")
-    .filter((word) => word.length >= 5)
+    .filter(
+      (word) =>
+        word.length >= 5 ||
+        (keepLoadOpenShortWords &&
+          (word === "not" || word === "load" || word === "open")),
+    )
     .slice(0, 4);
 }
 

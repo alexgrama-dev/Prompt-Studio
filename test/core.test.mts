@@ -3591,6 +3591,7 @@ test("the extended evaluation corpus is additive and does not change the frozen 
     /Do not load design-council or impeccable unless asked/,
   );
   assert.match(locked.roughInput, /This prove does not require a board/);
+  assert.match(locked.roughInput, /Do not open DESIGN\.md unless asked/);
   assert.match(locked.roughInput, /Impeccable lock 2026-08-17: Proposed B/);
   assert.equal(
     locked.requiredFacts.some((fact) => /copied at full strength/i.test(fact)),
@@ -3608,9 +3609,20 @@ test("the extended evaluation corpus is additive and does not change the frozen 
     ),
   );
   assert.ok(
+    locked.requiredFacts.some((fact) =>
+      fact.includes("This prove does not require a board."),
+    ),
+  );
+  assert.ok(
+    locked.requiredFacts.some((fact) =>
+      fact.includes("Do not open DESIGN.md unless asked."),
+    ),
+  );
+  assert.ok(
     locked.mustContain?.includes("design-council"),
     "mustContain must hard-require the named do-not-load tool",
   );
+  assert.ok(locked.mustContain?.includes("DESIGN.md"));
   assert.ok(
     locked.mustContain?.includes(
       "Do not load design-council or impeccable unless asked",
@@ -3635,6 +3647,7 @@ test("the extended evaluation corpus is additive and does not change the frozen 
     "Impeccable lock 2026-08-17: Proposed B",
     "Do not load design-council or impeccable unless asked.",
     "This prove does not require a board.",
+    "Do not open DESIGN.md unless asked.",
     "Do not commit, deploy, or discard the dirty tree.",
     "Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log.",
   ].join("\n");
@@ -3675,6 +3688,49 @@ test("the extended evaluation corpus is additive and does not change the frozen 
   assert.ok(
     droppedLoad.requiredFacts < locked.requiredFacts.length,
     "dropping the named do-not-load line must fail required-fact coverage",
+  );
+  const swappedLoad = factCoverage({
+    ...judgeFixtureRecord(),
+    requiredFacts: ["Do not load design-council or impeccable unless asked."],
+    prohibitedInventions: [],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts: locked.roughInput,
+    },
+    result: {
+      ...enhancementFixture(),
+      summary: "",
+      assumptions: [],
+      validationSteps: [],
+      enhancedPrompt:
+        "Do not modify design-council or impeccable unless asked.",
+    },
+  });
+  assert.equal(
+    swappedLoad.requiredFacts,
+    0,
+    "changing only load to another verb must drop named load/open coverage",
+  );
+  const swappedOpen = factCoverage({
+    ...judgeFixtureRecord(),
+    requiredFacts: ["Do not open DESIGN.md unless asked."],
+    prohibitedInventions: [],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts: locked.roughInput,
+    },
+    result: {
+      ...enhancementFixture(),
+      summary: "",
+      assumptions: [],
+      validationSteps: [],
+      enhancedPrompt: "Do not modify DESIGN.md unless asked.",
+    },
+  });
+  assert.equal(
+    swappedOpen.requiredFacts,
+    0,
+    "changing only open to another verb must drop named load/open coverage",
   );
   const pinned = getEnhancementEvaluationPlan("openai-standard-v1", {
     corpus: "all",
@@ -9257,7 +9313,7 @@ test("compiler 1.5.0 pins locked-brief copy and session-mutation action scope", 
   const reviewer = REVIEWER_INSTRUCTIONS.replace(/\s+/g, " ");
   assert.match(
     reviewer,
-    /standing-facts, exact pass language, gated review sentence,\s+host-or-copy distinction, or named do-not-load \/ do-not-open tool-or-lock/,
+    /standing-facts, exact pass language, gated review sentence,\s+host-or-copy distinction, or named do-not-load \/ do-not-open tool, lock,\s+board, or file/,
   );
   assert.match(
     reviewer,
@@ -9307,6 +9363,7 @@ test("compiler 1.5.1 pins named do-not-load tool-or-lock copy", () => {
     /Do not load design-council or impeccable unless asked/,
   );
   assert.match(COMPILER_WORKED_EXAMPLES, /This prove does not require a board/);
+  assert.match(COMPILER_WORKED_EXAMPLES, /Do not open DESIGN\.md unless asked/);
   assert.match(
     COMPILER_WORKED_EXAMPLES,
     /Impeccable lock 2026-08-17: Proposed B/,
@@ -9317,19 +9374,19 @@ test("compiler 1.5.1 pins named do-not-load tool-or-lock copy", () => {
   );
   assert.match(
     COMPILER_WORKED_EXAMPLES,
-    /named do-not-load \/ do-not-open tool-or-lock collapsed into a generic restyle ban/,
+    /named do-not-load \/ do-not-open tool, lock, board, or file collapsed into a generic restyle ban/,
   );
 
   const reviewer = REVIEWER_INSTRUCTIONS.replace(/\s+/g, " ");
   assert.match(
     reviewer,
-    /named do-not-load \/ do-not-open tool-or-lock/,
+    /named do-not-load \/ do-not-open tool, lock, board, or file/,
   );
 
   const judgeInstructions = String(buildJudgeRequest(judgeFixtureRecord()).instructions);
   assert.match(
     judgeInstructions,
-    /named do-not-load \/ do-not-open tool-or-lock was summarized away/,
+    /named do-not-load \/ do-not-open tool, lock, board, or file was summarized away/,
   );
 });
 
@@ -9969,7 +10026,7 @@ const LOCKED_BRIEF_FIXTURE = `Prove the AMP Studio Brief Decoder e2e walk.
 - Finish review is gated: say "Finish review only after the prove log is attached" and do not unlock earlier
 - Impeccable lock 2026-08-17: Proposed B
 
-Do not load design-council or impeccable unless asked. This prove does not require a board.
+Do not load design-council or impeccable unless asked. This prove does not require a board. Do not open DESIGN.md unless asked.
 
 Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.`;
 
@@ -10030,6 +10087,9 @@ test("the live v1 judge sends a >8k original in full and extracts locked-brief f
   assert.ok(
     extracted.some((fact) => fact.includes("This prove does not require a board.")),
   );
+  assert.ok(
+    extracted.some((fact) => fact.includes("Do not open DESIGN.md unless asked.")),
+  );
   assert.deepEqual(extractRequiredFacts("make the readme setup section clearer"), []);
   assert.equal(
     looksLikeLockedOperationalBrief(
@@ -10082,7 +10142,7 @@ test("locked-brief extraction keeps wrapped standing facts and ignores narrative
 Exact copy: "brief locked: 12 facts, 0 missing"
 - Treat 127.0.0.1 and localhost as different JS hosts
 
-Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked.
+Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree. Do not load design-council or impeccable unless asked. Do not open DESIGN.md unless asked.
 
 Then confirm the dashboard loaded and delete the temp file.`;
   const standing = extractStandingFactsBlock(wrapped);
@@ -10107,6 +10167,9 @@ Then confirm the dashboard loaded and delete the temp file.`;
     extracted.some((fact) =>
       /Do not load design-council or impeccable unless asked/.test(fact),
     ),
+  );
+  assert.ok(
+    extracted.some((fact) => /Do not open DESIGN\.md unless asked/.test(fact)),
   );
   assert.equal(
     extracted.some((fact) => /confirm the dashboard loaded/.test(fact)),
