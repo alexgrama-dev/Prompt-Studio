@@ -115,6 +115,7 @@ import {
 import { FeedbackForm, feedbackDraftFromForm } from "./feedback-form";
 import FeatureStatus from "./feature-status";
 import {
+  CAPTURE_INBOX_AVAILABLE,
   STUDIO_SCREENS_AVAILABLE,
   pushCaptureInbox,
   pushEnhancePrompt,
@@ -412,6 +413,7 @@ export default function BrowsePrompts({
     emptyState !== "empty-library";
   const showCaptureRow =
     STUDIO_SCREENS_AVAILABLE &&
+    CAPTURE_INBOX_AVAILABLE &&
     emptyState !== "load-failure" &&
     emptyState !== "empty-library";
   const studioRowIds = [
@@ -840,17 +842,21 @@ function StudioScreenActions({
           }
         />
       ) : null}
-      <Action
-        title="Open Capture Inbox"
-        icon={Icon.LightBulb}
-        shortcut={{ modifiers: ["cmd"], key: "i" }}
-        onAction={() =>
-          void pushCaptureInbox(
-            push,
-            thoughts ? { launchContext: ideaStudioLaunchContext(thoughts) } : {},
-          )
-        }
-      />
+      {CAPTURE_INBOX_AVAILABLE ? (
+        <Action
+          title="Open Capture Inbox"
+          icon={Icon.LightBulb}
+          shortcut={{ modifiers: ["cmd"], key: "i" }}
+          onAction={() =>
+            void pushCaptureInbox(
+              push,
+              thoughts
+                ? { launchContext: ideaStudioLaunchContext(thoughts) }
+                : {},
+            )
+          }
+        />
+      ) : null}
     </>
   );
 }

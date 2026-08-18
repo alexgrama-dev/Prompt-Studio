@@ -23,27 +23,58 @@ const rootFiles = [
 const rootDirectories = ["assets", "media", "metadata"] as const;
 const sourceFiles = [
   "src/browse-prompts.tsx",
+  "src/core/ambient.ts",
+  "src/core/anti-patterns.ts",
+  "src/core/anthropic-enhancement.ts",
+  "src/core/browse-state.ts",
+  "src/core/compiler-pipeline.ts",
+  "src/core/compiler-state.ts",
+  "src/core/context7-research.ts",
+  "src/core/enhancement.ts",
+  "src/core/enhancement-completion.ts",
+  "src/core/enhancement-dispatch.ts",
+  "src/core/enhancement-form-draft.ts",
+  "src/core/evaluation.ts",
+  "src/core/evaluation-judge.ts",
+  "src/core/exa-research.ts",
   "src/core/extension-preferences.ts",
   "src/core/features.ts",
   "src/core/feedback-revision.ts",
   "src/core/feedback-store.ts",
-  "src/core/browse-state.ts",
+  "src/core/github-mcp-research.ts",
+  "src/core/google-enhancement.ts",
   "src/core/last-library-paste.ts",
   "src/core/launch-context.ts",
   "src/core/library-intelligence.ts",
+  "src/core/overlap.ts",
   "src/core/placeholder-values.ts",
   "src/core/placeholders.ts",
   "src/core/project-context.ts",
   "src/core/prompt-store.ts",
+  "src/core/provider-profiles.ts",
+  "src/core/provider-transport.ts",
   "src/core/qmd-search.ts",
   "src/core/record-search.ts",
+  "src/core/rendering-profiles.ts",
+  "src/core/research-intent.ts",
+  "src/core/research-router.ts",
+  "src/core/research-safety.ts",
+  "src/core/revision.ts",
+  "src/core/run-log.ts",
   "src/core/secrets.ts",
+  "src/core/variant-selection.ts",
+  "src/core/web-research.ts",
+  "src/enhance-prompt.tsx",
   "src/feature-status.tsx",
   "src/feedback-form.tsx",
   "src/menubar-prompts.tsx",
   "src/open-studio-views.ts",
   "src/prompt-feedback.tsx",
   "src/prompt-form.tsx",
+] as const;
+const evalFiles = [
+  "evals/cases.json",
+  "evals/cases-extended.json",
 ] as const;
 
 await rm(outputDirectory, { force: true, recursive: true });
@@ -59,7 +90,7 @@ for (const directory of rootDirectories) {
   });
 }
 
-for (const file of sourceFiles) {
+for (const file of [...sourceFiles, ...evalFiles]) {
   const destination = join(outputDirectory, file);
   await mkdir(dirname(destination), { recursive: true });
   await cp(join(repositoryRoot, file), destination);
@@ -106,6 +137,7 @@ const expectedTopLevel = [
   "README.md",
   "assets",
   "eslint.config.cjs",
+  "evals",
   "media",
   "metadata",
   "package-lock.json",
@@ -132,7 +164,7 @@ const preferenceNames = manifest.preferences?.map(({ name }) => name) ?? [];
 
 if (
   JSON.stringify(commandNames) !==
-  JSON.stringify(["browse-prompts", "menubar-prompts"])
+  JSON.stringify(["browse-prompts", "enhance-prompt", "menubar-prompts"])
 ) {
   throw new Error(`Unexpected Store commands: ${commandNames.join(", ")}`);
 }
@@ -146,6 +178,7 @@ if (JSON.stringify(preferenceNames) !== JSON.stringify(["libraryDirectory"])) {
 const credentialSafeFiles = [
   ...rootFiles,
   ...sourceFiles,
+  ...evalFiles,
   "package.json",
   "tsconfig.json",
 ];

@@ -1355,12 +1355,14 @@ function EnhancementWorkspace({
     }
     const openaiApiKey = preferences.openaiApiKey?.trim();
     if (!openaiApiKey) {
-      await showToast(
-        Toast.Style.Failure,
-        "OpenAI API Key Required",
-        "Add the shared key in Prompt Studio extension preferences before enhancing.",
+      push(
+        <ProviderApiKeyForm
+          provider="openai"
+          profile={selectedProfile}
+          onSubmit={(apiKey) => executeEnhancement(request, apiKey)}
+          onCancel={() => activeController.current?.abort()}
+        />,
       );
-      await openExtensionPreferences();
       return;
     }
     await executeEnhancement(request, openaiApiKey);
@@ -1399,7 +1401,10 @@ function EnhancementWorkspace({
           signal: controller.signal,
         });
       } else {
-        const judgeKey = preferences.openaiApiKey?.trim();
+        const judgeKey =
+          selectedProfile.provider === "openai"
+            ? apiKey.trim()
+            : preferences.openaiApiKey?.trim();
         if (!judgeKey) {
           throw new Error(
             "Variant selection needs the OpenAI API key for the blind judge. Add it, or set Variants to Off.",
@@ -1619,12 +1624,17 @@ function EnhancementWorkspace({
     }
     const apiKey = preferences.openaiApiKey?.trim();
     if (!apiKey) {
-      await showToast(
-        Toast.Style.Failure,
-        "OpenAI API Key Required",
-        "Add the shared key in Prompt Studio extension preferences before running the evaluation.",
+      push(
+        <ProviderApiKeyForm
+          provider="openai"
+          profile={profile}
+          purpose="evaluation"
+          onSubmit={(value) =>
+            executeActivationEvaluation(effectiveProfileId, value)
+          }
+          onCancel={() => evaluationController.current?.abort()}
+        />,
       );
-      await openExtensionPreferences();
       return;
     }
     await executeActivationEvaluation(effectiveProfileId, apiKey);
@@ -2473,6 +2483,21 @@ function ReviewScoreDropdown({
   );
 }
 
+const PROVIDER_KEY_PAGES = {
+  openai: {
+    title: "OpenAI",
+    url: "https://platform.openai.com/api-keys",
+  },
+  anthropic: {
+    title: "Anthropic",
+    url: "https://console.anthropic.com/settings/keys",
+  },
+  google: {
+    title: "Google",
+    url: "https://aistudio.google.com/app/apikey",
+  },
+} as const;
+
 function ProviderApiKeyForm({
   provider,
   profile,
@@ -2480,7 +2505,7 @@ function ProviderApiKeyForm({
   onSubmit,
   onCancel,
 }: {
-  provider: "anthropic" | "google";
+  provider: "openai" | "anthropic" | "google";
   profile: EnhancementRunProfile;
   purpose?: "enhancement" | "evaluation";
   onSubmit: (apiKey: string) => Promise<void>;
@@ -2488,7 +2513,7 @@ function ProviderApiKeyForm({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const providerTitle = provider === "anthropic" ? "Anthropic" : "Google";
+  const providerTitle = PROVIDER_KEY_PAGES[provider].title;
 
   async function submit() {
     const value = apiKey.trim();
@@ -2535,11 +2560,7 @@ function ProviderApiKeyForm({
           {!isLoading ? (
             <Action.OpenInBrowser
               title={`Open ${providerTitle} API Key Page`}
-              url={
-                provider === "anthropic"
-                  ? "https://console.anthropic.com/settings/keys"
-                  : "https://aistudio.google.com/app/apikey"
-              }
+              url={PROVIDER_KEY_PAGES[provider].url}
             />
           ) : null}
         </ActionPanel>

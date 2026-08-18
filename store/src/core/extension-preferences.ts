@@ -5,6 +5,9 @@ export interface PromptStudioPreferences {
   qmdExecutable: undefined;
   projectRoots: undefined;
   sshProjectRoot: undefined;
+  defaultEnhancementProfile: undefined;
+  selfReviewPass: undefined;
+  variantCount: undefined;
 }
 
 export function getPromptStudioPreferences(): PromptStudioPreferences {
@@ -14,5 +17,8 @@ export function getPromptStudioPreferences(): PromptStudioPreferences {
     qmdExecutable: undefined,
     projectRoots: undefined,
     sshProjectRoot: undefined,
+    defaultEnhancementProfile: undefined,
+    selfReviewPass: undefined,
+    variantCount: undefined,
   };
 }

@@ -31,4 +31,12 @@ test("Store ignores a persisted SQLite activation from another build", async () 
     getFeatureStatus(statuses, "sqlite-search").effectiveState,
     "disabled",
   );
+  assert.equal(
+    getFeatureStatus(statuses, "openai-enhancement").effectiveState,
+    "active",
+  );
+  assert.equal(
+    getFeatureStatus(statuses, "optimization").effectiveState,
+    "disabled",
+  );
 });

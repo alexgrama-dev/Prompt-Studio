@@ -4,7 +4,16 @@ import { assertStoreTextIsCredentialSafe } from "../scripts/store-safety.mts";
 
 test("Store safety rejects credential markers without logging their values", () => {
   assert.doesNotThrow(() =>
-    assertStoreTextIsCredentialSafe("README.md", "Prompt Studio does not require an account or API key."),
+    assertStoreTextIsCredentialSafe(
+      "README.md",
+      "Prompt Library and Frequent Prompts do not require an account or API key.",
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertStoreTextIsCredentialSafe(
+      "src/enhance-prompt.tsx",
+      'preferences.openaiApiKey?.trim() || process.env.OPENAI_API_KEY',
+    ),
   );
 
   for (const contents of [

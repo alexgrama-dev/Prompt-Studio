@@ -2,11 +2,12 @@
 
 Prompt Studio turns Raycast into a local shelf for prompts you want to reuse.
 Save a prompt once, find it by what it does, and paste it into Codex, Claude
-Code, or any other application.
+Code, or any other application. When a prompt does not exist yet, Enhance /
+Optimize turns rough thoughts into a reviewed draft you can save or copy.
 
 ![Browse a local prompt library](media/prompt-library.jpg)
 
-## What the initial Store release does
+## What the Store release does
 
 - Stores every prompt as a readable Markdown file.
 - Searches titles, summaries, tags, aliases, and prompt text.
@@ -15,18 +16,27 @@ Code, or any other application.
 - Creates, edits, duplicates, archives, restores, and deletes prompts.
 - Fills reusable `{{placeholders}}` immediately before paste or copy.
 - Keeps frequently used prompts available from the macOS menu bar.
+- Enhances or optimizes rough thoughts into a complete prompt, then waits for
+  review before save or copy.
 
 ![Create a prompt without an external service](media/create-prompt.jpg)
 
-The initial Raycast Store package exposes two commands:
+The Raycast Store package exposes three commands:
 
-1. **Prompt Library** — browse and maintain saved prompts.
-2. **Frequent Prompts Menu** — copy a frequent prompt from the macOS menu bar.
+1. **Prompt Library** — browse and maintain saved prompts. Enhance Prompt is
+   also available from this screen when you already have prompts, or from the
+   empty-library actions when you do not.
+2. **Enhance Prompt** — start from the task, not from provider settings. Smart
+   defaults compile one prompt. You review the result before saving it as
+   Markdown or copying it.
+3. **Frequent Prompts Menu** — copy a frequent prompt from the macOS menu bar.
    Prompts with placeholders open in Prompt Library so you can fill them first.
 
-It does not require an account or API key, and the included commands make no
-Prompt Studio network requests. See [PRIVACY.md](PRIVACY.md) for the exact data
-boundary.
+Prompt Library and Frequent Prompts stay local. They do not require an account
+or API key, and they make no Prompt Studio network requests. Enhance Prompt
+asks for a provider key only when you submit an enhancement. Opening the
+command, typing the task, or browsing the library does not request credentials
+or contact a model. See [PRIVACY.md](PRIVACY.md) for the exact data boundary.
 
 ## Prompt files
 
@@ -77,8 +87,8 @@ pnpm install
 pnpm dev
 ```
 
-Raycast opens the development extension. Search for **Prompt Library** to create
-or browse prompts.
+Raycast opens the development extension. Search for **Prompt Library** to
+browse prompts, or **Enhance Prompt** to improve rough thoughts.
 
 ## Development
 
@@ -97,8 +107,9 @@ pnpm check:store
 The Store package is written to the ignored `dist-store/` directory. Its
 preparation script copies only an explicit list of public files, so internal
 verification material, experiments, and local project notes cannot be included
-by accident. Preparation also stops if it finds an OpenAI credential field,
-environment-variable name, or key-shaped value in a submitted text file.
+by accident. Preparation also stops if it finds a key-shaped secret in a
+submitted text file. Source files may mention provider field names; the Store
+manifest still does not ask for those credentials on install.
 
 Important directories:
 
@@ -111,11 +122,10 @@ openspec/   behavior proposals and decisions
 store/      public Raycast Store manifest and dependency lock
 ```
 
-The repository contains advanced enhancement, research, command-line, and agent
-features under active development. They are not commands in the initial Store
-release. This keeps the first public install useful without asking a new user
-for credentials or presenting controls that cannot yet be activated from the
-public interface.
+The repository also contains research, command-line, and agent features under
+active development. Those optional capabilities stay Disabled in the Store
+package and perform no network request until a later source build activates
+them.
 
 ## Contributing and security
 

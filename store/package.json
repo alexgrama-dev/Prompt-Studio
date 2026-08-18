@@ -33,9 +33,31 @@
       "keywords": [
         "prompt studio",
         "browse prompts",
-        "saved prompts"
+        "saved prompts",
+        "enhance prompt",
+        "optimize prompt"
       ],
       "mode": "view"
+    },
+    {
+      "name": "enhance-prompt",
+      "title": "Enhance Prompt",
+      "description": "Turn rough thoughts into a reviewed prompt you can save or copy",
+      "icon": "enhance-prompt.png",
+      "keywords": [
+        "enhance prompt",
+        "optimize prompt",
+        "improve prompt"
+      ],
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "thoughts",
+          "type": "text",
+          "required": false,
+          "placeholder": "What do you need?"
+        }
+      ]
     },
     {
       "name": "menubar-prompts",
