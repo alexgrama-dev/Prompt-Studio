@@ -94,9 +94,11 @@ import {
 import {
   buildJudgeRequest,
   extractRequiredFacts,
+  extractStandingFactsBlock,
   factCoverage,
   judgeEvaluationRecord,
   looksLikeLockedOperationalBrief,
+  MAX_INPUT_TOKENS,
   maximumJudgeCostUsd,
 } from "../src/core/evaluation-judge.ts";
 import {
@@ -3409,15 +3411,52 @@ test("the extended evaluation corpus is additive and does not change the frozen 
   assert.match(locked.roughInput, /leftover\.zip is already fixed in the dirty tree; re-prove/);
   assert.match(locked.roughInput, /Do not commit, deploy, or discard the dirty tree/);
   assert.match(locked.roughInput, /upload the brief, pause on the gate, delete leftover\.zip/);
+  assert.equal(
+    locked.requiredFacts.some((fact) => /copied at full strength/i.test(fact)),
+    false,
+    "requiredFacts must be verbatim brief facts, not compiler meta-instructions",
+  );
   assert.ok(
     locked.requiredFacts.some((fact) =>
-      /standing-facts block must be copied at full strength/i.test(fact),
+      fact.includes('Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"'),
+    ),
+  );
+  assert.ok(
+    locked.prohibitedInventions.some((item) =>
+      /summarizing the standing-facts block into a scannable outline/i.test(item),
     ),
   );
   assert.ok(
     locked.prohibitedInventions.some((item) =>
       /reframing the authorized session walk as read-only/i.test(item),
     ),
+  );
+  const copiedFacts = [
+    'Pass only when the decoder prints: "brief locked: 12 facts, 0 missing"',
+    "Treat 127.0.0.1 and localhost as different JS hosts; the fixture binds 127.0.0.1 only.",
+    "leftover.zip is already fixed in the dirty tree; re-prove, do not treat as still broken.",
+    "Walker 400s are not bugs.",
+    "Finish review only after the prove log is attached.",
+    "Do not commit, deploy, or discard the dirty tree.",
+    "Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log.",
+  ].join("\n");
+  const coverage = factCoverage({
+    ...judgeFixtureRecord(),
+    requiredFacts: locked.requiredFacts,
+    prohibitedInventions: [],
+    request: {
+      ...judgeFixtureRecord().request,
+      roughThoughts: locked.roughInput,
+    },
+    result: {
+      ...enhancementFixture(),
+      enhancedPrompt: copiedFacts,
+    },
+  });
+  assert.equal(
+    coverage.requiredFacts,
+    locked.requiredFacts.length,
+    "a prompt that copies standing facts verbatim must not fail coverage for omitting 'copied'",
   );
   const pinned = getEnhancementEvaluationPlan("openai-standard-v1", {
     corpus: "all",
@@ -9729,6 +9768,48 @@ test("the live v1 judge sends a >8k original in full and extracts locked-brief f
     }),
   );
   assert.deepEqual(explicit.requiredFacts, ["Caller-supplied fact must win."]);
+
+  assert.ok(
+    MAX_INPUT_TOKENS >= 100_000 / 4 + 8_000 / 4,
+    "judge spend ceiling must cover a full 100k original plus the capped enhancedPrompt",
+  );
+  assert.ok(maximumJudgeCostUsd(1) >= (MAX_INPUT_TOKENS * 2.5) / 1_000_000);
+});
+
+test("locked-brief extraction keeps wrapped standing facts and ignores narrative session verbs", () => {
+  const wrapped = `Prove the walk.
+
+## Standing facts
+- Pass only when the decoder prints:
+Exact copy: "brief locked: 12 facts, 0 missing"
+- Treat 127.0.0.1 and localhost as different JS hosts
+
+Walk the authorized session: upload the brief, pause on the gate, delete leftover.zip, confirm the decoder output, raise the prove log. Do not commit, deploy, or discard the dirty tree.
+
+Then confirm the dashboard loaded and delete the temp file.`;
+  const standing = extractStandingFactsBlock(wrapped);
+  assert.ok(
+    standing.some((fact) =>
+      fact.includes('Exact copy: "brief locked: 12 facts, 0 missing"'),
+    ),
+    "capitalized wrapped standing-fact lines must stay in the block",
+  );
+  assert.ok(standing.some((fact) => /127\.0\.0\.1/.test(fact)));
+  assert.equal(
+    standing.some((fact) => /Walk the authorized session/.test(fact)),
+    false,
+    "the blank-line boundary must end the standing-facts block",
+  );
+
+  const extracted = extractRequiredFacts(wrapped);
+  assert.ok(
+    extracted.some((fact) => /authorized session/.test(fact) && /upload/.test(fact)),
+  );
+  assert.equal(
+    extracted.some((fact) => /confirm the dashboard loaded/.test(fact)),
+    false,
+    "ordinary confirm/delete narrative is not a required fact",
+  );
 });
 
 test("the evaluation judge treats supplied files as not-an-invention and exempts product guardrails from length", () => {

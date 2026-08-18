@@ -9,10 +9,11 @@ import {
 const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
 const JUDGE_MODEL = "gpt-5.6-terra";
 const MAX_OUTPUT_TOKENS = 900;
-// Worst case for uncapped roughThoughts (enhancement 100k-char cap), the
-// capped enhancedPrompt, list contents, JSON overhead, and the uncapped
-// title and target. Must not understate what buildJudgeRequest sends.
-const MAX_INPUT_TOKENS = 32_000;
+// Live v1 sends the original in full (enhancement 100k-char cap) and still
+// caps compiled fields at 8k. 32k understated that payload. Chars/4:
+// 100k original + 8k prompt + 8k guardrails + 6×20×500 lists + ~8k
+// instructions/JSON. Must not understate what buildJudgeRequest sends.
+export const MAX_INPUT_TOKENS = 48_000;
 const REQUEST_TIMEOUT_MS = 120_000;
 const INPUT_COST_PER_MILLION_USD = 2.5;
 const OUTPUT_COST_PER_MILLION_USD = 15;
@@ -146,10 +147,10 @@ export function looksLikeLockedOperationalBrief(text: string): boolean {
   );
 }
 
-function extractStandingFactsBlock(text: string): string[] {
+export function extractStandingFactsBlock(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n");
   const match = normalized.match(
-    /(?:^|\n)#{0,6}\s*standing[\s-]?facts?\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|\n(?=[A-Z])|$)/i,
+    /(?:^|\n)#{0,6}\s*standing[\s-]?facts?\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|\n\n|$)/i,
   );
   if (!match?.[1]) return [];
   return match[1]
@@ -166,7 +167,10 @@ function isLockedBriefConstraint(item: string): boolean {
       /\b(dirty tree|re-prove|reprove)\b/i.test(item)) ||
     /\b(finish review|gated)\b/i.test(item) ||
     /\bdo not (commit|deploy|discard)\b/i.test(item) ||
-    /\b(upload|pause|delete|confirm|raise)\b/i.test(item)
+    (/\b(upload|pause|delete|confirm|raise)\b/i.test(item) &&
+      /\b(allowed|may|must not|do not|don't|authoriz|forbid|prohibition)\b/i.test(
+        item,
+      ))
   );
 }
 
