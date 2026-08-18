@@ -5,6 +5,7 @@ export type BrowseEmptyState =
   | "filtered-empty";
 
 export const ENHANCE_PROMPT_ITEM_ID = "studio:enhance-prompt";
+export const REVERSE_PROMPT_ITEM_ID = "studio:reverse-prompt";
 export const CAPTURE_INBOX_ITEM_ID = "studio:capture-inbox";
 
 export function browseEmptyState({

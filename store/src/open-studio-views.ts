@@ -3,6 +3,7 @@ import type { EnhancePromptLaunchContext } from "./core/launch-context";
 
 export const STUDIO_SCREENS_AVAILABLE = true;
 export const CAPTURE_INBOX_AVAILABLE = false;
+export const REVERSE_PROMPT_AVAILABLE = false;
 
 export interface EnhancePromptViewProps {
   arguments?: { thoughts?: string };
@@ -12,6 +13,11 @@ export interface EnhancePromptViewProps {
 
 export interface CaptureInboxViewProps {
   arguments?: { idea?: string };
+  fallbackText?: string;
+}
+
+export interface ReversePromptViewProps {
+  arguments?: { source?: string };
   fallbackText?: string;
 }
 
@@ -28,6 +34,14 @@ export async function pushEnhancePrompt(
 export async function pushCaptureInbox(
   _push: (node: ReactNode) => void,
   _props: CaptureInboxViewProps = {},
+): Promise<void> {
+  void _push;
+  void _props;
+}
+
+export async function pushReversePrompt(
+  _push: (node: ReactNode) => void,
+  _props: ReversePromptViewProps = {},
 ): Promise<void> {
   void _push;
   void _props;

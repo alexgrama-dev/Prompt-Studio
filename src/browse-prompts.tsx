@@ -96,6 +96,7 @@ import {
   browseEmptyState,
   CAPTURE_INBOX_ITEM_ID,
   ENHANCE_PROMPT_ITEM_ID,
+  REVERSE_PROMPT_ITEM_ID,
   selectedLibraryItemId,
   type BrowseEmptyState,
 } from "./core/browse-state";
@@ -116,9 +117,11 @@ import { FeedbackForm, feedbackDraftFromForm } from "./feedback-form";
 import FeatureStatus from "./feature-status";
 import {
   CAPTURE_INBOX_AVAILABLE,
+  REVERSE_PROMPT_AVAILABLE,
   STUDIO_SCREENS_AVAILABLE,
   pushCaptureInbox,
   pushEnhancePrompt,
+  pushReversePrompt,
 } from "./open-studio-views";
 import PromptFeedback from "./prompt-feedback";
 
@@ -416,8 +419,15 @@ export default function BrowsePrompts({
     CAPTURE_INBOX_AVAILABLE &&
     emptyState !== "load-failure" &&
     emptyState !== "empty-library";
+  const showReversePromptRow =
+    STUDIO_SCREENS_AVAILABLE &&
+    REVERSE_PROMPT_AVAILABLE &&
+    enhancementEnabled &&
+    emptyState !== "load-failure" &&
+    emptyState !== "empty-library";
   const studioRowIds = [
     ...(showEnhanceRow ? [ENHANCE_PROMPT_ITEM_ID] : []),
+    ...(showReversePromptRow ? [REVERSE_PROMPT_ITEM_ID] : []),
     ...(showCaptureRow ? [CAPTURE_INBOX_ITEM_ID] : []),
   ];
   const selectedItemId = selectedLibraryItemId(
@@ -600,6 +610,15 @@ export default function BrowsePrompts({
               onShowAll={() => setFilter("all")}
             />
           ) : null}
+          {showReversePromptRow ? (
+            <ReversePromptListItem
+              searchText={searchText}
+              fallbackText={fallbackText}
+              emptyState={emptyState}
+              onClearSearch={() => setSearchText("")}
+              onShowAll={() => setFilter("all")}
+            />
+          ) : null}
           {showCaptureRow ? (
             <CaptureInboxListItem
               searchText={searchText}
@@ -690,6 +709,50 @@ function EnhancePromptListItem({
                       ),
                     }
                   : {},
+              )
+            }
+          />
+          <StudioRowExtraActions
+            emptyState={emptyState}
+            onClearSearch={onClearSearch}
+            onShowAll={onShowAll}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function ReversePromptListItem({
+  searchText,
+  fallbackText,
+  emptyState,
+  onClearSearch,
+  onShowAll,
+}: {
+  searchText: string;
+  fallbackText?: string | undefined;
+  emptyState: BrowseEmptyState | undefined;
+  onClearSearch: () => void;
+  onShowAll: () => void;
+}) {
+  const { push } = useNavigation();
+  const source = searchText.trim() || fallbackText?.trim() || "";
+  return (
+    <List.Item
+      id={REVERSE_PROMPT_ITEM_ID}
+      icon={Icon.Image}
+      title="Reverse Prompt"
+      detail={<List.Item.Detail markdown="# Reverse Prompt" />}
+      actions={
+        <ActionPanel>
+          <Action
+            title="Reverse Prompt"
+            icon={Icon.Image}
+            onAction={() =>
+              void pushReversePrompt(
+                push,
+                source ? { fallbackText: source } : {},
               )
             }
           />
@@ -838,6 +901,18 @@ function StudioScreenActions({
                     ),
                   }
                 : {},
+            )
+          }
+        />
+      ) : null}
+      {enhancementEnabled && REVERSE_PROMPT_AVAILABLE ? (
+        <Action
+          title="Reverse Prompt"
+          icon={Icon.Image}
+          onAction={() =>
+            void pushReversePrompt(
+              push,
+              thoughts ? { fallbackText: thoughts } : {},
             )
           }
         />
