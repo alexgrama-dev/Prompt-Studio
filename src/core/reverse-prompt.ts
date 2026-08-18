@@ -1,6 +1,11 @@
 import { accessSync, constants, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { appendUntrustedEvidence } from "./compiler-pipeline.ts";
+import {
+  isSafeRemoteImageUrl,
+  visionMimeForPath,
+  type EnhancementVisionSource,
+} from "./enhancement-vision.ts";
 import type { PromptTarget } from "./prompt-store.ts";
 import { containsLikelySecret } from "./secrets.ts";
 
@@ -83,21 +88,42 @@ export function buildReversePromptThoughts(draft: ReversePromptDraft): string {
   }
 
   const kindLabel = sourceKindLabel(draft.source.kind);
+  const vision = reversePromptVisionSource(draft.source);
   const instruction = [
     `Write a reusable prompt that would produce this ${kindLabel}.`,
     "",
     `Source kind: ${draft.source.kind}`,
-    `Source: ${draft.source.label}`,
+    `Source label: ${draft.source.label}`,
+    "",
+    visionEvidenceInstruction(draft.source, vision),
     "",
     notes
       ? `Notes from the requester:\n${notes}`
-      : "The requester did not describe the source contents. Do not invent visual, spoken, or page details that were not supplied.",
+      : vision
+        ? "The requester did not add notes. Use the attached image pixels, not the filename, as the visual source of truth."
+        : "The requester did not describe the source contents. Do not invent visual, spoken, or page details that were not supplied.",
     "",
-    "The resulting prompt should tell a coding agent how to recreate or implement what this source represents. Distinguish verified source facts from assumptions. If important contents were not supplied, list them as missing information instead of filling them in.",
+    "The resulting prompt should tell a coding agent how to recreate or implement what this source represents. Describe visible UI from supplied pixels when an image is attached. Do not tell the next agent to open a local file path. Do not copy Prompt Studio execution-guardrail wrappers or secret-handling boilerplate into the prompt body; those are added separately. Distinguish verified source facts from assumptions. If important contents were not supplied, list them as missing information instead of filling them in.",
   ].join("\n");
 
   if (draft.source.kind !== "url") return instruction;
   return appendUntrustedEvidence(instruction, draft.source.value, "argument");
+}
+
+export function reversePromptVisionSource(
+  source: ReversePromptSource,
+): EnhancementVisionSource | undefined {
+  if (source.kind === "image" && visionMimeForPath(source.value)) {
+    return {
+      kind: "local-image",
+      filePath: source.value,
+      label: source.label,
+    };
+  }
+  if (source.kind === "url" && isSafeRemoteImageUrl(source.value)) {
+    return { kind: "remote-image", url: source.value, label: source.label };
+  }
+  return undefined;
 }
 
 export function reversePromptSourceFromFiles(
@@ -218,4 +244,23 @@ function looksLikeLocalMediaPath(value: string): boolean {
 function sourceKindLabel(kind: ReversePromptSourceKind): string {
   if (kind === "url") return "URL";
   return kind;
+}
+
+function visionEvidenceInstruction(
+  source: ReversePromptSource,
+  vision: EnhancementVisionSource | undefined,
+): string {
+  if (vision?.kind === "local-image") {
+    return "An image is attached as vision input. The pixels are the visual source of truth: describe layout, verbatim text, components, and styling from what is visible. Do not treat the filename as the contents.";
+  }
+  if (vision?.kind === "remote-image") {
+    return "This https image URL will be fetched after cost and privacy review and attached as vision input. Describe the visible image from those pixels. Do not invent contents from the URL text.";
+  }
+  if (source.kind === "image") {
+    return "This local image format cannot be sent as vision input. Export it as PNG, JPEG, WebP, or GIF. Do not invent visual details from the filename, and do not tell the next agent to open the local path.";
+  }
+  if (source.kind === "video") {
+    return "The current enhancement providers cannot accept video bytes. Do not invent visual or spoken details from the filename, and do not tell the next agent to open the local path.";
+  }
+  return "The page at this URL was not fetched. Do not invent page contents from the address. If the URL is a public https image (png, jpg, webp, gif), Reverse Prompt can fetch those pixels after review.";
 }

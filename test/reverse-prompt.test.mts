@@ -9,7 +9,9 @@ import {
   initialReversePromptFields,
   reversePromptFormSource,
   reversePromptSourceFromFiles,
+  reversePromptVisionSource,
 } from "../src/core/reverse-prompt.ts";
+import { enhancePromptThoughtsLaunchContext } from "../src/core/launch-context.ts";
 
 async function writableMediaFile(
   directory: string,
@@ -35,11 +37,14 @@ test("Reverse Prompt classifies image, URL, and video without fetching", async (
     value: video,
     label: "clip.MOV",
   });
-  assert.deepEqual(classifyReversePromptInput({ url: "https://example.com/ui" }), {
-    kind: "url",
-    value: "https://example.com/ui",
-    label: "example.com/ui",
-  });
+  assert.deepEqual(
+    classifyReversePromptInput({ url: "https://example.com/ui" }),
+    {
+      kind: "url",
+      value: "https://example.com/ui",
+      label: "example.com/ui",
+    },
+  );
   assert.deepEqual(
     classifyReversePromptInput({
       fallbackText: "https://example.com/from-selection",
@@ -67,7 +72,8 @@ test("Reverse Prompt rejects mixed, credentialed, unknown, or unreadable sources
     /not both/,
   );
   assert.throws(
-    () => classifyReversePromptInput({ url: "https://user:secret@example.com" }),
+    () =>
+      classifyReversePromptInput({ url: "https://user:secret@example.com" }),
     /credentials/,
   );
   assert.throws(
@@ -104,9 +110,19 @@ test("Reverse Prompt builds enhance-ready thoughts and keeps URL evidence fenced
     target: "codex",
   });
   assert.match(imageThoughts, /reusable prompt that would produce this image/);
-  assert.match(imageThoughts, /Source: card.png/);
+  assert.match(imageThoughts, /Source label: card.png/);
+  assert.match(imageThoughts, /pixels are the visual source of truth/);
   assert.match(imageThoughts, /Keep the empty state/);
+  assert.match(
+    imageThoughts,
+    /Do not tell the next agent to open a local file path/,
+  );
+  assert.doesNotMatch(imageThoughts, /\/tmp\/card\.png/);
   assert.doesNotMatch(imageThoughts, /<untrusted-evidence/);
+  assert.doesNotMatch(
+    imageThoughts,
+    /Do not invent visual, spoken, or page details that were not supplied/,
+  );
 
   const urlThoughts = buildReversePromptThoughts({
     source: {
@@ -118,10 +134,22 @@ test("Reverse Prompt builds enhance-ready thoughts and keeps URL evidence fenced
   });
   assert.match(urlThoughts, /produce this URL/);
   assert.match(urlThoughts, /Do not invent/);
+  assert.match(urlThoughts, /page at this URL was not fetched/);
   assert.match(
     urlThoughts,
     /<untrusted-evidence source="argument">\nhttps:\/\/example.com\/docs\n<\/untrusted-evidence>/,
   );
+
+  const videoThoughts = buildReversePromptThoughts({
+    source: {
+      kind: "video",
+      value: "/tmp/clip.mp4",
+      label: "clip.mp4",
+    },
+    target: "codex",
+  });
+  assert.match(videoThoughts, /cannot accept video bytes/);
+  assert.doesNotMatch(videoThoughts, /\/tmp\/clip\.mp4/);
 
   assert.throws(
     () =>
@@ -134,6 +162,61 @@ test("Reverse Prompt builds enhance-ready thoughts and keeps URL evidence fenced
         target: "codex",
       }),
     /secret/,
+  );
+});
+
+test("Reverse Prompt hands local images to Enhance as vision, not filename-only thoughts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "prompt-studio-reverse-"));
+  const image = await writableMediaFile(directory, "01-screen.png");
+  const source = classifyReversePromptInput({ filePath: image });
+  const vision = reversePromptVisionSource(source);
+  assert.deepEqual(vision, {
+    kind: "local-image",
+    filePath: image,
+    label: "01-screen.png",
+  });
+  const context = enhancePromptThoughtsLaunchContext(
+    buildReversePromptThoughts({ source, target: "codex" }),
+    "codex",
+    undefined,
+    vision,
+  );
+  assert.equal(context.untrustedSurface, undefined);
+  assert.deepEqual(context.visionSource, vision);
+  assert.match(context.thoughts, /attached as vision input/);
+  assert.doesNotMatch(context.thoughts, /open 01-screen\.png/);
+  assert.doesNotMatch(
+    context.thoughts,
+    new RegExp(image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  );
+
+  assert.equal(
+    reversePromptVisionSource({
+      kind: "image",
+      value: "/tmp/shot.heic",
+      label: "shot.heic",
+    }),
+    undefined,
+  );
+  assert.deepEqual(
+    reversePromptVisionSource({
+      kind: "url",
+      value: "https://cdn.example.com/ui/login.png",
+      label: "cdn.example.com/ui/login.png",
+    }),
+    {
+      kind: "remote-image",
+      url: "https://cdn.example.com/ui/login.png",
+      label: "cdn.example.com/ui/login.png",
+    },
+  );
+  assert.equal(
+    reversePromptVisionSource({
+      kind: "url",
+      value: "https://example.com/docs",
+      label: "example.com/docs",
+    }),
+    undefined,
   );
 });
 
@@ -174,8 +257,14 @@ test("Reverse Prompt submit uses current form values and ignores launch text", (
     reversePromptFormSource({ files: ["/tmp/hero.png"], url: "" }),
     { filePath: "/tmp/hero.png" },
   );
-  assert.throws(() => classifyReversePromptInput(reversePromptFormSource({
-    files: [],
-    url: "",
-  })), /Choose one/);
+  assert.throws(
+    () =>
+      classifyReversePromptInput(
+        reversePromptFormSource({
+          files: [],
+          url: "",
+        }),
+      ),
+    /Choose one/,
+  );
 });

@@ -63,6 +63,22 @@ test("Idea Studio and Enhance Prompt handoffs preserve exact unsaved text and id
   assert.deepEqual(enhancePromptThoughtsLaunchContext(idea), {
     thoughts: idea,
   });
+  assert.deepEqual(
+    enhancePromptThoughtsLaunchContext(idea, "codex", undefined, {
+      kind: "local-image",
+      filePath: "/tmp/01-screen.png",
+      label: "01-screen.png",
+    }),
+    {
+      thoughts: idea,
+      target: "codex",
+      visionSource: {
+        kind: "local-image",
+        filePath: "/tmp/01-screen.png",
+        label: "01-screen.png",
+      },
+    },
+  );
   assert.equal(
     enhancePromptLibraryLaunchContext(idea, idea).untrustedSurface,
     "selection",
@@ -171,7 +187,10 @@ test("Prompt Library keeps paste selected when studio rows sit above prompts", (
     selectedLibraryItemId("hidden", ["prompt-1"], studioRows),
     "prompt-1",
   );
-  assert.equal(selectedLibraryItemId(null, [], studioRows), ENHANCE_PROMPT_ITEM_ID);
+  assert.equal(
+    selectedLibraryItemId(null, [], studioRows),
+    ENHANCE_PROMPT_ITEM_ID,
+  );
   assert.equal(
     selectedLibraryItemId(null, [], [CAPTURE_INBOX_ITEM_ID]),
     CAPTURE_INBOX_ITEM_ID,
@@ -180,7 +199,10 @@ test("Prompt Library keeps paste selected when studio rows sit above prompts", (
 });
 
 test("Reverse Prompt library actions keep selected text when search is empty", () => {
-  assert.equal(reversePromptLibrarySource("  https://example.com/ui  "), "https://example.com/ui");
+  assert.equal(
+    reversePromptLibrarySource("  https://example.com/ui  "),
+    "https://example.com/ui",
+  );
   assert.equal(
     reversePromptLibrarySource("", "  /tmp/hero.png  "),
     "/tmp/hero.png",

@@ -29,7 +29,10 @@ you choose Enhance. If a provider key is already saved, that saved key is
 used. If none is saved, Prompt Studio asks for a one-run key. Opening Enhance
 Prompt, typing rough thoughts, or reviewing a result does not make a model
 request. The key used for the attempt is sent in the provider authentication
-header and is not written into prompt files.
+header and is not written into prompt files. Reverse Prompt can attach a local
+PNG, JPEG, WebP, or GIF, or fetch a public https image URL, and Enhance then
+sends those pixels as vision input. Video files and ordinary web pages are
+not fetched or uploaded.
 
 Prompt Studio does not include advertising, external analytics, or tracking.
 

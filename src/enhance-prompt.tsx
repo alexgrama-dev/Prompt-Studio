@@ -131,6 +131,11 @@ import {
   applyCaptureFence,
 } from "./core/compiler-pipeline";
 import {
+  resolveEnhancementVision,
+  type EnhancementVisionImage,
+  type EnhancementVisionSource,
+} from "./core/enhancement-vision";
+import {
   enhancePromptEntryUntrustedSurface,
   ideaStudioLaunchContext,
   type EnhancePromptLaunchContext,
@@ -524,6 +529,7 @@ export default function EnhancePrompt(props: {
     ? { id: props.launchContext.seedId, thoughts: initialThoughts }
     : undefined;
   const revisionOfPromptId = props.launchContext?.revisionOfPromptId;
+  const initialVisionSource = props.launchContext?.visionSource;
   const initialUntrustedSurface = enhancePromptEntryUntrustedSurface({
     ...(props.launchContext ? { launchContext: props.launchContext } : {}),
     ...(props.arguments?.thoughts
@@ -589,10 +595,9 @@ export default function EnhancePrompt(props: {
         state={state}
         initialThoughts={initialThoughts}
         initialTarget={initialTarget}
-        {...(initialUntrustedSurface
-          ? { initialUntrustedSurface }
-          : {})}
+        {...(initialUntrustedSurface ? { initialUntrustedSurface } : {})}
         {...(initialSeed ? { initialSeed } : {})}
+        {...(initialVisionSource ? { initialVisionSource } : {})}
         revisionOfPromptId={revisionOfPromptId}
         projectContextState={projectContextState}
         context7State={context7State}
@@ -626,6 +631,7 @@ function EnhancementWorkspace({
   initialTarget,
   initialUntrustedSurface,
   initialSeed,
+  initialVisionSource,
   revisionOfPromptId,
 }: {
   state: "preview" | "active";
@@ -640,6 +646,7 @@ function EnhancementWorkspace({
   initialTarget: PromptTarget;
   initialUntrustedSurface?: EnhancePromptLaunchContext["untrustedSurface"];
   initialSeed?: PromptSeedReference;
+  initialVisionSource?: EnhancementVisionSource;
   revisionOfPromptId?: string | undefined;
 }) {
   const preferences = getPreferenceValues<Preferences>();
@@ -699,8 +706,22 @@ function EnhancementWorkspace({
         target: "generic",
         profileId: effectiveProfileId,
         researchLevel: effectiveResearchLevel,
+        ...(initialVisionSource
+          ? {
+              vision: {
+                mimeType: "image/png",
+                label: initialVisionSource.label,
+                base64: "AA==",
+              },
+            }
+          : {}),
       }),
-    [effectiveProfileId, effectiveResearchLevel, roughThoughts],
+    [
+      effectiveProfileId,
+      effectiveResearchLevel,
+      initialVisionSource,
+      roughThoughts,
+    ],
   );
   const projectGroups = useMemo(
     () => groupDiscoveredProjects(projects, recentProjectPaths),
@@ -867,6 +888,19 @@ function EnhancementWorkspace({
         "Choose No Repository until Activation 4 passes.",
       );
       return;
+    }
+    let vision: EnhancementVisionImage | undefined;
+    if (initialVisionSource) {
+      try {
+        vision = await resolveEnhancementVision(initialVisionSource);
+      } catch (error) {
+        await showToast(
+          Toast.Style.Failure,
+          "Could Not Attach Image",
+          error instanceof Error ? error.message : String(error),
+        );
+        return;
+      }
     }
     let projectBundle: ProjectContextBundle | undefined;
     if (selectedRepository) {
@@ -1204,6 +1238,7 @@ function EnhancementWorkspace({
       ...(values.oneRunInstruction.trim()
         ? { oneRunInstruction: values.oneRunInstruction }
         : {}),
+      ...(vision ? { vision } : {}),
     };
     if (projectBundle) {
       push(
@@ -1842,10 +1877,7 @@ function EnhancementWorkspace({
               shortcut={{ modifiers: ["cmd", "shift"], key: "i" }}
               onAction={() =>
                 void pushCaptureInbox(push, {
-                  launchContext: ideaStudioLaunchContext(
-                    roughThoughts,
-                    target,
-                  ),
+                  launchContext: ideaStudioLaunchContext(roughThoughts, target),
                 })
               }
             />
@@ -2064,8 +2096,8 @@ function EnhancementWorkspace({
           !profileAvailable
             ? `${profile.title} is Disabled. Your task is preserved; choose an enabled provider before enhancing.`
             : setupMode === "smart"
-              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
-              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}. Completed results go to local history; the prompt library changes only when you approve.`
+              ? `${profile.title} · no external research · estimated maximum cost $${estimatedCost.toFixed(3)}.${initialVisionSource ? " The attached image pixels are included in that request." : ""} Completed results go to local history; the prompt library changes only when you approve.`
+              : `${profile.title} · ${title(effectiveResearchLevel)} research · estimated maximum cost $${estimatedCost.toFixed(3)}.${initialVisionSource ? " The attached image pixels are included in that request." : ""} Completed results go to local history; the prompt library changes only when you approve.`
         }
       />
     </Form>
@@ -4067,9 +4099,7 @@ function EnhancementPreview({
     result,
     hasProject: Boolean(request.project),
     target: result.target,
-    ...(run.antiPatternFindings
-      ? { findings: run.antiPatternFindings }
-      : {}),
+    ...(run.antiPatternFindings ? { findings: run.antiPatternFindings } : {}),
     ...(request.allowedProjectFiles
       ? { allowedProjectFiles: request.allowedProjectFiles }
       : {}),

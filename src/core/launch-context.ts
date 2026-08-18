@@ -1,3 +1,4 @@
+import type { EnhancementVisionSource } from "./enhancement-vision.ts";
 import type { PromptRecord, PromptTarget } from "./prompt-store.ts";
 import { extractPlaceholders } from "./placeholders.ts";
 
@@ -16,6 +17,7 @@ export interface EnhancePromptLaunchContext {
   seedId?: string;
   revisionOfPromptId?: string;
   untrustedSurface?: "argument" | "selection" | "clipboard" | "repository-file";
+  visionSource?: EnhancementVisionSource;
 }
 
 export function browsePromptsLaunchContext(
@@ -87,11 +89,13 @@ export function enhancePromptThoughtsLaunchContext(
   thoughts: string,
   target?: PromptTarget,
   untrustedSurface?: EnhancePromptLaunchContext["untrustedSurface"],
+  visionSource?: EnhancementVisionSource,
 ): EnhancePromptLaunchContext {
   return {
     thoughts,
     ...(target ? { target } : {}),
     ...(untrustedSurface ? { untrustedSurface } : {}),
+    ...(visionSource ? { visionSource } : {}),
   };
 }
 

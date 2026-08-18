@@ -16,6 +16,7 @@ import {
   type EnhancementRunProfile,
   type EnhancementUsage,
 } from "./enhancement.ts";
+import { anthropicVisionContentPart } from "./enhancement-vision.ts";
 import { getProviderEnhancementProfile } from "./provider-profiles.ts";
 import {
   fetchProviderWithRetry,
@@ -61,7 +62,15 @@ export function buildAnthropicMessageRequest(
     messages: [
       {
         role: "user",
-        content: override?.input ?? enhancementCompilerInput(request),
+        content: request.vision
+          ? [
+              {
+                type: "text",
+                text: override?.input ?? enhancementCompilerInput(request),
+              },
+              anthropicVisionContentPart(request.vision),
+            ]
+          : (override?.input ?? enhancementCompilerInput(request)),
       },
     ],
     output_config: {
