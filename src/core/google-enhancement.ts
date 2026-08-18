@@ -16,6 +16,7 @@ import {
   type EnhancementRunProfile,
   type EnhancementUsage,
 } from "./enhancement.ts";
+import { googleVisionContentPart } from "./enhancement-vision.ts";
 import { getProviderEnhancementProfile } from "./provider-profiles.ts";
 import {
   fetchProviderWithRetry,
@@ -62,7 +63,10 @@ export function buildGoogleGenerateContentRequest(
     contents: [
       {
         role: "user",
-        parts: [{ text: override?.input ?? enhancementCompilerInput(request) }],
+        parts: [
+          { text: override?.input ?? enhancementCompilerInput(request) },
+          ...(request.vision ? [googleVisionContentPart(request.vision)] : []),
+        ],
       },
     ],
     generationConfig: {

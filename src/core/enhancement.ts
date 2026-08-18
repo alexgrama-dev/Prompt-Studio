@@ -24,6 +24,14 @@ import {
 } from "./anti-patterns.ts";
 import { planCompilerStages } from "./compiler-pipeline.ts";
 import {
+  openaiVisionContentPart,
+  validateEnhancementVision,
+  VISION_COMPILER_ADDENDUM,
+  VISION_IMAGE_TOKEN_ESTIMATE,
+  visionInputSummary,
+  type EnhancementVisionImage,
+} from "./enhancement-vision.ts";
+import {
   compilerRenderingAddendum,
   resolveRenderingProfile,
   type RenderingProfileId,
@@ -168,6 +176,8 @@ export interface EnhancementRequest {
   selfReview?: boolean;
   /** Set on a follow-up run that revises an already-compiled result. */
   revision?: RevisionContext;
+  /** Local or fetched image pixels attached as provider vision input. */
+  vision?: EnhancementVisionImage;
 }
 
 export interface EnhancementSource {
@@ -538,6 +548,7 @@ export function enhancementCompilerInstructions(
         | "revision"
         | "project"
         | "allowedProjectFiles"
+        | "vision"
       >
     >,
 ): string {
@@ -546,6 +557,7 @@ export function enhancementCompilerInstructions(
     : BASE_COMPILER_INSTRUCTIONS;
   const sections = [instructions, COMPILER_WORKED_EXAMPLES];
   if (request.revision) sections.push(REVISION_INSTRUCTIONS);
+  if (request.vision) sections.push(VISION_COMPILER_ADDENDUM);
   // Only stated when the caller supplied the task, so metadata volume can match
   // task size instead of always demanding the complex-tier minimum.
   if (typeof request.roughThoughts === "string") {
@@ -754,6 +766,9 @@ export function validateEnhancementRequest(
     ...(compilerPolicy ? { compilerPolicy } : {}),
     allowedProjectFiles: uniqueText(request.allowedProjectFiles ?? []),
     sources: validateInputSources(request.sources ?? []),
+    ...(request.vision
+      ? { vision: validateEnhancementVision(request.vision) }
+      : {}),
   };
 }
 
@@ -999,7 +1014,10 @@ export function buildOpenAIResponseRequest(
     input: [
       {
         role: "user",
-        content: [{ type: "input_text", text: input }],
+        content: [
+          { type: "input_text", text: input },
+          ...(request.vision ? [openaiVisionContentPart(request.vision)] : []),
+        ],
       },
     ],
     reasoning: { effort: profile.reasoningEffort },
@@ -1035,7 +1053,8 @@ export function estimatedMaximumCostForProfileUsd(
     Math.ceil((request.projectContext?.length ?? 0) / 4) +
     Math.ceil(
       request.sources?.length ? JSON.stringify(request.sources).length / 4 : 0,
-    );
+    ) +
+    (request.vision ? VISION_IMAGE_TOKEN_ESTIMATE : 0);
   const first =
     (approximateInputTokens * profile.pricing.input +
       profile.maxOutputTokens * profile.pricing.output) /
@@ -1255,6 +1274,7 @@ function enhancementInput(request: EnhancementRequest): string {
       allowedProjectFiles: request.allowedProjectFiles ?? [],
       allowedSources: request.sources ?? [],
       researchLevel: request.researchLevel,
+      vision: request.vision ? visionInputSummary(request.vision) : null,
     },
     null,
     2,
@@ -1275,6 +1295,7 @@ export function reviewerInput(
       projectContext: request.projectContext ?? null,
       allowedProjectFiles: request.allowedProjectFiles ?? [],
       allowedSources: request.sources ?? [],
+      vision: request.vision ? visionInputSummary(request.vision) : null,
       candidate,
     },
     null,

@@ -3,6 +3,7 @@ import {
   type EnhancementRequest,
   type EnhancementResult,
 } from "./enhancement.ts";
+import { visionInputSummary } from "./enhancement-vision.ts";
 
 export const MAX_REVISION_INSTRUCTION = 2_000;
 
@@ -65,6 +66,7 @@ export function revisionInput(
       projectContext: request.projectContext ?? null,
       allowedProjectFiles: request.allowedProjectFiles ?? [],
       allowedSources: request.sources ?? [],
+      vision: request.vision ? visionInputSummary(request.vision) : null,
     },
     null,
     2,

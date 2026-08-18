@@ -16,6 +16,7 @@ import {
   classifyReversePromptInput,
   initialReversePromptFields,
   reversePromptFormSource,
+  reversePromptVisionSource,
 } from "./core/reverse-prompt";
 import {
   pushEnhancePrompt,
@@ -23,9 +24,9 @@ import {
 } from "./open-studio-views";
 
 export default function ReversePrompt(props: ReversePromptViewProps) {
-  const [state, setState] = useState<"checking" | "disabled" | "ready" | "error">(
-    "checking",
-  );
+  const [state, setState] = useState<
+    "checking" | "disabled" | "ready" | "error"
+  >("checking");
   const [message, setMessage] = useState("Checking activation status…");
 
   useEffect(() => {
@@ -113,12 +114,14 @@ function ReversePromptForm({
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         target,
       });
+      const visionSource = reversePromptVisionSource(source);
       setError(undefined);
       await pushEnhancePrompt(push, {
         launchContext: enhancePromptThoughtsLaunchContext(
           thoughts,
           target,
-          source.kind === "url" ? "argument" : undefined,
+          source.kind === "url" && !visionSource ? "argument" : undefined,
+          visionSource,
         ),
       });
     } catch (caught) {
@@ -141,7 +144,7 @@ function ReversePromptForm({
     >
       <Form.Description
         title="One Source"
-        text="Pick an image or video, or paste a URL. Reverse Prompt stays local on this screen: it only prepares a brief, then the existing Enhance form reviews cost and output before anything is saved."
+        text="Pick an image or video, or paste a URL. This screen stays local. Continue opens Enhance, where cost and privacy review happens before any model call. A local PNG, JPEG, WebP, or GIF is sent as vision so the model sees the pixels, not just the filename."
       />
       <Form.FilePicker
         id="sourceFile"
