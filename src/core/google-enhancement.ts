@@ -124,7 +124,10 @@ export async function enhanceWithGoogle(
     );
   }
 
-  const parsed = parseGoogleResponse(await response.json());
+  const parsed = parseGoogleResponse(
+    await response.json(),
+    profile.maxOutputTokens,
+  );
   let result = parseValidatedResult(parsed.outputText, request, "Google");
   const usages = [calculateGoogleUsage(parsed.usage, profile)];
   const responseIds = [parsed.responseId];
@@ -156,7 +159,10 @@ export async function enhanceWithGoogle(
         `Google rejected the review pass (${reviewResponse.status}${code ? `, ${code}` : ""}). No prompt was saved.`,
       );
     }
-    const reviewed = parseGoogleResponse(await reviewResponse.json());
+    const reviewed = parseGoogleResponse(
+      await reviewResponse.json(),
+      profile.maxOutputTokens,
+    );
     result = parseValidatedResult(reviewed.outputText, request, "Google");
     usages.push(calculateGoogleUsage(reviewed.usage, profile));
     responseIds.push(reviewed.responseId);
@@ -179,7 +185,10 @@ export async function enhanceWithGoogle(
   );
 }
 
-function parseGoogleResponse(value: unknown): {
+export function parseGoogleResponse(
+  value: unknown,
+  maxOutputTokens: number,
+): {
   responseId: string;
   outputText: string;
   usage: GoogleUsage;
@@ -213,7 +222,7 @@ function parseGoogleResponse(value: unknown): {
   }
   if (candidate.finishReason === "MAX_TOKENS") {
     throw new Error(
-      `Google reached the output limit for ${responseId}. No incomplete prompt was saved.`,
+      `Gemini hit the ${maxOutputTokens}-token output cap (thinking + JSON). No incomplete prompt was saved.`,
     );
   }
   if (candidate.finishReason !== "STOP") {

@@ -75,6 +75,7 @@ import {
   ENHANCEMENT_OUTPUT_SCHEMA_VERSION,
   ENHANCEMENT_RESULT_SCHEMA,
   enhanceWithOpenAI,
+  estimatedMaximumCostForProfileUsd,
   enhancementResultSchemaForProvider,
   enhancementResultToPromptDraft,
   getEnhancementProfile,
@@ -306,9 +307,11 @@ import {
   buildGoogleGenerateContentRequest,
   enhanceWithGoogle,
   GOOGLE_GENERATE_CONTENT_BASE_ENDPOINT,
+  parseGoogleResponse,
 } from "../src/core/google-enhancement.ts";
 import {
   enhancementProfileIsAvailable,
+  estimatedProviderMaximumCostUsd,
   getProviderEnhancementProfile,
   providerPricingDisclosure,
   providerPrivacyDisclosure,
@@ -2758,7 +2761,12 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
     responseSchema: unknown;
   };
   assert.equal(googleProfile.model, "gemini-3.5-flash");
+  assert.equal(googleProfile.maxOutputTokens, 32_768);
   assert.equal(generationConfig.thinkingConfig.thinkingLevel, "medium");
+  assert.equal(
+    (googleBody.generationConfig as { maxOutputTokens: number }).maxOutputTokens,
+    32_768,
+  );
   assert.equal(generationConfig.responseMimeType, "application/json");
   assert.deepEqual(
     generationConfig.responseSchema,
@@ -2789,7 +2797,14 @@ test("Anthropic and Google profiles preserve one shared compiler contract with p
   };
   assert.equal(google37Intro.model, "gemini-3.7-flash");
   assert.equal(google37Intro.reasoningEffort, "high");
+  assert.equal(google37Intro.maxOutputTokens, 32_768);
+  assert.equal(google37Standard.maxOutputTokens, 32_768);
   assert.equal(google37Config.thinkingConfig.thinkingLevel, "high");
+  assert.equal(
+    (google37Body.generationConfig as { maxOutputTokens: number })
+      .maxOutputTokens,
+    32_768,
+  );
   assert.equal(google37Config.responseMimeType, "application/json");
   assert.deepEqual(
     google37Config.responseSchema,
@@ -3294,7 +3309,10 @@ test("Anthropic and Google never preview refused, truncated, unsafe, or malforme
   };
   for (const [finishReason, expected] of [
     ["SAFETY", /Google returned SAFETY/],
-    ["MAX_TOKENS", /output limit/],
+    [
+      "MAX_TOKENS",
+      /Gemini hit the 32768-token output cap \(thinking \+ JSON\)\. No incomplete prompt was saved\./,
+    ],
   ] as const) {
     await assert.rejects(
       enhanceWithGoogle(googleRequest, {
@@ -3345,6 +3363,87 @@ test("Anthropic and Google never preview refused, truncated, unsafe, or malforme
     }),
     /invalid structured result/,
   );
+});
+
+test("parseGoogleResponse MAX_TOKENS names the token cap and does not treat responseId as a model", () => {
+  const responseId = "_ECEaqzXJpyNxN8Ph9ypiA8";
+  assert.throws(
+    () =>
+      parseGoogleResponse(
+        {
+          responseId,
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [{ text: '{"enhancedPrompt":"partial"}' }],
+              },
+              finishReason: "MAX_TOKENS",
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 13_151,
+            candidatesTokenCount: 6_848,
+            thoughtsTokenCount: 1_976,
+          },
+        },
+        32_768,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        error.message,
+        "Gemini hit the 32768-token output cap (thinking + JSON). No incomplete prompt was saved.",
+      );
+      assert.equal(error.message.includes(responseId), false);
+      assert.doesNotMatch(error.message, /Google reached the output limit for /);
+      return true;
+    },
+  );
+});
+
+test("Gemini Flash Enhance cost estimates use the 32768-token output ceiling", () => {
+  const request: EnhancementRequest = {
+    ...enhancementRequest(),
+    profileId: "google-gemini-3.7-flash-v1",
+  };
+  const introductory = getProviderEnhancementProfile(
+    "google-gemini-3.7-flash-v1",
+    new Date("2026-08-18T00:00:00.000Z"),
+  );
+  assert.equal(introductory.maxOutputTokens, 32_768);
+  const inputTokens = 2_200 + Math.ceil(request.roughThoughts.length / 4);
+  const expectedOutputCeiling = (32_768 * 3.75) / 1_000_000;
+  const expected =
+    Math.round(
+      ((inputTokens * 0.75 + 32_768 * 3.75) / 1_000_000) * 1_000_000,
+    ) / 1_000_000;
+  const previousEightKOutputCeiling = (8_000 * 3.75) / 1_000_000;
+  assert.equal(
+    estimatedMaximumCostForProfileUsd(request, introductory),
+    expected,
+  );
+  assert.equal(estimatedProviderMaximumCostUsd(request), expected);
+  assert.ok(expectedOutputCeiling > 0.12);
+  assert.ok(expectedOutputCeiling < 0.13);
+  assert.equal(Math.round(previousEightKOutputCeiling * 1_000) / 1_000, 0.03);
+  assert.ok(expected > previousEightKOutputCeiling);
+
+  const flash35 = getProviderEnhancementProfile("google-gemini-3.5-flash-v1");
+  assert.equal(flash35.maxOutputTokens, 32_768);
+  const flash35Request = {
+    ...request,
+    profileId: "google-gemini-3.5-flash-v1" as const,
+  };
+  const flash35Expected =
+    Math.round(
+      ((inputTokens * 1.5 + 32_768 * 9) / 1_000_000) * 1_000_000,
+    ) / 1_000_000;
+  assert.equal(
+    estimatedMaximumCostForProfileUsd(flash35Request, flash35),
+    flash35Expected,
+  );
+  assert.equal(estimatedProviderMaximumCostUsd(flash35Request), flash35Expected);
 });
 
 test("the Standard evaluation plan is frozen, complete, and bounded before a model call", () => {
