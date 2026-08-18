@@ -153,6 +153,11 @@ import {
   type WebResearchResult,
 } from "./core/web-research";
 import { maximumJudgeCostUsd } from "./core/evaluation-judge";
+import {
+  enhancementReviewWatch,
+  formatEnhancementReviewScore,
+  scoreEnhancementReview,
+} from "./core/enhancement-score";
 import { findDuplicateCandidates } from "./core/overlap";
 import { ProjectContextCache } from "./core/ambient";
 
@@ -4036,6 +4041,19 @@ function EnhancementPreview({
 }) {
   const result = run.result;
   const [isSaving, setIsSaving] = useState(false);
+  const reviewScore = scoreEnhancementReview({
+    roughThoughts: request.roughThoughts,
+    result,
+    hasProject: Boolean(request.project),
+    target: result.target,
+    ...(run.antiPatternFindings
+      ? { findings: run.antiPatternFindings }
+      : {}),
+    ...(request.allowedProjectFiles
+      ? { allowedProjectFiles: request.allowedProjectFiles }
+      : {}),
+  });
+  const reviewWatch = enhancementReviewWatch(reviewScore);
   const contextSummary =
     [
       result.projectFiles.length
@@ -4128,6 +4146,13 @@ function EnhancementPreview({
             title="Cost"
             text={`$${run.usage.estimatedCostUsd.toFixed(4)}`}
           />
+          <Detail.Metadata.Label
+            title="Score"
+            text={formatEnhancementReviewScore(reviewScore)}
+          />
+          {reviewWatch ? (
+            <Detail.Metadata.Label title="Watch" text={reviewWatch} />
+          ) : null}
           <Detail.Metadata.TagList title="Search Tags">
             {result.tags.map((tag) => (
               <Detail.Metadata.TagList.Item key={tag} text={tag} />
